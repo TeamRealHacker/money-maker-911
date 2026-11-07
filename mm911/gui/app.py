@@ -18,9 +18,11 @@ from pathlib import Path
 import webview
 
 from ..config import (MergeConfig, PALETTES, SHAPES, HOOKS, APP_NAME, CREDIT, VERSION, LENGTH_PRESETS,
-                      EMOJI_SETS, hex_to_rgb, MIN_TIERS, MAX_TIERS, FPS_CHOICES, RESOLUTIONS, QUALITIES,
-                      CODECS, ENCODERS, FORMATS, AUDIO_BITRATES)
+                      EMOJI_SETS, BG_MODES, SIZE_CURVES, PARTICLE_STYLES, SOUND_STRATEGIES,
+                      SATISFYING_KEYWORDS, RANDOM_KNOBS, hex_to_rgb, MIN_TIERS, MAX_TIERS, FPS_CHOICES,
+                      RESOLUTIONS, QUALITIES, CODECS, ENCODERS, FORMATS, AUDIO_BITRATES)
 from .. import audio as _audio
+from .. import sounds as myinstants
 from ..modes.merge import MergeSim
 from ..render import Renderer, render_video, render_preview_frame, make_thumbnail, prepare_images
 from .. import imageprep
@@ -112,6 +114,9 @@ class Api:
         return {"app": APP_NAME, "credit": CREDIT, "version": VERSION, "config": self._cfg.to_dict(),
                 "palettes": {k: v for k, v in PALETTES.items()}, "shapes": SHAPES, "hooks": HOOKS,
                 "lengths": LENGTH_PRESETS, "emoji_sets": EMOJI_SETS, "cutout": imageprep.status(),
+                "bg_modes": BG_MODES, "size_curves": SIZE_CURVES, "particle_styles": PARTICLE_STYLES,
+                "sound_strategies": SOUND_STRATEGIES, "keywords": SATISFYING_KEYWORDS, "random_knobs": RANDOM_KNOBS,
+                "themes": self.list_themes(),
                 "onboarded": self._settings.get("onboarded", False),
                 "min_tiers": MIN_TIERS, "max_tiers": MAX_TIERS,
                 "export": {"fps": FPS_CHOICES, "resolutions": list(RESOLUTIONS), "qualities": list(QUALITIES),
@@ -157,6 +162,10 @@ class Api:
                     v = max(MIN_TIERS, min(MAX_TIERS, v))
                 setattr(self._cfg, k, v)
         self._cfg.sanitize_export()
+        try:
+            self._cfg.clamp()
+        except (TypeError, ValueError):
+            pass
         self._preview_dirty = True
         self._save()
         return self._cfg.to_dict()
@@ -171,7 +180,9 @@ class Api:
     def pick_file(self, kind: str) -> str:
         types = {"sound": ("Audio (*.mp3;*.wav;*.ogg;*.m4a;*.aac;*.flac;*.opus;*.mp4)",),
                  "image": ("Images (*.png;*.jpg;*.jpeg;*.webp)",),
-                 "font": ("Fonts (*.ttf;*.otf)",)}.get(kind, ("All files (*.*)",))
+                 "video": ("Videos (*.mp4;*.mov;*.webm;*.mkv;*.gif)",),
+                 "font": ("Fonts (*.ttf;*.otf)",),
+                 "theme": ("Theme / preset (*.json)",)}.get(kind, ("All files (*.*)",))
         try:
             res = self._window.create_file_dialog(webview.FileDialog.OPEN, file_types=types)
         except Exception as e:
@@ -357,6 +368,210 @@ class Api:
                 subprocess.Popen(["xdg-open", str(out)])
         except Exception as e:
             LOG.error("open folder failed: %s", e)
+
+    # ---------- sounds (Myinstants) ----------
+    def sound_search(self, query: str) -> dict:
+        """Search Myinstants. Returns {"results": [{name, mp3_url, page_url}], "error": ""}."""
+        try:
+            res = myinstants.search(str(query or ""))
+            return {"results": [r.to_dict() for r in res[:60]], "error": ""}
+        except Exception as e:
+            LOG.warning("sound search failed: %s", e)
+            return {"results": [], "error": "Myinstants not reachable (offline?). The built-in pop still works."}
+
+    def sound_use(self, mp3_url: str, target: str = "all") -> dict:
+        """Download (once) and use a sound. target: all | drop | final | tier:N"""
+        try:
+            path = myinstants.download(myinstants.SoundResult("", mp3_url) if mp3_url.endswith(".mp3")
+                                       else mp3_url)
+        except Exception as e:
+            LOG.warning("sound download failed: %s", e)
+            return {"error": "Download failed: " + str(e), "rows": self.sound_rows()}
+        self._assign_sound(path, target)
+        return {"error": "", "rows": self.sound_rows(), "config": self._cfg.to_dict()}
+
+    def _assign_sound(self, path: str, target: str) -> None:
+        c = self._cfg
+        if target == "drop":
+            c.drop_sound = path
+        elif target == "final":
+            c.final_sound = path
+        elif str(target).startswith("tier:"):
+            i = int(str(target).split(":")[1])
+            lst = list(c.tier_sounds)
+            while len(lst) <= i:
+                lst.append("")
+            lst[i] = path
+            c.tier_sounds = lst
+        else:  # one sound for every tier, auto pitched up
+            c.sound_path, c.tier_sounds, c.tier_semitones = path, [], []
+        c.auto_sounds = False
+        self._preview_dirty = True
+        self._save()
+
+    def pick_sound_for(self, target: str) -> dict:
+        f = self.pick_file("sound")
+        if f:
+            self._assign_sound(f, target)
+        return {"rows": self.sound_rows(), "config": self._cfg.to_dict()}
+
+    def sound_auto_fill(self, keywords: str = "", strategy: str = "", count: int = 0) -> dict:
+        """Pick sounds automatically and lay them out low -> high pitch across the tiers."""
+        c = self._cfg
+        if strategy in SOUND_STRATEGIES:
+            c.auto_sound_strategy = strategy
+        if count:
+            c.auto_sound_count = max(1, min(12, int(count)))
+        try:
+            plan = myinstants.auto_plan(keywords or c.auto_sound_keywords, c.tiers, c.auto_sound_strategy,
+                                        c.auto_sound_count, c.auto_sound_separate, c.auto_drop_keyword,
+                                        c.auto_final_keyword, c.pitch_step, c.seed)
+        except Exception as e:
+            LOG.warning("auto fill failed: %s", e)
+            return {"error": "Auto fill failed: " + str(e), "rows": self.sound_rows(), "config": c.to_dict()}
+        if not (plan["sound_path"] or plan["tier_sounds"]):
+            return {"error": "Nothing found (offline?). Keeping the current sounds.", "rows": self.sound_rows(),
+                    "config": c.to_dict()}
+        myinstants.apply_plan(c, plan)
+        c.auto_sounds = False   # fixed sounds now; tick "new sounds every render" to fetch per video
+        self._save()
+        return {"error": "", "rows": self.sound_rows(), "config": c.to_dict(),
+                "picked": [s["name"] for s in plan["sounds"]]}
+
+    def sound_rows(self) -> list[dict]:
+        """One row per tier + drop + final: which sound, which pitch (auto or manual)."""
+        c = self._cfg
+        names = {v["path"]: v["name"] for v in myinstants.cached_sounds()}
+        label = lambda p: (names.get(p) or Path(p).stem) if p else "Built-in pop"
+        rows = []
+        for t in range(c.tiers):
+            p = c.tier_value("tier_sounds", t) or c.sound_path
+            manual = t < len(c.tier_semitones) and c.tier_semitones[t] not in (None, "")
+            rows.append({"key": f"tier:{t}", "label": f"{t + 1}", "sound": label(p),
+                         "own": bool(c.tier_value("tier_sounds", t)),
+                         "pitch": round(c.tier_pitch(t), 2), "manual": manual})
+        rows.append({"key": "drop", "label": "Drop", "sound": label(c.drop_sound) if c.drop_sound else "same as tier",
+                     "own": bool(c.drop_sound), "pitch": c.drop_pitch, "manual": True})
+        rows.append({"key": "final", "label": "Final", "sound": label(c.final_sound) if c.final_sound else "top tier",
+                     "own": bool(c.final_sound), "pitch": c.final_pitch, "manual": True})
+        return rows
+
+    def set_sound_pitch(self, key: str, value) -> list[dict]:
+        """Manual pitch (semitones). Empty value = back to auto for tiers."""
+        c = self._cfg
+        try:
+            v = None if value in (None, "") else max(-24.0, min(24.0, float(value)))
+        except (TypeError, ValueError):
+            v = None
+        if key == "drop":
+            c.drop_pitch = -4.0 if v is None else v
+        elif key == "final":
+            c.final_pitch = 7.0 if v is None else v
+        elif key.startswith("tier:"):
+            i = int(key.split(":")[1])
+            lst = list(c.tier_semitones)
+            while len(lst) <= i:
+                lst.append(None)
+            lst[i] = v
+            while lst and lst[-1] in (None, ""):
+                lst.pop()
+            c.tier_semitones = lst
+        self._save()
+        return self.sound_rows()
+
+    def clear_sound(self, key: str) -> dict:
+        c = self._cfg
+        if key == "drop":
+            c.drop_sound = ""
+        elif key == "final":
+            c.final_sound = ""
+        elif key.startswith("tier:"):
+            i = int(key.split(":")[1])
+            if i < len(c.tier_sounds):
+                lst = list(c.tier_sounds)
+                lst[i] = ""
+                while lst and not lst[-1]:
+                    lst.pop()
+                c.tier_sounds = lst
+        else:  # everything back to the built-in pop
+            c.sound_path, c.tier_sounds, c.tier_semitones, c.drop_sound, c.final_sound = "", [], [], "", ""
+            c.auto_sounds = False
+        self._save()
+        return {"rows": self.sound_rows(), "config": c.to_dict()}
+
+    def preview_sound(self, key: str) -> str:
+        """Exactly what that tier / drop / final will sound like (pitched), as a data: URL."""
+        from ..audio import SoundBank, to_wav_bytes, pitch
+        try:
+            bank = SoundBank(copy.deepcopy(self._cfg))
+            if key == "drop":
+                smp, semis, _ = bank.event("drop", 0)
+            elif key == "final":
+                smp, semis, _ = bank.event("final", self._cfg.tiers - 1)
+            else:
+                smp, semis, _ = bank.event("merge", int(str(key).split(":")[1]))
+            return "data:audio/wav;base64," + base64.b64encode(to_wav_bytes(pitch(smp, semis))).decode()
+        except Exception as e:
+            LOG.warning("sound preview failed: %s", e)
+            return ""
+
+    # ---------- themes: save / load / import / export ----------
+    def _themes_dir(self) -> Path:
+        d = app_dir() / "themes"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def list_themes(self) -> list[str]:
+        return sorted(p.stem for p in self._themes_dir().glob("*.json"))
+
+    def save_theme(self, name: str) -> list[str]:
+        safe = "".join(ch for ch in str(name or "").strip() if ch.isalnum() or ch in " -_")[:40].strip()
+        if safe:
+            self._cfg.save(self._themes_dir() / f"{safe}.json")
+        return self.list_themes()
+
+    def load_theme(self, name: str) -> dict:
+        p = self._themes_dir() / f"{name}.json"
+        if p.exists():
+            try:
+                self._cfg = MergeConfig.load(p).clamp()
+                self._preview_dirty = True
+                self._save()
+            except Exception as e:
+                LOG.error("theme load failed: %s", e)
+        return self._cfg.to_dict()
+
+    def delete_theme(self, name: str) -> list[str]:
+        p = self._themes_dir() / f"{name}.json"
+        try:
+            p.unlink()
+        except OSError:
+            pass
+        return self.list_themes()
+
+    def export_theme(self) -> str:
+        try:
+            res = self._window.create_file_dialog(webview.FileDialog.SAVE, save_filename=f"{self._cfg.theme_name}_theme.json",
+                                                 file_types=("Theme (*.json)",))
+        except Exception as e:
+            LOG.error("save dialog failed: %s", e)
+            return ""
+        path = res if isinstance(res, str) else (res[0] if res else "")
+        if path:
+            self._cfg.save(path)
+        return path or ""
+
+    def import_theme(self) -> dict:
+        f = self.pick_file("theme")
+        if f:
+            try:
+                self._cfg = MergeConfig.load(f).clamp()
+                self._preview_dirty = True
+                self._save()
+            except Exception as e:
+                LOG.error("theme import failed: %s", e)
+                return {"error": str(e), "config": self._cfg.to_dict()}
+        return {"error": "", "config": self._cfg.to_dict()}
 
     # ---------- live preview ----------
     # The old version pushed every frame into the page with evaluate_js() 30x a second. evaluate_js

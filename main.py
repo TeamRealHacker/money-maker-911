@@ -1,9 +1,9 @@
-"""Money Maker 911 entry point. No args = desktop app. `main.py render|batch|thumb|cutout ...` = command line."""
+"""Money Maker 911 entry point. No args = desktop app. `main.py render|batch|thumb|cutout|sounds ...` = command line."""
 import sys
 
 
 def run():
-    if len(sys.argv) > 1 and sys.argv[1] in ("render", "batch", "thumb", "cutout"):
+    if len(sys.argv) > 1 and sys.argv[1] in ("render", "batch", "thumb", "cutout", "sounds"):
         from mm911.cli import main
         main(sys.argv[1:])
     else:

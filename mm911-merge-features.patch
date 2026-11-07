@@ -1,0 +1,3434 @@
+From c0595118a9ecf3568a0e2fa8786a8c053012eaeb Mon Sep 17 00:00:00 2001
+From: Team RealHackers <realmrhacker26@gmail.com>
+Date: Sat, 7 Nov 2026 21:19:47 +0000
+Subject: [PATCH 1/3] =?UTF-8?q?=F0=9F=94=8A=20Myinstants=20auto=20sounds?=
+ =?UTF-8?q?=20+=20=F0=9F=8E=9B=EF=B8=8F=20deep=20Merge=20customization=20e?=
+ =?UTF-8?q?ngine,=20CLI,=20batch,=20presets?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- mm911/sounds.py: Myinstants search (stdlib html/re + urllib), polite UA, timeout, retries,
+  week-long search cache, download-once sound cache (%APPDATA%/MoneyMaker911/sounds, ~/.mm911/sounds
+  or MM911_SOUND_CACHE), pitch analysis (spectral centroid + autocorrelation f0 via FFmpeg + numpy),
+  auto plan mapping sounds to tiers low -> high (one sound pitched up, or several sorted by measured
+  pitch then shifted), separate drop / final sounds, graceful fallback to the built-in pop
+- audio.py: SoundBank (per-tier sounds, semitone overrides, pitch step/jitter, drop/final sounds and
+  volumes) on top of the v0.4 decoder; decode() helper for analysis
+- config: 86 new settings (physics, size curves, container colour/glow/custom polygon, spin wobble,
+  solid / 3-stop angled gradient / image / looping video backgrounds, ball outline/shadow/glow, particle
+  styles/colours, shake, combos, banners, slow-mo, near-miss, progress bar, counter, per-text styling,
+  ending texts, until-finished, 15s preset); tiers stay the 3-15 "forms" setting; tier_radius = v0.3.1
+  fit-to-container (auto_fit) + size_curve / custom sizes / ball_scale
+- merge sim: video-time clock (SoundEvent.vt; audio stays in sync with speed AND slow motion), slow-mo
+  final merge, cascade combos, tier banners, shake, near-miss tension, new shapes (triangle, pentagon,
+  diamond, rounded, custom); extra effect randomness on its own RNG so existing seeds re-render the same
+- render: all of the above drawn at any export resolution; video background via FFmpeg pipe;
+  build_audio uses SoundBank + video time; auto sounds resolved before rendering
+- CLI: --myinstants, --auto-sounds, --sound-strategy/--sound-count/--drop-keyword/--final-keyword,
+  look flags (--forms --shape --gravity --bg-colors --particles --shake ...), --set KEY=VALUE,
+  'sounds search|fetch|analyze|auto|cache'; batch --randomize knobs + --sound-keywords
+- presets: neon_triangle_combo, space_planets_slowmo, custom_bowl_confetti, minimal_mono_15s
+---
+ main.py                           |   4 +-
+ mm911/audio.py                    |  61 +++++
+ mm911/batch.py                    |  65 ++++-
+ mm911/cli.py                      | 196 +++++++++++---
+ mm911/config.py                   | 212 +++++++++++++--
+ mm911/modes/merge.py              | 210 +++++++++++++--
+ mm911/render.py                   | 367 +++++++++++++++++++++-----
+ mm911/sounds.py                   | 411 ++++++++++++++++++++++++++++++
+ presets/custom_bowl_confetti.json |  78 ++++++
+ presets/minimal_mono_15s.json     |  22 ++
+ presets/neon_triangle_combo.json  |  56 ++++
+ presets/space_planets_slowmo.json |  66 +++++
+ 12 files changed, 1593 insertions(+), 155 deletions(-)
+ create mode 100644 mm911/sounds.py
+ create mode 100644 presets/custom_bowl_confetti.json
+ create mode 100644 presets/minimal_mono_15s.json
+ create mode 100644 presets/neon_triangle_combo.json
+ create mode 100644 presets/space_planets_slowmo.json
+
+diff --git a/main.py b/main.py
+index bc6bb1b..74cf3e1 100644
+--- a/main.py
++++ b/main.py
+@@ -1,9 +1,9 @@
+-"""Money Maker 911 entry point. No args = desktop app. `main.py render|batch|thumb|cutout ...` = command line."""
++"""Money Maker 911 entry point. No args = desktop app. `main.py render|batch|thumb|cutout|sounds ...` = command line."""
+ import sys
+ 
+ 
+ def run():
+-    if len(sys.argv) > 1 and sys.argv[1] in ("render", "batch", "thumb", "cutout"):
++    if len(sys.argv) > 1 and sys.argv[1] in ("render", "batch", "thumb", "cutout", "sounds"):
+         from mm911.cli import main
+         main(sys.argv[1:])
+     else:
+diff --git a/mm911/audio.py b/mm911/audio.py
+index db192d5..1a7d88f 100644
+--- a/mm911/audio.py
++++ b/mm911/audio.py
+@@ -1,8 +1,10 @@
+ """Sound: load any clip (Myinstants mp3, wav, ogg...), pitch it per event, mix into one track."""
+ from __future__ import annotations
+ 
++import io
+ import logging
+ import os
++import random
+ import subprocess
+ import wave
+ from pathlib import Path
+@@ -47,6 +49,14 @@ def _decode(path: str, max_seconds: float | None) -> np.ndarray:
+     return data
+ 
+ 
++def decode(path: str, max_seconds: float = 8.0) -> np.ndarray:
++    """Raw mono float32 @44.1k (no trimming / normalising, cached). Empty array on failure."""
++    try:
++        return _decode(str(path), max_seconds)
++    except Exception:
++        return np.zeros(0, dtype=np.float32)
++
++
+ def load_sound(path: str) -> np.ndarray:
+     """The pop / merge sound: first 3 s of any clip (Myinstants mp3, wav, ogg, m4a, even a video),
+     leading silence trimmed, normalised. Broken or missing files fall back to the built-in pop
+@@ -117,6 +127,57 @@ def pitch(sample: np.ndarray, semitones: float) -> np.ndarray:
+     return np.interp(x, np.arange(len(sample)), sample).astype(np.float32)
+ 
+ 
++def to_wav_bytes(sample: np.ndarray) -> bytes:
++    """Alias of wav_bytes (kept for the sounds panel)."""
++    return wav_bytes(sample)
++
++
++class SoundBank:
++    """Picks the sample, pitch and volume for every drop / merge / final event of a config.
++
++    single mode   : one sound (sound_path or the built-in pop), pitched up pitch_step per tier.
++    per tier      : tier_sounds[t] for each tier (falls back to sound_path), tier_semitones overrides.
++    drop / final  : drop_sound / final_sound when set, else the tier's own sound.
++    """
++
++    def __init__(self, cfg, seed: int | None = None):
++        self.cfg = cfg
++        self._samples: dict[str, np.ndarray] = {}
++        self.rng = random.Random(cfg.seed if seed is None else seed)
++
++    def sample(self, path: str) -> np.ndarray:
++        key = path if path and Path(path).exists() else ""
++        if key not in self._samples:
++            try:
++                self._samples[key] = load_sound(key)
++            except Exception:
++                self._samples[key] = builtin_pop()
++        return self._samples[key]
++
++    def tier_path(self, tier: int) -> str:
++        return self.cfg.tier_value("tier_sounds", tier) or self.cfg.sound_path
++
++    def event(self, kind: str, tier: int) -> tuple[np.ndarray, float, float]:
++        c = self.cfg
++        semis = c.tier_pitch(tier)
++        path = self.tier_path(tier)
++        vol = c.sound_volume
++        if kind == "drop":
++            vol *= c.drop_volume
++            if c.drop_sound:
++                path, semis = c.drop_sound, tier * c.pitch_step * 0.5   # gentle rise on a dedicated drop sound
++            semis += c.drop_pitch
++        elif kind == "final":
++            vol *= c.final_volume
++            if c.final_sound:
++                path, semis = c.final_sound, 0.0                       # a dedicated final sound plays as-is
++            else:
++                semis += c.final_pitch
++        if c.pitch_jitter:
++            semis += self.rng.uniform(-c.pitch_jitter, c.pitch_jitter)
++        return self.sample(path), max(-24.0, min(24.0, semis)), vol
++
++
+ class AudioTrack:
+     """Collects timed sound events, then writes one WAV."""
+ 
+diff --git a/mm911/batch.py b/mm911/batch.py
+index bfb0d78..26d058d 100644
+--- a/mm911/batch.py
++++ b/mm911/batch.py
+@@ -8,7 +8,7 @@ from dataclasses import replace
+ from pathlib import Path
+ from typing import Callable
+ 
+-from .config import MergeConfig, PALETTES, SHAPES, HOOKS
++from .config import MergeConfig, PALETTES, SHAPES, HOOKS, PARTICLE_STYLES, SATISFYING_KEYWORDS, MIN_TIERS, MAX_TIERS
+ from .render import render_video, simulate
+ 
+ EMOJI = {"Fruit": "🍉", "Animal": "🐾", "Planet": "🪐", "Food": "🍔", "Gem": "💎", "Sport": "⚽", "Meme": "😂"}
+@@ -19,21 +19,58 @@ def make_title(cfg: MergeConfig) -> str:
+     return f"{cfg.theme_name} Merge {e} {cfg.hook} #shorts"
+ 
+ 
++def _hsv_hex(rng: random.Random, s: float, v: float) -> str:
++    import colorsys
++    r, g, b = colorsys.hsv_to_rgb(rng.random(), s, v)
++    return "#%02X%02X%02X" % (int(r * 255), int(g * 255), int(b * 255))
++
++
+ def vary(base: MergeConfig, i: int, rng: random.Random, randomize: bool) -> MergeConfig:
++    """One batch video's settings. Only the knobs ticked in base.random_knobs change."""
+     if not randomize:
+         return replace(base, seed=base.seed + i)
++    knobs = set(base.random_knobs or [])
+     pals = list(PALETTES)
+-    shapes = [s for s in SHAPES if s not in ("star",)]
++    shapes = [s for s in SHAPES if s not in ("star", "custom", "triangle")]
++    ch: dict = {"seed": rng.randint(1, 10_000_000)}
+     # rotate (not random) so neighbours never repeat
+-    return replace(
+-        base,
+-        seed=rng.randint(1, 10_000_000),
+-        palette=pals[(pals.index(base.palette) + i) % len(pals)] if base.palette in pals else rng.choice(pals),
+-        container_shape=shapes[i % len(shapes)],
+-        hook=HOOKS[i % len(HOOKS)],
+-        container_spin=rng.choice([0, 0, 0, 12, -12, 20]),
+-        spawn_interval=round(base.spawn_interval * rng.uniform(0.9, 1.15), 3),
+-    )
++    if "palette" in knobs:
++        ch["palette"] = pals[(pals.index(base.palette) + i) % len(pals)] if base.palette in pals else rng.choice(pals)
++    if "shape" in knobs:
++        ch["container_shape"] = shapes[i % len(shapes)]
++    if "hook" in knobs:
++        ch["hook"] = HOOKS[i % len(HOOKS)]
++    if "spin" in knobs:
++        ch["container_spin"] = rng.choice([0, 0, 0, 12, -12, 20, -20])
++    if "drop_interval" in knobs:
++        ch["spawn_interval"] = round(base.spawn_interval * rng.uniform(0.9, 1.15), 3)
++    if "gravity" in knobs:
++        ch["gravity"] = round(base.gravity * rng.uniform(0.8, 1.25))
++    if "bounce" in knobs:
++        ch["bounce"] = round(min(0.8, max(0.0, base.bounce + rng.uniform(-0.08, 0.2))), 2)
++    if "friction" in knobs:
++        ch["friction"] = round(min(1.0, max(0.05, base.friction * rng.uniform(0.6, 1.4))), 2)
++    if "ball_size" in knobs:
++        ch["ball_scale"] = round(base.ball_scale * rng.uniform(0.9, 1.08), 3)
++    if "tiers" in knobs:
++        ch["tiers"] = max(MIN_TIERS, min(MAX_TIERS, base.tiers + rng.choice([-1, 0, 0, 1])))
++    if "background" in knobs:
++        ch["bg_mode"] = "gradient"
++        ch["bg_colors"] = [_hsv_hex(rng, 0.35, 0.95), _hsv_hex(rng, 0.45, 0.75)]
++        ch["bg_angle"] = rng.choice([90, 90, 60, 120, 45])
++    if "particles" in knobs:
++        ch["particle_style"] = PARTICLE_STYLES[(PARTICLE_STYLES.index(base.particle_style) + i) % len(PARTICLE_STYLES)] \
++            if base.particle_style in PARTICLE_STYLES else rng.choice(PARTICLE_STYLES)
++    if "container_color" in knobs:
++        ch["container_color"] = _hsv_hex(rng, 0.55, 0.6)
++    if "sound_keyword" in knobs:
++        pool = [k for k in (base.batch_sound_keywords or []) if k.strip()] or SATISFYING_KEYWORDS
++        ch["auto_sounds"] = True
++        ch["auto_sound_keywords"] = pool[i % len(pool)] if len(pool) > 1 else pool[0]
++    cfg = replace(base, **ch)
++    if "tiers" in knobs and cfg.tier_emojis:
++        cfg.tier_emojis = list(cfg.tier_emojis)[: cfg.tiers]
++    return cfg
+ 
+ 
+ def run_batch(base: MergeConfig, count: int, out_dir: str, randomize: bool = True, only_wins: bool = True,
+@@ -60,9 +97,13 @@ def run_batch(base: MergeConfig, count: int, out_dir: str, randomize: bool = Tru
+         meta["description"] = f"{cfg.theme_name} merge simulation. {cfg.hook} #shorts #satisfying #merge"
+         meta["hashtags"] = "#shorts #satisfying #merge #simulation"
+         meta["palette"], meta["shape"] = cfg.palette, cfg.container_shape
++        meta["sounds"] = ", ".join(meta.get("sounds") or []) or "built-in"
++        if cfg.auto_sounds:
++            meta["sound_keyword"] = cfg.auto_sound_keywords or "auto"
+         results.append(meta)
+         with open(out / "titles.csv", "w", newline="", encoding="utf-8-sig") as f:
+-            w = csv.DictWriter(f, fieldnames=list(results[0].keys()))
++            keys = list(dict.fromkeys(k for r in results for k in r))
++            w = csv.DictWriter(f, fieldnames=keys)
+             w.writeheader()
+             w.writerows(results)
+     return results
+diff --git a/mm911/cli.py b/mm911/cli.py
+index 67f67f6..51a6f63 100644
+--- a/mm911/cli.py
++++ b/mm911/cli.py
+@@ -5,7 +5,8 @@ import argparse
+ import json
+ 
+ from .config import MergeConfig
+-from .config import LENGTH_PRESETS, EMOJI_SETS, RESOLUTIONS, QUALITIES, CODECS, ENCODERS, FORMATS
++from .config import (LENGTH_PRESETS, EMOJI_SETS, SHAPES, BG_MODES, PARTICLE_STYLES, RANDOM_KNOBS, MIN_TIERS,
++                     MAX_TIERS, RESOLUTIONS, QUALITIES, CODECS, ENCODERS, FORMATS)
+ from .render import render_video, make_thumbnail
+ from .batch import run_batch
+ from . import imageprep
+@@ -13,6 +14,145 @@ from . import imageprep
+ CUT_CHOICES = list(imageprep.MODELS) + [imageprep.QUICK]
+ 
+ 
++def _add_look_args(sp) -> None:
++    """Common overrides for render / thumb / batch (anything else: put it in a preset .json)."""
++    sp.add_argument("--length", choices=["15", "30", "45", "60"], help="Shorts length preset")
++    sp.add_argument("--seconds", type=float, help="custom max length in seconds")
++    sp.add_argument("--until-finished", action="store_true", help="run until the Final Form (cap 180 s)")
++    sp.add_argument("--fps", type=int, help="frames per second, 15-120 (24, 30, 50, 60, 120...)")
++    sp.add_argument("--res", choices=list(RESOLUTIONS), help="export resolution (9:16)")
++    sp.add_argument("--quality", choices=list(QUALITIES))
++    sp.add_argument("--codec", choices=CODECS)
++    sp.add_argument("--encoder", choices=ENCODERS)
++    sp.add_argument("--format", choices=FORMATS)
++    sp.add_argument("--no-audio", action="store_true", help="export a silent video")
++    sp.add_argument("--music", help="background music file")
++    sp.add_argument("--emoji-set", choices=list(EMOJI_SETS), help="use a built-in emoji tier set")
++    sp.add_argument("--image-folder", help="folder of tier images (sorted by name)")
++    sp.add_argument("--cutout", nargs="?", const=imageprep.DEFAULT_MODEL, choices=CUT_CHOICES,
++                    help="AI background removal for tier images (default model: isnet-general-use)")
++    sp.add_argument("--reject-text", action="store_true", help="skip tier images that contain text")
++    sp.add_argument("--tiers", "--forms", dest="tiers", type=int,
++                    help=f"number of forms / tiers ({MIN_TIERS}-{MAX_TIERS})")
++    sp.add_argument("--shape", choices=SHAPES)
++    sp.add_argument("--gravity", type=float)
++    sp.add_argument("--bounce", type=float)
++    sp.add_argument("--friction", type=float)
++    sp.add_argument("--spin", type=float, help="container spin in degrees/second (negative = other way)")
++    sp.add_argument("--ball-scale", type=float)
++    sp.add_argument("--drop-interval", type=float)
++    sp.add_argument("--bg", choices=BG_MODES, help="background mode")
++    sp.add_argument("--bg-colors", help="comma separated hex colours, e.g. '#1a1a40,#ff6f61'")
++    sp.add_argument("--bg-angle", type=float)
++    sp.add_argument("--bg-image")
++    sp.add_argument("--bg-video")
++    sp.add_argument("--particles", choices=PARTICLE_STYLES)
++    sp.add_argument("--shake", type=float, help="screen shake strength in px (0 = off)")
++    sp.add_argument("--hook")
++    sp.add_argument("--watermark")
++    sp.add_argument("--final-text")
++    sp.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
++                    help="set any config field, e.g. --set ball_glow=0.6 --set show_counter=true (repeatable)")
++    # sounds
++    sp.add_argument("--sound", help="sound file used for every tier (auto pitched)")
++    sp.add_argument("--myinstants", metavar="KEYWORDS",
++                    help="fetch sounds from Myinstants for these comma separated keywords, e.g. 'pop' or 'bubble,boing'")
++    sp.add_argument("--auto-sounds", action="store_true",
++                    help="fetch sounds from Myinstants using the built-in satisfying keyword list")
++    sp.add_argument("--sound-strategy", choices=["pitch_up", "sorted"],
++                    help="pitch_up = one sound pitched up per tier, sorted = several sounds sorted low->high")
++    sp.add_argument("--sound-count", type=int, help="how many different sounds for 'sorted'")
++    sp.add_argument("--no-separate-sounds", action="store_true", help="no separate drop / final sounds")
++    sp.add_argument("--drop-keyword", help="Myinstants keyword for the drop sound, e.g. 'click'")
++    sp.add_argument("--final-keyword", help="Myinstants keyword for the Final Form sound, e.g. 'vine boom'")
++
++
++def _parse_value(cur, raw: str):
++    if isinstance(cur, bool):
++        return raw.lower() in ("1", "true", "yes", "on")
++    if isinstance(cur, int):
++        return int(float(raw))
++    if isinstance(cur, float):
++        return float(raw)
++    if isinstance(cur, list):
++        try:
++            v = json.loads(raw)
++            return v if isinstance(v, list) else [v]
++        except json.JSONDecodeError:
++            return [x.strip() for x in raw.split(",")]
++    return raw
++
++
++def apply_args(cfg: MergeConfig, a) -> MergeConfig:
++    if a.length:
++        cfg.max_seconds = LENGTH_PRESETS[a.length + "s"]
++    simple = {"seconds": "max_seconds", "fps": "fps", "tiers": "tiers", "shape": "container_shape",
++              "gravity": "gravity", "bounce": "bounce", "friction": "friction", "spin": "container_spin",
++              "ball_scale": "ball_scale", "drop_interval": "spawn_interval", "bg": "bg_mode", "bg_angle": "bg_angle",
++              "bg_image": "background_image", "bg_video": "background_video", "particles": "particle_style",
++              "shake": "shake_strength", "hook": "hook", "watermark": "watermark", "final_text": "final_text",
++              "sound": "sound_path", "sound_strategy": "auto_sound_strategy", "sound_count": "auto_sound_count",
++              "drop_keyword": "auto_drop_keyword", "final_keyword": "auto_final_keyword",
++              "res": "export_resolution", "quality": "export_quality", "codec": "export_codec",
++              "encoder": "export_encoder", "format": "export_format", "music": "music_path"}
++    for arg, field_ in simple.items():
++        v = getattr(a, arg, None)
++        if v is not None:
++            setattr(cfg, field_, v)
++    if a.until_finished:
++        cfg.until_finished = True
++    if a.no_audio:
++        cfg.export_audio = False
++    if a.bg_colors:
++        cfg.bg_colors = [c.strip() for c in a.bg_colors.split(",") if c.strip()]
++        if not a.bg:
++            cfg.bg_mode = "gradient" if len(cfg.bg_colors) > 1 else "solid"
++    if a.bg_image and not a.bg:
++        cfg.bg_mode = "image"
++    if a.bg_video and not a.bg:
++        cfg.bg_mode = "video"
++    if a.emoji_set:
++        cfg.tier_emojis = EMOJI_SETS[a.emoji_set][: cfg.tiers]
++    if a.image_folder:
++        cfg.tier_image_folder = a.image_folder
++    if a.cutout:
++        cfg.ai_cutout, cfg.cutout_model = True, a.cutout
++    if a.reject_text:
++        cfg.reject_text = True
++    if a.myinstants:
++        cfg.auto_sounds, cfg.auto_sound_keywords = True, a.myinstants
++    if a.auto_sounds:
++        cfg.auto_sounds = True
++    if a.no_separate_sounds:
++        cfg.auto_sound_separate = False
++    for item in a.set:
++        k, _, raw = item.partition("=")
++        k = k.strip()
++        if k not in MergeConfig.__dataclass_fields__:
++            raise SystemExit(f"--set: unknown setting '{k}'")
++        setattr(cfg, k, _parse_value(getattr(cfg, k), raw))
++    cfg.sanitize_export()
++    return cfg.clamp()
++
++
++def sounds_cmd(a) -> None:
++    from . import sounds
++    if a.action == "search":
++        for r in sounds.search(a.query, pages=a.pages):
++            print(f"{r.name}\t{r.mp3_url}")
++    elif a.action == "fetch":
++        print(sounds.download(a.query))
++    elif a.action == "analyze":
++        print(json.dumps(sounds.analyze(a.query), indent=2))
++    elif a.action == "auto":
++        print(json.dumps(sounds.auto_plan(a.query, tiers=a.tiers, strategy=a.strategy, count=a.count,
++                                          seed=a.seed), indent=2, ensure_ascii=False))
++    elif a.action == "cache":
++        print(sounds.cache_dir())
++        for s in sounds.cached_sounds():
++            print(f"{s['name']}\t{s['path']}")
++
++
+ def main(argv=None) -> None:
+     p = argparse.ArgumentParser(prog="mm911", description="Money Maker 911 renderer")
+     sub = p.add_subparsers(dest="cmd", required=True)
+@@ -30,52 +170,33 @@ def main(argv=None) -> None:
+     b.add_argument("--out", default="output")
+     b.add_argument("--no-random", action="store_true")
+     b.add_argument("--allow-fails", action="store_true", help="keep runs that miss the Final Form")
++    b.add_argument("--randomize", help="comma separated knobs to vary per video: " + ",".join(RANDOM_KNOBS))
++    b.add_argument("--sound-keywords", help="comma separated Myinstants keywords, one picked per video")
+     for sp in (r, t, b):
+-        sp.add_argument("--length", choices=["30", "45", "60"], help="Shorts length preset")
+-        sp.add_argument("--emoji-set", choices=list(EMOJI_SETS), help="use a built-in emoji tier set")
+-        sp.add_argument("--image-folder", help="folder of tier images (sorted by name)")
+-        sp.add_argument("--cutout", nargs="?", const=imageprep.DEFAULT_MODEL, choices=CUT_CHOICES,
+-                        help="AI background removal for tier images (default model: isnet-general-use)")
+-        sp.add_argument("--reject-text", action="store_true", help="skip tier images that contain text")
+-        sp.add_argument("--fps", type=int, help="frames per second, 15-120 (24, 30, 50, 60, 120...)")
+-        sp.add_argument("--res", choices=list(RESOLUTIONS), help="export resolution (9:16)")
+-        sp.add_argument("--quality", choices=list(QUALITIES))
+-        sp.add_argument("--codec", choices=CODECS)
+-        sp.add_argument("--encoder", choices=ENCODERS)
+-        sp.add_argument("--format", choices=FORMATS)
+-        sp.add_argument("--no-audio", action="store_true", help="export a silent video")
+-        sp.add_argument("--sound", help="sound file for drops/merges (mp3, wav...)")
+-        sp.add_argument("--music", help="background music file")
++        _add_look_args(sp)
+     c = sub.add_parser("cutout", help="cut out every image in a folder (AI background removal)")
+     c.add_argument("--in", dest="src", required=True, help="folder of images")
+     c.add_argument("--out", default="output/cutouts")
+     c.add_argument("--model", default=imageprep.DEFAULT_MODEL, choices=CUT_CHOICES)
+     c.add_argument("--reject-text", action="store_true", help="skip (don't cut) images that contain text")
++    s = sub.add_parser("sounds", help="Myinstants: search / fetch / analyze / auto / cache")
++    s.add_argument("action", choices=["search", "fetch", "analyze", "auto", "cache"])
++    s.add_argument("query", nargs="?", default="", help="keyword(s), instant page URL, mp3 URL or file")
++    s.add_argument("--pages", type=int, default=1)
++    s.add_argument("--tiers", type=int, default=9)
++    s.add_argument("--strategy", choices=["pitch_up", "sorted"], default="sorted")
++    s.add_argument("--count", type=int, default=4)
++    s.add_argument("--seed", type=int, default=1)
+     a = p.parse_args(argv)
++    if a.cmd == "sounds":
++        return sounds_cmd(a)
+     if a.cmd == "cutout":
+         res = imageprep.cutout_folder(a.src, a.out, a.model, a.reject_text, note=lambda m: print(f"\r{m[:70]:70}", end=""))
+         print()
+         print(json.dumps(res, indent=2))
+         return
+     cfg = MergeConfig.load(a.preset) if a.preset else MergeConfig()
+-    if a.length:
+-        cfg.max_seconds = LENGTH_PRESETS[a.length + "s"]
+-    if a.emoji_set:
+-        cfg.tier_emojis = EMOJI_SETS[a.emoji_set][: cfg.tiers]
+-    if a.image_folder:
+-        cfg.tier_image_folder = a.image_folder
+-    if a.cutout:
+-        cfg.ai_cutout, cfg.cutout_model = True, a.cutout
+-    if a.reject_text:
+-        cfg.reject_text = True
+-    for arg, attr in (("fps", "fps"), ("res", "export_resolution"), ("quality", "export_quality"),
+-                      ("codec", "export_codec"), ("encoder", "export_encoder"), ("format", "export_format"),
+-                      ("sound", "sound_path"), ("music", "music_path")):
+-        if getattr(a, arg) is not None:
+-            setattr(cfg, attr, getattr(a, arg))
+-    if a.no_audio:
+-        cfg.export_audio = False
+-    cfg.sanitize_export()
++    apply_args(cfg, a)
+     if a.cmd in ("render", "thumb") and a.seed is not None:
+         cfg.seed = a.seed
+     if a.cmd == "thumb":
+@@ -83,6 +204,13 @@ def main(argv=None) -> None:
+     elif a.cmd == "render":
+         print(json.dumps(render_video(cfg, a.out, progress=lambda x: print(f"\r{x*100:5.1f}%", end="")), indent=2))
+     else:
++        if a.randomize:
++            cfg.random_knobs = [k.strip() for k in a.randomize.split(",") if k.strip() in RANDOM_KNOBS]
++        if a.sound_keywords:
++            cfg.batch_sound_keywords = [k.strip() for k in a.sound_keywords.split(",") if k.strip()]
++            if "sound_keyword" not in cfg.random_knobs:
++                cfg.random_knobs = list(cfg.random_knobs) + ["sound_keyword"]
++
+         def prog(i, n, x):
+             print(f"\rvideo {i + 1}/{n}  {x*100:5.1f}%", end="")
+         res = run_batch(cfg, a.count, a.out, randomize=not a.no_random, only_wins=not a.allow_fails, progress=prog)
+diff --git a/mm911/config.py b/mm911/config.py
+index 6abba74..fddb53f 100644
+--- a/mm911/config.py
++++ b/mm911/config.py
+@@ -43,10 +43,17 @@ PALETTES: dict[str, dict] = {
+     },
+ }
+ 
+-SHAPES = ["circle", "hexagon", "octagon", "square", "heart", "star"]
++SHAPES = ["circle", "hexagon", "octagon", "square", "heart", "star", "triangle", "pentagon", "diamond",
++          "rounded", "custom"]
++BG_MODES = ["palette", "solid", "gradient", "image", "video"]
++SIZE_CURVES = ["exponential", "linear", "custom"]
++PARTICLE_STYLES = ["dots", "squares", "stars", "sparks", "rings", "confetti"]
++SOUND_MODES = ["single", "per_tier"]
++SOUND_STRATEGIES = ["pitch_up", "sorted"]
++TEXT_ALIGNS = ["center", "left", "right"]
+ 
+ # Length presets (button label -> max seconds before the run stops; +end hold = final length)
+-LENGTH_PRESETS = {"30s": 28.0, "45s": 43.0, "60s": 58.0}
++LENGTH_PRESETS = {"15s": 13.0, "30s": 28.0, "45s": 43.0, "60s": 58.0}
+ 
+ # Ready-made emoji tier sets (smallest first). Any emoji works; these ship offline.
+ EMOJI_SETS = {
+@@ -78,34 +85,118 @@ HOOKS = [
+ ]
+ 
+ 
++# Satisfying Myinstants keywords used when "auto sounds" has no keyword of its own.
++SATISFYING_KEYWORDS = ["pop", "bubble pop", "boing", "bloop", "water drop", "plop", "ding", "pluck",
++                       "xylophone", "click"]
++
++# Knobs the batch factory can randomize per video (GUI shows these as checkboxes).
++RANDOM_KNOBS = {
++    "palette": "Palette", "shape": "Container shape", "hook": "Hook text", "spin": "Spin",
++    "drop_interval": "Drop interval", "gravity": "Gravity", "bounce": "Bounciness", "friction": "Friction",
++    "ball_size": "Ball size", "tiers": "Number of tiers", "background": "Background gradient",
++    "particles": "Particle style", "container_color": "Container colour", "sound_keyword": "Sound keyword",
++}
++DEFAULT_RANDOM_KNOBS = ["palette", "shape", "hook", "spin", "drop_interval"]
++
++
+ @dataclass
+ class MergeConfig:
+     # video
+     width: int = 1080
+     height: int = 1920
+     fps: int = 60
+-    max_seconds: float = 58.0
+-    end_hold_seconds: float = 2.0
++    max_seconds: float = 58.0          # video seconds before the run stops ("So close...")
++    end_hold_seconds: float = 2.0      # how long the Final Form ending stays on screen
++    until_finished: bool = False       # ignore max_seconds and keep going until Final Form (hard cap 180 s)
+     # look
+     palette: str = "Candy"
+     container_shape: str = "circle"
++    container_points: list = field(default_factory=list)   # custom shape: [[x, y], ...] in -1..1 (y down)
+     container_radius: int = 470
+     container_thickness: int = 18
+-    container_spin: float = 0.0        # degrees per second, 0 = still
+-    background_image: str = ""         # optional path
++    container_y: float = 0.53          # container centre, fraction of the height
++    container_color: str = ""          # "" = palette colour
++    container_glow: float = 0.0        # 0..1
++    container_glow_color: str = ""     # "" = container colour
++    container_spin: float = 0.0        # degrees per second, 0 = still, negative = counter-clockwise
++    spin_wobble: float = 0.0           # extra +/- degrees per second, swinging back and forth
++    spin_wobble_period: float = 4.0    # seconds per swing
++    # background
++    bg_mode: str = "palette"           # palette | solid | gradient | image | video
++    bg_colors: list = field(default_factory=list)   # solid: 1 colour, gradient: 2-3 colours
++    bg_angle: float = 90.0             # gradient angle in degrees (90 = top to bottom)
++    background_image: str = ""         # image file (bg_mode image, or any mode when set — legacy)
++    background_video: str = ""         # looping video file (bg_mode video)
++    bg_dim: int = 70                   # 0..255 darkening over image / video backgrounds
+     show_tier_labels: bool = True
+-    show_progress: bool = True
+-    # text
++    show_progress: bool = True         # tier strip under the hook
++    # balls
++    ball_scale: float = 1.0            # multiplies every ball size
++    size_curve: str = "exponential"    # exponential (growth^tier) | linear | custom
++    tier_sizes: list = field(default_factory=list)  # custom radii per tier (px)
++    auto_fit: bool = True              # adjust growth so the Final Form always fits the container
++    ball_outline: int = 0              # outline width in px (0 = default rim)
++    ball_outline_color: str = ""       # "" = darker tier colour
++    ball_shadow: float = 0.0           # 0..1 drop shadow under balls
++    ball_glow: float = 0.0             # 0..1 soft glow around balls
++    # particles + juice
++    particle_amount: float = 1.0       # 0 = off, 1 = normal, 3 = a lot
++    particle_style: str = "dots"
++    particle_colors: list = field(default_factory=list)  # "" / empty = tier colour
++    particle_speed: float = 1.0
++    particle_gravity: float = 900.0
++    shake_strength: float = 0.0        # px of screen shake on merges (0 = off)
++    shake_min_tier: int = 3            # only merges into this tier (1-based) or above shake
++    combo_popups: bool = True          # "x3 COMBO!" when merges chain quickly
++    combo_window: float = 0.5          # a merged ball merging again within this many seconds = chain
++    combo_min: int = 3                 # smallest chain that gets a popup
++    tier_banners: bool = True          # "NEW: Tier 6!" banner when a new tier is reached
++    banner_min_tier: int = 4           # first tier (1-based) that gets a banner
++    slowmo_final: bool = True          # slow motion on the final merge
++    slowmo_factor: float = 0.3         # sim speed during slow motion
++    slowmo_seconds: float = 1.2        # video seconds of slow motion
++    near_miss: bool = True             # tension: "ALMOST..." + random pause before the last merge
++    near_miss_chance: float = 0.6      # 0..1 chance of a dramatic pause when one tier away
++    show_progress_bar: bool = False    # bar filling toward the Final Form
++    progress_bar_y: float = 0.955      # fraction of the height
++    progress_bar_color: str = ""       # "" = text colour
++    # text (font_path is the default font for every text)
+     theme_name: str = "Fruit"
+     hook: str = "Will it reach the Final Form?"
++    hook_size: int = 64
++    hook_color: str = ""               # "" = palette text colour
++    hook_y: float = 0.078              # fraction of the height
++    hook_font_path: str = ""
++    show_counter: bool = False         # merge counter text
++    counter_text: str = "{merges} merges"   # {merges} {tier} {tiers} {time} {combo}
++    counter_size: int = 44
++    counter_color: str = ""
++    counter_y: float = 0.80
++    counter_font_path: str = ""
+     watermark: str = ""
+-    font_path: str = ""                # optional .ttf
++    watermark_size: int = 34
++    watermark_color: str = ""
++    watermark_y: float = 0.91
++    watermark_opacity: int = 150
++    watermark_font_path: str = ""
++    final_text: str = "FINAL FORM!"
++    final_text_size: int = 120
++    final_text_color: str = ""
++    final_text_y: float = 0.83
++    fail_text: str = "So close..."
++    near_miss_text: str = "ALMOST..."
++    combo_text: str = "x{n} COMBO!"
++    banner_text: str = "NEW: {name}!"
++    font_path: str = ""                # optional .ttf for all text
+     # gameplay
+-    tiers: int = 9
++    tiers: int = 9                     # "forms": any number from MIN_TIERS to MAX_TIERS (3-15)
+     base_radius: float = 20.0
+     growth: float = 1.414
+     spawn_interval: float = 0.18       # seconds between drops
++    spawn_jitter: float = 0.2          # +/- random fraction on the interval
++    drop_speed: float = 120.0          # px/s downward speed of a new drop
+     spawn_max_tier: int = 4            # random spawn tier upper bound (exclusive of final)
++    fill_cap: float = 0.8              # stop dropping when the container is this full
+     gravity: float = 1800.0
+     bounce: float = 0.15
+     friction: float = 0.5
+@@ -121,8 +212,26 @@ class MergeConfig:
+     cutout_model: str = "isnet-general-use"   # birefnet-general | isnet-general-use | u2net | quick
+     cutout_outline: bool = True        # white sticker outline around cut-outs
+     reject_text: bool = False          # skip tier images that contain text (meme captions, watermarks)
++    # sound
+     sound_path: str = ""               # any sound (Myinstants etc). Empty = built-in pop
+     sound_volume: float = 0.8
++    tier_sounds: list[str] = field(default_factory=list)   # sound per tier ("" = sound_path)
++    tier_semitones: list = field(default_factory=list)     # pitch per tier in semitones (null = auto)
++    pitch_step: float = 1.6            # auto pitch: semitones higher per tier
++    pitch_jitter: float = 0.0          # random +/- semitones per hit
++    drop_sound: str = ""               # "" = same as merge sound
++    final_sound: str = ""              # "" = same as merge sound
++    drop_pitch: float = -4.0           # semitones added for drops
++    final_pitch: float = 7.0           # semitones added for the Final Form
++    drop_volume: float = 0.35          # relative to sound_volume
++    final_volume: float = 1.3
++    auto_sounds: bool = False          # fetch sounds from Myinstants at render time
++    auto_sound_keywords: str = ""      # comma separated, "" = built-in satisfying list
++    auto_sound_strategy: str = "sorted"   # pitch_up (one sound, pitched up per tier) | sorted (several, low->high)
++    auto_sound_count: int = 4          # different sounds for "sorted"
++    auto_sound_separate: bool = True   # pick separate drop / final sounds too
++    auto_drop_keyword: str = ""        # e.g. "click" ("" = shortest clip of the main search)
++    auto_final_keyword: str = ""       # e.g. "vine boom" ("" = top tier sound, pitched up)
+     music_path: str = ""               # optional background music (off by default)
+     music_volume: float = 0.25
+     drop_sounds: bool = True           # quiet sound on every drop (merges always make a sound)
+@@ -135,6 +244,9 @@ class MergeConfig:
+     export_audio: bool = True          # False = silent video
+     audio_bitrate: int = 192           # kbps
+     open_folder_after: bool = False
++    # batch
++    random_knobs: list[str] = field(default_factory=lambda: list(DEFAULT_RANDOM_KNOBS))
++    batch_sound_keywords: list[str] = field(default_factory=list)  # one picked per video when "sound_keyword" is on
+     # randomness
+     seed: int = 1
+ 
+@@ -172,7 +284,7 @@ class MergeConfig:
+         return RESOLUTIONS.get(self.export_resolution, (1080, 1920))[0] / self.width
+ 
+     def save(self, path: str | Path) -> None:
+-        Path(path).write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")
++        Path(path).write_text(json.dumps(self.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
+ 
+     @classmethod
+     def load(cls, path: str | Path) -> "MergeConfig":
+@@ -192,19 +304,77 @@ class MergeConfig:
+         return lst[t] if t < len(lst) and lst[t] else ""
+ 
+     def tier_radius(self, tier: int) -> float:
+-        """Ball radius per tier. Growth is capped so the Final Form always fits the container,
+-        whatever number of forms (3-15) the user picks."""
++        """Ball radius per tier. With auto_fit (default) the growth is adjusted so the Final Form always
++        fits the container whatever number of forms (3-15) is picked: at most 70% of the container
++        radius, and at least 40% so few forms still end big and satisfying. size_curve / ball_scale on top."""
++        hard_max = self.container_radius * 0.95          # never bigger than the container
++        if self.size_curve == "custom" and tier < len(self.tier_sizes):
++            try:
++                r = float(self.tier_sizes[tier])
++                if r > 0:
++                    return min(hard_max, r * self.ball_scale)
++            except (TypeError, ValueError):
++                pass
+         n = max(2, int(self.tiers))
+-        cap = self.container_radius * 0.7
+         g = self.growth
+-        floor = self.container_radius * 0.4   # few forms: still make the Final Form big and satisfying
+-        if self.base_radius * g ** (n - 1) < floor:
+-            g = (floor / self.base_radius) ** (1 / (n - 1))
+-        if self.base_radius * g ** (n - 1) > cap:
+-            g = (cap / self.base_radius) ** (1 / (n - 1))
+-        return self.base_radius * (g ** min(tier, n - 1))
++        if self.auto_fit:
++            cap = self.container_radius * 0.7
++            floor = self.container_radius * 0.4
++            if self.base_radius * g ** (n - 1) < floor:
++                g = (floor / self.base_radius) ** (1 / (n - 1))
++            if self.base_radius * g ** (n - 1) > cap:
++                g = (cap / self.base_radius) ** (1 / (n - 1))
++        t = min(tier, n - 1)
++        if self.size_curve == "linear":
++            # same first and last size as the exponential curve, evenly spaced in between
++            top = self.base_radius * g ** (n - 1)
++            r = self.base_radius + (top - self.base_radius) * t / (n - 1)
++        else:
++            r = self.base_radius * (g ** t)
++        return min(hard_max, r * self.ball_scale)
++
++    def tier_label(self, t: int) -> str:
++        return self.tier_value("tier_names", t) or self.tier_value("tier_emojis", t) or f"Tier {t + 1}"
++
++    def tier_pitch(self, t: int) -> float:
++        """Semitones for a merge into tier t: manual override, else auto pitch_step per tier."""
++        if t < len(self.tier_semitones) and self.tier_semitones[t] not in (None, ""):
++            try:
++                return float(self.tier_semitones[t])
++            except (TypeError, ValueError):
++                pass
++        return t * self.pitch_step
++
++    def clamp(self) -> "MergeConfig":
++        """Keep values in a range the engine can handle (presets / GUI / batch can send anything)."""
++        self.tiers = max(MIN_TIERS, min(MAX_TIERS, int(self.tiers)))
++        self.fps = max(15, min(120, int(self.fps)))
++        self.spawn_interval = max(0.03, float(self.spawn_interval))
++        self.ball_scale = max(0.2, min(4.0, float(self.ball_scale)))
++        self.slowmo_factor = max(0.05, min(1.0, float(self.slowmo_factor)))
++        self.container_radius = max(120, int(self.container_radius))
++        self.container_thickness = max(1, int(self.container_thickness))
++        self.fill_cap = max(0.2, min(1.2, float(self.fill_cap)))
++        self.auto_sound_count = max(1, min(12, int(self.auto_sound_count)))
++        return self
++
++    def video_seconds(self) -> float:
++        """Upper bound of the video length (for progress bars)."""
++        return (180.0 if self.until_finished else self.max_seconds) + self.end_hold_seconds
+ 
+ 
+ def hex_to_rgb(h: str) -> tuple[int, int, int]:
+-    h = h.lstrip("#")
++    h = h.strip().lstrip("#")
++    if len(h) == 3:
++        h = "".join(c * 2 for c in h)
+     return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))  # type: ignore[return-value]
++
++
++def color_or(h: str, fallback: tuple) -> tuple:
++    """Hex colour, or the fallback when empty / invalid."""
++    if not h:
++        return fallback
++    try:
++        return hex_to_rgb(h)
++    except (ValueError, TypeError):
++        return fallback
+diff --git a/mm911/modes/merge.py b/mm911/modes/merge.py
+index a7fa63d..b13e1b5 100644
+--- a/mm911/modes/merge.py
++++ b/mm911/modes/merge.py
+@@ -16,6 +16,8 @@ class Ball:
+     tier: int
+     born: float
+     pop: float = 0.0          # grow-in animation 0..1
++    chain: int = 0            # how many merges in a row created this ball (combo chain)
++    born_vt: float = 0.0      # video time it appeared
+ 
+ 
+ @dataclass
+@@ -25,18 +27,42 @@ class Particle:
+     vx: float
+     vy: float
+     life: float
+-    color: tuple
++    color: tuple              # (tier, random index into particle_colors)
+     size: float
++    rot: float = 0.0
++    spin: float = 0.0
++    max_life: float = 1.0
+ 
+ 
+ @dataclass
+ class SoundEvent:
+-    t: float
++    t: float                  # simulation time
+     tier: int
+     kind: str  # "drop" | "merge" | "final"
++    vt: float = -1.0          # VIDEO time in seconds (what the audio track needs; differs with speed / slow-mo)
+ 
+ 
+-def container_points(shape: str, cx: float, cy: float, r: float, n: int = 64) -> list[tuple[float, float]]:
++@dataclass
++class Popup:
++    """Floating text in the world (combo multipliers)."""
++    x: float
++    y: float
++    text: str
++    born: float               # video time
++    tier: int
++    life: float = 0.9
++
++
++@dataclass
++class Banner:
++    """Full-width 'NEW: Tier 6!' banner."""
++    tier: int
++    born: float               # video time
++    life: float = 1.1
++
++
++def container_points(shape: str, cx: float, cy: float, r: float, n: int = 64,
++                     custom: list | None = None) -> list[tuple[float, float]]:
+     """Outline of the container as a closed polygon (clockwise, screen coords y-down)."""
+     pts = []
+     if shape == "circle":
+@@ -60,36 +86,81 @@ def container_points(shape: str, cx: float, cy: float, r: float, n: int = 64) ->
+             a = -math.pi / 2 + math.pi * i / 5
+             rr = r if i % 2 == 0 else r * 0.62
+             pts.append((cx + rr * math.cos(a), cy + rr * math.sin(a)))
++    elif shape in ("triangle", "pentagon", "diamond"):
++        # triangle points down (a funnel), pentagon has a flat top, diamond is a square on its tip
++        k, start = {"triangle": (3, math.pi / 2), "pentagon": (5, math.pi / 2), "diamond": (4, math.pi / 2)}[shape]
++        for i in range(k):
++            a = start + 2 * math.pi * i / k
++            pts.append((cx + r * math.cos(a), cy + r * math.sin(a)))
++    elif shape == "rounded":
++        # rounded square (superellipse)
++        for i in range(n):
++            a = 2 * math.pi * i / n
++            ca, sa = math.cos(a), math.sin(a)
++            pts.append((cx + r * 0.92 * math.copysign(abs(ca) ** 0.5, ca),
++                        cy + r * 0.92 * math.copysign(abs(sa) ** 0.5, sa)))
++    elif shape == "custom":
++        if custom and len(custom) >= 3:
++            try:
++                return [(cx + float(x) * r, cy + float(y) * r) for x, y in custom]
++            except (TypeError, ValueError):
++                pass
++        return container_points("circle", cx, cy, r, n)
+     else:
+         return container_points("circle", cx, cy, r, n)
+     return pts
+ 
+ 
++def top_inside(pts: list[tuple[float, float]], x: float) -> float | None:
++    """Highest (smallest y) point where a vertical line at x crosses the outline."""
++    best = None
++    for i in range(len(pts)):
++        (x1, y1), (x2, y2) = pts[i], pts[(i + 1) % len(pts)]
++        if (x1 - x) * (x2 - x) <= 0 and x1 != x2:
++            y = y1 + (y2 - y1) * (x - x1) / (x2 - x1)
++            best = y if best is None else min(best, y)
++    return best
++
++
+ class MergeSim:
+     def __init__(self, cfg: MergeConfig, seed: int | None = None):
++        cfg.clamp()
+         self.cfg = cfg
+         self.rng = random.Random(cfg.seed if seed is None else seed)
+         self.space = pymunk.Space()
+         self.space.gravity = (0, cfg.gravity)
+         self.space.iterations = 20
+-        self.t = 0.0
++        self.t = 0.0             # simulation time (scaled by speed / slow motion)
++        self.vt = 0.0            # video time (real seconds of output)
+         self.balls: list[Ball] = []
+         self.particles: list[Particle] = []
+         self.events: list[SoundEvent] = []
+         self.best_tier = 0
+         self.merges = 0
+-        self.finished_at: float | None = None
++        self.finished_at: float | None = None      # video time of the Final Form
+         self.final_pos: tuple[float, float] | None = None
+         self._next_spawn = 0.4
+         self._pending: list[tuple[pymunk.Shape, pymunk.Shape]] = []
+         self.cx = cfg.width / 2
+-        self.cy = cfg.height * 0.53
++        self.cy = cfg.height * cfg.container_y
+         self.angle = 0.0
++        # juice
++        self.popups: list[Popup] = []
++        self.banners: list[Banner] = []
++        self.combo = 0
++        self.best_combo = 0
++        self._last_merge_vt = -99.0
++        self.shake = 0.0
++        self.tension = False          # one tier away from the Final Form
++        self._slow_until = -1.0       # video time
++        self._slow_len = 1.0
++        self._slow_factor = 1.0
++        self._near_miss_done = False
+         self._build_container()
+         for tier in range(cfg.tiers):
+             self.space.on_collision(tier + 1, tier + 1, pre_solve=self._on_same)
+         self.spout_x = self.cx
+-        self.fill_cap = 0.8
++        self.fill_cap = cfg.fill_cap
+ 
+     # ---------- setup ----------
+     def _build_container(self) -> None:
+@@ -97,7 +168,7 @@ class MergeSim:
+         self.wall_body = pymunk.Body(body_type=pymunk.Body.KINEMATIC)
+         self.wall_body.position = (self.cx, self.cy)
+         self.space.add(self.wall_body)
+-        pts = container_points(c.container_shape, 0, 0, c.container_radius)
++        pts = container_points(c.container_shape, 0, 0, c.container_radius, custom=c.container_points)
+         self.outline_local = pts
+         self.walls = []
+         for i in range(len(pts)):
+@@ -140,7 +211,7 @@ class MergeSim:
+         shape.elasticity = c.bounce
+         shape.collision_type = tier + 1
+         self.space.add(body, shape)
+-        ball = Ball(shape, tier, self.t)
++        ball = Ball(shape, tier, self.t, born_vt=self.vt)
+         self.balls.append(ball)
+         return ball
+ 
+@@ -155,8 +226,11 @@ class MergeSim:
+         span = c.container_radius * 0.35
+         self.spout_x = self.cx + math.sin(self.t * 1.7) * span * 0.6 + self.rng.uniform(-span, span) * 0.4
+         y = self.cy - c.container_radius * 0.72 + r
+-        self.add_ball(tier, self.spout_x, y, (self.rng.uniform(-40, 40), 120))
+-        self.events.append(SoundEvent(self.t, tier, "drop"))
++        top = top_inside(self.outline_world(), self.spout_x)
++        if top is not None:   # narrow tops (triangle, star...) : drop just under the wall
++            y = max(y, top + c.container_thickness + r + 6)
++        self.add_ball(tier, self.spout_x, y, (self.rng.uniform(-40, 40), c.drop_speed))
++        self.events.append(SoundEvent(self.t, tier, "drop", vt=self.vt))
+ 
+     def _process_merges(self) -> None:
+         if not self._pending:
+@@ -179,37 +253,105 @@ class MergeSim:
+             self.balls = [x for x in self.balls if x.shape is not a and x.shape is not b]
+             self.merges += 1
+             new_tier = tier + 1
++            c = self.cfg
+             self._burst(mid, new_tier, 10 + new_tier * 3)
+-            if new_tier >= self.cfg.tiers - 1:
+-                nb = self.add_ball(self.cfg.tiers - 1, *mid, vel)
+-                self.best_tier = max(self.best_tier, self.cfg.tiers - 1)
+-                self.events.append(SoundEvent(self.t, self.cfg.tiers - 1, "final"))
++            # chain = a ball made by a merge merging again quickly (a real cascade)
++            win = c.combo_window
++            chain = 1 + max((x.chain if self.vt - x.born_vt <= win else 0) for x in (ba, bb))
++            self._on_merge_juice(mid, new_tier, chain)
++            if new_tier >= c.tiers - 1:
++                nb = self.add_ball(c.tiers - 1, *mid, vel)
++                self.best_tier = max(self.best_tier, c.tiers - 1)
++                self.events.append(SoundEvent(self.t, c.tiers - 1, "final", vt=self.vt))
+                 if self.finished_at is None:
+-                    self.finished_at = self.t
++                    self.finished_at = self.vt
+                     self.final_pos = mid
+-                    self._burst(mid, self.cfg.tiers - 1, 120)
++                    self._burst(mid, c.tiers - 1, 120)
++                    if c.slowmo_final:
++                        self._slow(c.slowmo_factor, c.slowmo_seconds)
++                    if c.shake_strength > 0:
++                        self.shake = max(self.shake, c.shake_strength * 2.2)
+             else:
+                 nb = self.add_ball(new_tier, *mid, vel)
++                if new_tier > self.best_tier and c.tier_banners and new_tier >= c.banner_min_tier - 1:
++                    self.banners = [Banner(new_tier, self.vt)]
+                 self.best_tier = max(self.best_tier, new_tier)
+-                self.events.append(SoundEvent(self.t, new_tier, "merge"))
++                self.events.append(SoundEvent(self.t, new_tier, "merge", vt=self.vt))
+             nb.pop = 0.0
++            nb.chain = chain
+         self._pending.clear()
+ 
++    def _on_merge_juice(self, pos, new_tier: int, chain: int) -> None:
++        """Combo chain, popups and screen shake for one merge."""
++        c = self.cfg
++        self.combo = chain
++        self._last_merge_vt = self.vt
++        self.best_combo = max(self.best_combo, self.combo)
++        if c.combo_popups and self.combo >= max(2, c.combo_min):
++            text = c.combo_text.replace("{n}", str(self.combo))
++            # only the newest combo is on screen: a busy pile never turns into a wall of text
++            self.popups = []
++            self.popups.append(Popup(pos[0], pos[1] - c.tier_radius(new_tier), text, self.vt, new_tier))
++        if c.shake_strength > 0 and new_tier >= c.shake_min_tier - 1:
++            k = 0.4 + 0.6 * new_tier / max(1, c.tiers - 1)
++            self.shake = max(self.shake, c.shake_strength * k)
++
++    def _slow(self, factor: float, seconds: float) -> None:
++        self._slow_factor = factor
++        self._slow_len = max(0.05, seconds)
++        self._slow_until = self.vt + self._slow_len
++
++    def time_scale(self) -> float:
++        """Sim speed right now: slow motion eases back to normal over the last 40% of its window."""
++        left = self._slow_until - self.vt
++        if left <= 0:
++            return 1.0
++        k = min(1.0, left / (self._slow_len * 0.4))
++        return 1.0 + (self._slow_factor - 1.0) * k
++
++    def _check_tension(self) -> None:
++        c = self.cfg
++        if self.finished_at is not None:
++            self.tension = False
++            return
++        pen = [b for b in self.balls if b.tier == c.tiers - 2]
++        self.tension = bool(pen) and c.near_miss
++        if not (c.near_miss and len(pen) >= 2 and not self._near_miss_done):
++            return
++        a, b = pen[0].shape.body.position, pen[1].shape.body.position
++        r = pen[0].shape.radius
++        if math.hypot(a.x - b.x, a.y - b.y) < r * 3.2:
++            self._near_miss_done = True
++            if self.rng.random() < c.near_miss_chance:   # randomized: not every video gets the pause
++                self._slow(0.45, self.rng.uniform(0.6, 1.1))
++
+     def _burst(self, pos, tier: int, n: int) -> None:
+-        r = self.cfg.tier_radius(tier)
++        c = self.cfg
++        n = int(round(n * c.particle_amount))
++        r = c.tier_radius(tier)
++        ncol = max(1, len(c.particle_colors))
+         for _ in range(n):
+             a = self.rng.uniform(0, 2 * math.pi)
+-            s = self.rng.uniform(150, 600) * (1 + tier * 0.08)
++            s = self.rng.uniform(150, 600) * (1 + tier * 0.08) * c.particle_speed
++            life = self.rng.uniform(0.4, 0.9) * (1.4 if c.particle_style == "confetti" else 1.0)
+             self.particles.append(Particle(pos[0] + math.cos(a) * r * 0.5, pos[1] + math.sin(a) * r * 0.5,
+                                            math.cos(a) * s, math.sin(a) * s,
+-                                           self.rng.uniform(0.4, 0.9), (tier,), self.rng.uniform(4, 10)))
++                                           life, (tier, self.rng.randrange(ncol)), self.rng.uniform(4, 10),
++                                           self.rng.uniform(0, 360), self.rng.uniform(-720, 720), life))
+ 
+     # ---------- main step ----------
+     def step(self, dt: float) -> None:
+-        dt *= self.cfg.speed
++        """Advance one video frame of dt seconds."""
++        real_dt = dt
++        c = self.cfg
++        dt *= c.speed * self.time_scale()
++        if c.spin_wobble:
++            w = c.container_spin + c.spin_wobble * math.sin(2 * math.pi * self.t / max(0.2, c.spin_wobble_period))
++            self.wall_body.angular_velocity = math.radians(w)
+         if self.finished_at is None and self.t >= self._next_spawn and self._fill_ratio() < self.fill_cap:
+             self._spawn()
+-            self._next_spawn = self.t + self.cfg.spawn_interval * self.rng.uniform(0.8, 1.2)
++            j = max(0.0, min(0.9, c.spawn_jitter))
++            self._next_spawn = self.t + c.spawn_interval * self.rng.uniform(1 - j, 1 + j)
+         sub = 4
+         for _ in range(sub):
+             self.space.step(dt / sub)
+@@ -223,19 +365,35 @@ class MergeSim:
+                 self.balls.remove(b)
+         for b in self.balls:
+             b.pop = min(1.0, b.pop + dt * 6)
++        drag = 0.97 if c.particle_style != "confetti" else 0.94
+         for p in self.particles:
+             p.x += p.vx * dt; p.y += p.vy * dt
+-            p.vy += 900 * dt; p.vx *= 0.97
++            p.vy += c.particle_gravity * dt * (0.35 if c.particle_style == "confetti" else 1.0)
++            p.vx *= drag
++            p.rot += p.spin * dt
+             p.life -= dt
+         self.particles = [p for p in self.particles if p.life > 0]
++        self.popups = [p for p in self.popups if self.vt - p.born < p.life]
++        self.banners = [b for b in self.banners if self.vt - b.born < b.life]
++        self.shake *= math.exp(-real_dt * 9)
++        if self.shake < 0.3:
++            self.shake = 0.0
++        self._check_tension()
+         self.t += dt
++        self.vt += real_dt
++
++    def shake_offset(self) -> tuple[float, float]:
++        if not self.shake:
++            return 0.0, 0.0
++        return self.shake * math.sin(self.vt * 93.0), self.shake * math.cos(self.vt * 71.0)
+ 
+     @property
+     def done(self) -> bool:
+         c = self.cfg
+         if self.finished_at is not None:
+-            return self.t >= self.finished_at + c.end_hold_seconds
+-        return self.t >= c.max_seconds
++            hold = c.end_hold_seconds + (c.slowmo_seconds * 0.5 if c.slowmo_final else 0.0)
++            return self.vt >= self.finished_at + hold
++        return self.vt >= (180.0 if c.until_finished else c.max_seconds)
+ 
+     @property
+     def won(self) -> bool:
+diff --git a/mm911/render.py b/mm911/render.py
+index daab242..080582d 100644
+--- a/mm911/render.py
++++ b/mm911/render.py
+@@ -16,9 +16,9 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+ os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
+ import pygame  # noqa: E402
+ 
+-from .audio import AudioTrack, load_sound, load_music  # noqa: E402
++from .audio import AudioTrack, SoundBank, load_sound, load_music  # noqa: E402
+ from .emoji import render_emoji  # noqa: E402
+-from .config import MergeConfig, PALETTES, CREDIT, hex_to_rgb  # noqa: E402
++from .config import MergeConfig, PALETTES, CREDIT, hex_to_rgb, color_or  # noqa: E402
+ from .ffmpeg import ffmpeg_exe, best_encoder, encoder_args  # noqa: E402
+ from .config import QUALITIES  # noqa: E402
+ from .modes.merge import MergeSim  # noqa: E402
+@@ -36,13 +36,67 @@ def asset_path(*parts: str) -> Path:
+     return Path(__file__).resolve().parent / "assets" / Path(*parts)
+ 
+ 
+-def _font(cfg: MergeConfig, size: int, bold: bool = True) -> pygame.font.Font:
+-    path = cfg.font_path if cfg.font_path and Path(cfg.font_path).exists() else \
+-        asset_path("fonts", "Poppins-Bold.ttf" if bold else "Poppins-SemiBold.ttf")
++def _font(cfg: MergeConfig, size: int, bold: bool = True, path: str = "") -> pygame.font.Font:
++    """Per-text font file > global font_path > bundled Poppins."""
++    for cand in (path, cfg.font_path):
++        if cand and Path(cand).exists():
++            try:
++                return pygame.font.Font(str(cand), max(6, size))
++            except Exception:
++                pass
+     try:
+-        return pygame.font.Font(str(path), size)
++        return pygame.font.Font(str(asset_path("fonts", "Poppins-Bold.ttf" if bold else "Poppins-SemiBold.ttf")),
++                                max(6, size))
+     except Exception:
+-        return pygame.font.Font(None, size)
++        return pygame.font.Font(None, max(6, size))
++
++
++def gradient_surface(w: int, h: int, colors: list[tuple], angle: float) -> pygame.Surface:
++    """Linear gradient with 2-3 colour stops at any angle (degrees, 90 = top to bottom). numpy, fast."""
++    import numpy as np
++    a = math.radians(angle)
++    ys, xs = np.mgrid[0:h, 0:w].astype(np.float32)
++    proj = (xs - w / 2) * math.cos(a) + (ys - h / 2) * math.sin(a)
++    half = abs(w / 2 * math.cos(a)) + abs(h / 2 * math.sin(a)) or 1.0
++    k = np.clip((proj / half + 1) / 2, 0, 1)
++    cols = np.array(colors, dtype=np.float32)
++    n = len(cols) - 1
++    pos = k * n
++    i = np.minimum(pos.astype(np.int32), n - 1) if n > 0 else np.zeros_like(pos, dtype=np.int32)
++    f = (pos - i)[..., None] if n > 0 else np.zeros((h, w, 1), np.float32)
++    rgb = cols[i] * (1 - f) + cols[np.minimum(i + 1, n)] * f
++    surf = pygame.Surface((w, h))
++    pygame.surfarray.blit_array(surf, rgb.transpose(1, 0, 2).astype(np.uint8))
++    return surf
++
++
++class VideoBackground:
++    """Looping background video: FFmpeg decodes frames (scaled + cropped to fill) into a pipe."""
++
++    def __init__(self, path: str, w: int, h: int, fps: int):
++        self.w, self.h, self.size = w, h, w * h * 3
++        vf = f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},fps={fps}"
++        cmd = [ffmpeg_exe(), "-v", "error", "-stream_loop", "-1", "-i", path, "-vf", vf, "-an",
++               "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
++        creation = 0x08000000 if os.name == "nt" else 0
++        self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, creationflags=creation)
++        self.last: pygame.Surface | None = None
++
++    def frame(self) -> pygame.Surface | None:
++        try:
++            raw = self.proc.stdout.read(self.size) if self.proc.stdout else b""
++        except Exception:
++            raw = b""
++        if len(raw) == self.size:
++            self.last = pygame.image.frombuffer(raw, (self.w, self.h), "RGB").copy()
++        return self.last
++
++    def close(self) -> None:
++        try:
++            self.proc.kill()
++            self.proc.wait(timeout=2)
++        except Exception:
++            pass
+ 
+ 
+ def _shade(c: tuple, f: float) -> tuple:
+@@ -92,26 +146,56 @@ class Renderer:
+         self.W, self.H = int(round(cfg.width * scale)), int(round(cfg.height * scale))
+         self.pal = PALETTES.get(cfg.palette, PALETTES["Candy"])
+         self.surface = pygame.Surface((self.W, self.H))
++        cfg.clamp()
+         # cached text-check + cut-outs only (instant); prepare_images() fills the caches beforehand
+         self.images = imageprep.tier_images(cfg)["images"]
++        self.text_col = color_or("", hex_to_rgb(self.pal["text"]))
++        self.cont_col = color_or(cfg.container_color, hex_to_rgb(self.pal["container"]))
++        self.video_bg: VideoBackground | None = None
+         self.bg = self._make_bg()
+         self.sprites = [self._make_sprite(t) for t in range(cfg.tiers)]
+-        self.f_hook = _font(cfg, int(64 * scale))
+-        self.f_small = _font(cfg, int(34 * scale), bold=False)
+-        self.f_big = _font(cfg, int(120 * scale))
++        self.shadows = [self._make_shadow(s) for s in self.sprites] if cfg.ball_shadow > 0 else []
++        self.glows = [self._make_glow(t) for t in range(cfg.tiers)] if cfg.ball_glow > 0 else []
++        self.f_hook = _font(cfg, int(cfg.hook_size * scale), path=cfg.hook_font_path)
++        self.f_small = _font(cfg, int(cfg.watermark_size * scale), bold=False, path=cfg.watermark_font_path)
++        self.f_big = _font(cfg, int(cfg.final_text_size * scale))
+         self.f_label = _font(cfg, int(30 * scale))
++        self.f_counter = _font(cfg, int(cfg.counter_size * scale), path=cfg.counter_font_path)
++        self.f_popup = _font(cfg, int(54 * scale))
++        self.f_banner = _font(cfg, int(70 * scale))
++        self.f_tension = _font(cfg, int(64 * scale))
++        self.p_cols = [color_or(c, (255, 255, 255)) for c in cfg.particle_colors if c]
++        self._bar = 0.0
++        self._bar_t = -1.0
+ 
+     # ---------- prebuilt layers ----------
+     def _make_bg(self) -> pygame.Surface:
++        cfg = self.cfg
+         s = pygame.Surface((self.W, self.H))
+-        if self.cfg.background_image and Path(self.cfg.background_image).exists():
++        mode = cfg.bg_mode
++        if mode == "video" and cfg.background_video and Path(cfg.background_video).exists():
++            try:
++                self.video_bg = VideoBackground(cfg.background_video, self.W, self.H, cfg.fps)
++            except Exception:
++                self.video_bg = None
++        if mode == "solid":
++            s.fill(color_or(cfg.bg_colors[0] if cfg.bg_colors else "", hex_to_rgb(self.pal["bg_top"])))
++            return s
++        if mode == "gradient":
++            cols = [color_or(c, None) for c in cfg.bg_colors[:3]]
++            cols = [c for c in cols if c is not None]
++            if len(cols) < 2:
++                cols = [hex_to_rgb(self.pal["bg_top"]), hex_to_rgb(self.pal["bg_bottom"])]
++            return gradient_surface(self.W, self.H, cols, cfg.bg_angle)
++        use_image = mode in ("image", "palette") or mode not in ("solid", "gradient", "video")
++        if use_image and self.cfg.background_image and Path(self.cfg.background_image).exists():
+             img = pygame.image.load(self.cfg.background_image).convert() if pygame.display.get_init() and pygame.display.get_surface() else pygame.image.load(self.cfg.background_image)
+             iw, ih = img.get_size()
+             k = max(self.W / iw, self.H / ih)
+             img = pygame.transform.smoothscale(img, (int(iw * k) + 1, int(ih * k) + 1))
+             s.blit(img, ((self.W - img.get_width()) // 2, (self.H - img.get_height()) // 2))
+             dim = pygame.Surface((self.W, self.H), pygame.SRCALPHA)
+-            dim.fill((0, 0, 0, 70))
++            dim.fill((0, 0, 0, max(0, min(255, cfg.bg_dim))))
+             s.blit(dim, (0, 0))
+             return s
+         top, bot = hex_to_rgb(self.pal["bg_top"]), hex_to_rgb(self.pal["bg_bottom"])
+@@ -186,6 +270,9 @@ class Renderer:
+                 txt_col = (30, 30, 40) if _luma(col) > 140 else (250, 250, 250)
+                 ts = f.render(label, True, txt_col)
+                 big.blit(ts, (c[0] - ts.get_width() // 2, c[1] - ts.get_height() // 2))
++        if cfg.ball_outline > 0:
++            oc = color_or(cfg.ball_outline_color, _shade(col, 0.55))
++            pygame.draw.circle(big, oc, c, R, max(1, int(cfg.ball_outline * ss * self.scale)))
+         size = (max(1, big.get_width() // ss), max(1, big.get_height() // ss))
+         return pygame.transform.smoothscale(big, size)
+ 
+@@ -213,6 +300,30 @@ class Renderer:
+         pygame.draw.ellipse(hl, (255, 255, 255, 38), (c[0] - R * 0.55, c[1] - R * 0.78, R * 0.7, R * 0.36))
+         big.blit(hl, (0, 0))
+ 
++    def _make_shadow(self, spr: pygame.Surface) -> pygame.Surface:
++        sh = spr.copy()
++        sh.fill((0, 0, 0, int(140 * min(1.0, self.cfg.ball_shadow))), special_flags=pygame.BLEND_RGBA_MIN)
++        sh.fill((0, 0, 0, 255), special_flags=pygame.BLEND_RGB_MULT)
++        w, h = sh.get_size()
++        small = pygame.transform.smoothscale(sh, (max(1, w // 4), max(1, h // 4)))  # cheap blur
++        return pygame.transform.smoothscale(small, (w, h))
++
++    def _make_glow(self, t: int) -> pygame.Surface:
++        r = self.cfg.tier_radius(t) * self.scale
++        R = int(r * 1.6) + 2
++        g = pygame.Surface((R * 2, R * 2), pygame.SRCALPHA)
++        col = self._tier_color(t)
++        a = int(110 * min(1.0, self.cfg.ball_glow))
++        for i in range(12, 0, -1):
++            k = i / 12
++            pygame.draw.circle(g, (*col, int(a * (1 - k) ** 1.5 + 2)), (R, R), int(r + (R - r) * k))
++        return g
++
++    def close(self) -> None:
++        if self.video_bg:
++            self.video_bg.close()
++            self.video_bg = None
++
+     def _spins(self, t: int) -> bool:
+         """Pictures and emoji roll with the physics; plain numbered balls stay upright."""
+         if not hasattr(self, "_spin_cache"):
+@@ -245,37 +356,87 @@ class Renderer:
+             lines.append(cur)
+         return lines[:3]
+ 
++    def _tc(self, h: str) -> tuple:
++        return color_or(h, self.text_col)
++
++    def _text_at(self, font, text, y_frac, color, alpha=255):
++        s = font.render(text, True, color)
++        if alpha < 255:
++            s.set_alpha(alpha)
++        self.surface.blit(s, ((self.W - s.get_width()) // 2, int(self.H * y_frac)))
++
++    def _draw_particle(self, p, sx, sy):
++        cfg, sc, S = self.cfg, self.scale, self.surface
++        col = self.p_cols[p.color[1] % len(self.p_cols)] if self.p_cols else self._tier_color(p.color[0])
++        x, y = p.x * sc + sx, p.y * sc + sy
++        size = max(1.0, p.size * sc * min(1, p.life * 2))
++        st = cfg.particle_style
++        if st == "squares" or st == "confetti":
++            w, h = (size * 2, size * (0.9 if st == "confetti" else 2))
++            surf = pygame.Surface((max(1, int(w)), max(1, int(h))), pygame.SRCALPHA)
++            surf.fill(col)
++            surf = pygame.transform.rotate(surf, p.rot)
++            S.blit(surf, (x - surf.get_width() / 2, y - surf.get_height() / 2))
++        elif st == "stars":
++            pts = []
++            for i in range(10):
++                a = math.radians(p.rot) + math.pi * i / 5
++                rr = size * 1.5 if i % 2 == 0 else size * 0.65
++                pts.append((x + rr * math.cos(a), y + rr * math.sin(a)))
++            pygame.draw.polygon(S, col, pts)
++        elif st == "sparks":
++            k = 0.035
++            pygame.draw.line(S, col, (x, y), (x - p.vx * k * sc, y - p.vy * k * sc), max(1, int(size * 0.6)))
++        elif st == "rings":
++            pygame.draw.circle(S, col, (x, y), size * 1.4, max(1, int(size * 0.35)))
++        else:
++            pygame.draw.circle(S, col, (x, y), size)
++
+     def draw(self, sim: MergeSim) -> pygame.Surface:
+         cfg, sc, S = self.cfg, self.scale, self.surface
+-        S.blit(self.bg, (0, 0))
+-        text_col = hex_to_rgb(self.pal["text"])
+-        cont_col = hex_to_rgb(self.pal["container"])
++        if self.video_bg is not None:
++            fr = self.video_bg.frame()
++            S.blit(fr if fr is not None else self.bg, (0, 0))
++            if fr is not None and cfg.bg_dim > 0:
++                dim = pygame.Surface((self.W, self.H), pygame.SRCALPHA)
++                dim.fill((0, 0, 0, min(255, cfg.bg_dim)))
++                S.blit(dim, (0, 0))
++        else:
++            S.blit(self.bg, (0, 0))
++        text_col = self.text_col
++        cont_col = self.cont_col
++        sx, sy = (v * sc for v in sim.shake_offset())
+ 
+         # hook text
+-        y = int(150 * sc)
++        y = int(cfg.hook_y * self.H)
++        hook_col = self._tc(cfg.hook_color)
+         for line in self._wrap(self.f_hook, cfg.hook, self.W * 0.86):
+-            y += self._text_center(self.f_hook, line, y, text_col)
++            y += self._text_center(self.f_hook, line, y, hook_col)
+ 
+         # tier progress strip
+         if cfg.show_progress:
+             n = cfg.tiers
+-            dot = int(min(70, (self.W * 0.8) / n) * sc / sc)
++            dot = int(min(70 * sc, (self.W * 0.8) / n))
+             gap = dot * 0.2
+             total = n * dot + (n - 1) * gap
+             x0 = (self.W - total) / 2
+             yy = y + int(30 * sc)
+             for t in range(n):
+-                spr = self.sprites[t]
+-                k = dot / max(spr.get_width(), 1)
+-                small = pygame.transform.smoothscale(spr, (dot, dot))
++                small = pygame.transform.smoothscale(self.sprites[t], (max(1, dot), max(1, dot)))
+                 if t > sim.best_tier:
+                     small.set_alpha(60)
+                 S.blit(small, (x0 + t * (dot + gap), yy))
+-                _ = k
+ 
+-        # container shadow + walls
+-        pts = [(x * sc, y_ * sc) for x, y_ in sim.outline_world()]
++        # container glow + shadow + walls
++        pts = [(x * sc + sx, y_ * sc + sy) for x, y_ in sim.outline_world()]
+         th = max(2, int(cfg.container_thickness * sc))
++        if cfg.container_glow > 0:
++            gc = color_or(cfg.container_glow_color, cont_col)
++            gl = pygame.Surface((self.W, self.H), pygame.SRCALPHA)
++            for i in range(6, 0, -1):
++                a = int(28 * cfg.container_glow * (7 - i) / 6)
++                pygame.draw.lines(gl, (*gc, a), True, pts, th + int(i * 7 * sc))
++            S.blit(gl, (0, 0))
+         shadow = [(x + 6 * sc, y_ + 10 * sc) for x, y_ in pts]
+         sh = pygame.Surface((self.W, self.H), pygame.SRCALPHA)
+         pygame.draw.lines(sh, (0, 0, 0, 55), True, shadow, th)
+@@ -284,47 +445,120 @@ class Renderer:
+         for p in pts:
+             pygame.draw.circle(S, cont_col, p, th / 2)
+ 
+-        # balls
++        # balls (glow -> shadow -> sprite)
+         for b in sim.balls:
+-            spr = self.sprites[b.tier]
+             pos = b.shape.body.position
++            px, py = pos.x * sc + sx, pos.y * sc + sy
++            e = 1 - (1 - b.pop) ** 3
++            k = 0.6 + 0.4 * e + 0.12 * math.sin(e * math.pi) if b.pop < 1 else 1.0
++            if self.glows:
++                g = self.glows[b.tier] if k == 1.0 else pygame.transform.rotozoom(self.glows[b.tier], 0, k)
++                S.blit(g, (px - g.get_width() / 2, py - g.get_height() / 2))
++            if self.shadows:
++                shd = self.shadows[b.tier] if k == 1.0 else pygame.transform.rotozoom(self.shadows[b.tier], 0, k)
++                off = 8 * sc * (1 + b.tier * 0.15)
++                S.blit(shd, (px - shd.get_width() / 2 + off * 0.5, py - shd.get_height() / 2 + off))
++            spr = self.sprites[b.tier]
+             ang = -math.degrees(b.shape.body.angle) if self._spins(b.tier) else 0
+-            if b.pop < 1 or ang:
+-                e = 1 - (1 - b.pop) ** 3
+-                k = 0.6 + 0.4 * e + 0.12 * math.sin(e * math.pi)
++            if k != 1.0 or ang:
+                 spr = pygame.transform.rotozoom(spr, ang, k)
+-            S.blit(spr, (pos.x * sc - spr.get_width() / 2, pos.y * sc - spr.get_height() / 2))
++            S.blit(spr, (px - spr.get_width() / 2, py - spr.get_height() / 2))
+ 
+         # particles
+         for p in sim.particles:
+-            col = self._tier_color(p.color[0])
+-            pygame.draw.circle(S, col, (p.x * sc, p.y * sc), max(1, p.size * sc * min(1, p.life * 2)))
++            self._draw_particle(p, sx, sy)
++
++        # combo popups (float up and fade)
++        for pu in sim.popups:
++            age = (sim.vt - pu.born) / pu.life
++            pop = min(1.0, age / 0.15)
++            s = self.f_popup.render(pu.text, True, (255, 255, 255))
++            o = self.f_popup.render(pu.text, True, _shade(self._tier_color(pu.tier), 0.45))
++            k = 0.6 + 0.5 * pop - 0.1 * pop * pop
++            s, o = pygame.transform.rotozoom(s, 0, k), pygame.transform.rotozoom(o, 0, k)
++            a = int(255 * max(0.0, 1 - max(0.0, age - 0.6) / 0.4))
++            s.set_alpha(a); o.set_alpha(a)
++            x = pu.x * sc + sx - s.get_width() / 2
++            y_ = pu.y * sc + sy - s.get_height() / 2 - age * 120 * sc
++            for dx, dy in ((-3, 0), (3, 0), (0, -3), (0, 3)):
++                S.blit(o, (x + dx * sc, y_ + dy * sc))
++            S.blit(s, (x, y_))
++
++        # tier-reached banner
++        for bn in sim.banners:
++            age = (sim.vt - bn.born) / bn.life
++            slide = min(1.0, age / 0.18)
++            out = min(1.0, max(0.0, (age - 0.8) / 0.2))
++            col = self._tier_color(bn.tier)
++            h = int(110 * sc)
++            yb = int(self.H * 0.21)
++            band = pygame.Surface((self.W, h), pygame.SRCALPHA)
++            band.fill((*_shade(col, 0.55), int(200 * (1 - out))))
++            xoff = int((1 - (1 - (1 - slide) ** 3)) * -self.W + out * self.W)
++            S.blit(band, (xoff, yb))
++            txt = cfg.banner_text.replace("{name}", cfg.tier_label(bn.tier)).replace("{tier}", str(bn.tier + 1))
++            try:
++                ts = self.f_banner.render(txt, True, (255, 255, 255))
++            except Exception:
++                ts = self.f_banner.render(f"Tier {bn.tier + 1}!", True, (255, 255, 255))
++            ts.set_alpha(int(255 * (1 - out)))
++            S.blit(ts, (xoff + (self.W - ts.get_width()) // 2, yb + (h - ts.get_height()) // 2))
++
++        # progress bar toward the Final Form
++        if cfg.show_progress_bar:
++            goal = sim.best_tier / max(1, cfg.tiers - 1)
++            gap_t = sim.vt - self._bar_t
++            self._bar_t = sim.vt
++            if gap_t <= 0 or gap_t > 0.5:      # first frame / thumbnail: show the real value
++                self._bar = goal
++            else:                               # ease toward the goal (frame-rate independent)
++                self._bar += (goal - self._bar) * (1 - math.exp(-gap_t * 9))
++            bw, bh = int(self.W * 0.7), max(4, int(22 * sc))
++            bx, by = (self.W - bw) // 2, int(self.H * cfg.progress_bar_y)
++            bc = self._tc(cfg.progress_bar_color)
++            track = pygame.Surface((bw, bh), pygame.SRCALPHA)
++            pygame.draw.rect(track, (*bc, 60), (0, 0, bw, bh), border_radius=bh // 2)
++            S.blit(track, (bx, by))
++            if self._bar > 0.01:
++                pygame.draw.rect(S, bc, (bx, by, max(bh, int(bw * self._bar)), bh), border_radius=bh // 2)
++            pct = self.f_label.render(f"{int(round(self._bar * 100))}%", True, bc)
++            S.blit(pct, (bx + bw + int(14 * sc), by + (bh - pct.get_height()) // 2))
++
++        # merge counter
++        if cfg.show_counter:
++            txt = (cfg.counter_text.replace("{merges}", str(sim.merges)).replace("{tier}", str(sim.best_tier + 1))
++                   .replace("{tiers}", str(cfg.tiers)).replace("{time}", f"{sim.vt:.1f}")
++                   .replace("{combo}", str(sim.best_combo)))
++            self._text_at(self.f_counter, txt, cfg.counter_y, self._tc(cfg.counter_color))
+ 
+         # watermark / credit
+         wm = cfg.watermark or ""
+         if wm:
+-            s = self.f_small.render(wm, True, text_col)
+-            s.set_alpha(150)
+-            S.blit(s, ((self.W - s.get_width()) // 2, self.H - int(170 * sc)))
++            self._text_at(self.f_small, wm, cfg.watermark_y, self._tc(cfg.watermark_color),
++                          max(0, min(255, cfg.watermark_opacity)))
+ 
+         # ending
++        final_col = self._tc(cfg.final_text_color)
+         if sim.finished_at is not None:
+-            k = min(1.0, (sim.t - sim.finished_at) / 0.4)
++            k = min(1.0, (sim.vt - sim.finished_at) / 0.4)
+             scale = 0.5 + 0.5 * (1 - (1 - k) ** 3) + 0.08 * math.sin(k * math.pi)
+-            s = self.f_big.render("FINAL FORM!", True, text_col)
++            s = self.f_big.render(cfg.final_text, True, final_col)
++            if s.get_width() * scale > self.W * 0.94:
++                scale *= self.W * 0.94 / (s.get_width() * scale)
+             s = pygame.transform.rotozoom(s, 0, scale)
+-            S.blit(s, ((self.W - s.get_width()) // 2, int(self.H * 0.83)))
+-        elif sim.t > cfg.max_seconds - 2.0:
+-            s = self.f_hook.render("So close...", True, text_col)
+-            S.blit(s, ((self.W - s.get_width()) // 2, int(self.H * 0.84)))
++            S.blit(s, ((self.W - s.get_width()) // 2, int(self.H * cfg.final_text_y)))
++        elif not cfg.until_finished and sim.vt > cfg.max_seconds - 2.0:
++            s = self.f_hook.render(cfg.fail_text, True, final_col)
++            S.blit(s, ((self.W - s.get_width()) // 2, int(self.H * (cfg.final_text_y + 0.01))))
++        elif sim.tension and cfg.near_miss_text:
++            pulse = 0.5 + 0.5 * math.sin(sim.vt * 9)
++            s = self.f_tension.render(cfg.near_miss_text, True, final_col)
++            s = pygame.transform.rotozoom(s, 0, 0.92 + 0.08 * pulse)
++            s.set_alpha(int(150 + 105 * pulse))
++            S.blit(s, ((self.W - s.get_width()) // 2, int(self.H * (cfg.final_text_y + 0.01))))
+         return S
+ 
+ 
+-def _pitch_for(event_tier: int, kind: str) -> float:
+-    base = {"drop": -4.0, "merge": 0.0, "final": 7.0}[kind]
+-    return base + event_tier * 1.6
+-
+-
+ PHYSICS_HZ = 60
+ 
+ 
+@@ -369,11 +603,15 @@ def render_video(cfg: MergeConfig, out_path: str, progress: Callable[[float], No
+     t0 = time.time()
+     cfg.sanitize_export()
+     prepare_images(cfg, lock)
++    sound_plan = None
++    if cfg.auto_sounds:      # Myinstants auto sounds (cached; offline = built-in pop)
++        from .sounds import resolve_auto
++        sound_plan = resolve_auto(cfg)
+     sim = MergeSim(cfg)
+     with lock:
+         rend = Renderer(cfg, cfg.export_scale())
+     steps = physics_steps(cfg.fps)
+-    est_frames = int((cfg.max_seconds + cfg.end_hold_seconds) * cfg.fps)
++    est_frames = int(cfg.video_seconds() * cfg.fps)
+     out_path = str(out_path)
+     out_path = str(Path(out_path).with_suffix("." + cfg.export_format))   # .mp4 or .mov from Export settings
+     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+@@ -413,6 +651,7 @@ def render_video(cfg: MergeConfig, out_path: str, progress: Callable[[float], No
+             pass
+         err = proc.stderr.read().decode("utf-8", "replace") if proc.stderr else ""
+         proc.wait()
++        rend.close()
+     if proc.returncode != 0:
+         raise RuntimeError(f"Video encoder ({enc_name}) failed: {err.strip()[-400:]}")
+     seconds = frames / cfg.fps
+@@ -441,8 +680,11 @@ def render_video(cfg: MergeConfig, out_path: str, progress: Callable[[float], No
+     if progress:
+         progress(1.0)
+     return {"file": out_path, "seed": cfg.seed, "won": sim.won, "best_tier": sim.best_tier + 1,
+-            "seconds": round(seconds, 2), "merges": sim.merges, "thumbnail": thumb_path, "fps": cfg.fps,
+-            "size": f"{rend.W}x{rend.H}", "encoder": enc_name, "render_seconds": round(time.time() - t0, 1)}
++            "seconds": round(seconds, 2), "merges": sim.merges, "best_combo": sim.best_combo,
++            "thumbnail": thumb_path, "fps": cfg.fps, "size": f"{rend.W}x{rend.H}", "encoder": enc_name,
++            "render_seconds": round(time.time() - t0, 1),
++            "sounds": [d["name"] for d in (sound_plan or {}).get("sounds", [])]
++            + [f"{k}: {Path(getattr(cfg, k)).name}" for k in ("drop_sound", "final_sound") if getattr(cfg, k)]}
+ 
+ 
+ def _rm(path: str) -> None:
+@@ -453,19 +695,22 @@ def _rm(path: str) -> None:
+ 
+ 
+ def build_audio(cfg: MergeConfig, sim: MergeSim, seconds: float) -> AudioTrack:
+-    """Mix the pitched pops (drop / merge / final) and optional background music."""
++    """Mix the pitched pops (drop / merge / final, per-tier sounds via SoundBank) and optional music.
++    Events are placed at their VIDEO time (ev.vt), so they stay in sync with Speed, slow motion
++    and the near-miss pause (ev.t is simulation time)."""
+     track = AudioTrack(seconds)
+-    snd = load_sound(cfg.sound_path)
++    bank = SoundBank(cfg)
+     last_t = -1.0
+     for ev in sim.events:
++        at = getattr(ev, "vt", None)
++        if at is None:
++            at = ev.t / max(0.05, cfg.speed)
+         if ev.kind == "drop":
+-            if not cfg.drop_sounds or ev.t - last_t < 0.05:
++            if not cfg.drop_sounds or at - last_t < 0.05:
+                 continue
+-        vol = cfg.sound_volume * (0.35 if ev.kind == "drop" else 1.0 if ev.kind == "merge" else 1.3)
+-        # event times are simulation time; with Speed != 1 the video runs at a different pace,
+-        # so convert to video time (the old code put every pop out of sync when Speed was changed)
+-        track.add(snd, ev.t / max(0.05, cfg.speed), _pitch_for(ev.tier, ev.kind), vol)
+-        last_t = ev.t
++            last_t = at
++        sample, semis, vol = bank.event(ev.kind, ev.tier)
++        track.add(sample, at, semis, vol)
+     if cfg.music_path and cfg.music_volume > 0:
+         track.add_music(load_music(cfg.music_path, seconds + 3), cfg.music_volume)
+     return track
+@@ -480,13 +725,13 @@ def prepare_images(cfg: MergeConfig, lock=None, note=None) -> dict:
+ 
+ def _thumb_moment_frame(sim: MergeSim, cfg: MergeConfig) -> bool:
+     """First frame at/after the Final Form has popped in (works at any FPS)."""
+-    return sim.finished_at is not None and sim.t >= sim.finished_at + 0.45
++    return sim.finished_at is not None and sim.vt >= sim.finished_at + 0.45   # finished_at is video time
+ 
+ 
+ def _thumb_moment(sim: MergeSim, cfg: MergeConfig) -> bool:
+     """Best frame for a thumbnail: FINAL FORM fully popped in (or the last second of a near miss)."""
+     if sim.finished_at is not None:
+-        return sim.finished_at + 0.45 <= sim.t < sim.finished_at + 0.45 + 1.0 / cfg.fps
++        return sim.finished_at + 0.45 <= sim.vt < sim.finished_at + 0.45 + 1.0 / cfg.fps
+     return False
+ 
+ 
+@@ -510,6 +755,7 @@ def make_thumbnail(cfg: MergeConfig, out_path: str) -> dict:
+     if shot is None:
+         shot = rend.draw(sim)
+     _save_jpg(shot, out_path)
++    rend.close()
+     return {"file": out_path, "seed": cfg.seed, "won": sim.won, "best_tier": sim.best_tier + 1}
+ 
+ 
+@@ -522,4 +768,5 @@ def render_preview_frame(cfg: MergeConfig, sim: MergeSim, rend: Renderer) -> byt
+     return buf.getvalue()
+ 
+ 
+-__all__ = ["Renderer", "render_video", "make_thumbnail", "simulate", "render_preview_frame", "prepare_images", "CREDIT"]
++__all__ = ["Renderer", "render_video", "build_audio", "make_thumbnail", "simulate", "render_preview_frame",
++           "prepare_images", "CREDIT"]
+diff --git a/mm911/sounds.py b/mm911/sounds.py
+new file mode 100644
+index 0000000..b8e4fae
+--- /dev/null
++++ b/mm911/sounds.py
+@@ -0,0 +1,411 @@
++"""🔊 Myinstants sound fetch: search, download once into a local cache, measure pitch, auto-assign to tiers.
++
++Only the standard library + numpy. Downloaded clips live in the user's cache folder
++(%APPDATA%\\MoneyMaker911\\sounds on Windows, ~/.mm911/sounds elsewhere), never in the repo.
++
++    from mm911 import sounds
++    hits = sounds.search("pop")                 # [SoundResult(name, mp3_url, page_url, slug)]
++    path = sounds.download(hits[0])             # cached file path
++    plan = sounds.auto_plan(["pop"], tiers=9)   # tier_sounds / tier_semitones / drop / final
++"""
++from __future__ import annotations
++
++import hashlib
++import html
++import json
++import logging
++import math
++import os
++import random
++import re
++import time
++import urllib.error
++import urllib.parse
++import urllib.request
++from dataclasses import dataclass, asdict
++from pathlib import Path
++
++import numpy as np
++
++LOG = logging.getLogger("mm911")
++
++BASE = "https://www.myinstants.com"
++SEARCH_URL = BASE + "/en/search/?name={q}"
++USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) MoneyMaker911/0.3 (+https://github.com/TeamRealHacker/money-maker-911)"
++TIMEOUT = 12
++RETRIES = 3
++SEARCH_TTL = 7 * 24 * 3600          # reuse a search for a week (polite + works offline afterwards)
++MAX_MP3_BYTES = 3_000_000           # Shorts sounds are tiny; skip anything huge
++MAX_CLIP_SECONDS = 1.6              # "satisfying" clips: prefer short ones for auto mode
++
++# share('Name', 'https://www.myinstants.com/en/instant/slug/', '/media/sounds/file.mp3', 'slug')
++_SHARE_RE = re.compile(r"share\('((?:[^'\\]|\\.)*)',\s*'([^']*)',\s*'([^']*\.mp3)',\s*'([^']*)'\)")
++# fallback: play('/media/sounds/file.mp3', 'loader-1', 'slug') ... title="Play NAME sound"
++_PLAY_RE = re.compile(r"play\('([^']*\.mp3)',\s*'[^']*',\s*'([^']*)'\)\"\s*title=\"Play (.*?) sound\"")
++_OG_AUDIO_RE = re.compile(r'<meta property="og:audio" content="([^"]+\.mp3)"')
++_MP3_RE = re.compile(r"(/media/sounds/[^\"' )]+\.mp3)")
++
++
++@dataclass
++class SoundResult:
++    name: str
++    mp3_url: str
++    page_url: str = ""
++    slug: str = ""
++
++    def to_dict(self) -> dict:
++        return asdict(self)
++
++
++# ---------------- cache ----------------
++def cache_dir() -> Path:
++    env = os.environ.get("MM911_SOUND_CACHE")
++    if env:
++        d = Path(env)
++    elif os.environ.get("APPDATA"):
++        d = Path(os.environ["APPDATA"]) / "MoneyMaker911" / "sounds"
++    else:
++        d = Path.home() / ".mm911" / "sounds"
++    d.mkdir(parents=True, exist_ok=True)
++    return d
++
++
++def _index_path() -> Path:
++    return cache_dir() / "index.json"
++
++
++def _load_index() -> dict:
++    try:
++        return json.loads(_index_path().read_text(encoding="utf-8"))
++    except Exception:
++        return {"files": {}, "analysis": {}}
++
++
++def _save_index(idx: dict) -> None:
++    tmp = _index_path().with_suffix(".tmp")
++    try:
++        tmp.write_text(json.dumps(idx, indent=1, ensure_ascii=False), encoding="utf-8")
++        os.replace(tmp, _index_path())
++    except OSError as e:
++        LOG.warning("sound cache index not saved: %s", e)
++
++
++# ---------------- http ----------------
++def _get(url: str, binary: bool = False, limit: int | None = None) -> bytes | str:
++    """GET with a polite User-Agent, timeout and simple exponential back-off retries."""
++    last: Exception | None = None
++    for attempt in range(RETRIES):
++        try:
++            req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept-Language": "en"})
++            with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
++                data = r.read(limit + 1 if limit else -1)
++            if limit and len(data) > limit:
++                raise ValueError(f"file larger than {limit} bytes")
++            return data if binary else data.decode("utf-8", "replace")
++        except urllib.error.HTTPError as e:
++            last = e
++            if e.code in (403, 404, 410):
++                break                       # no point retrying
++        except Exception as e:  # URLError, timeout, reset...
++            last = e
++        time.sleep(0.6 * (2 ** attempt))
++    raise ConnectionError(f"{url}: {last}")
++
++
++def parse_search(page: str) -> list[SoundResult]:
++    """Pull (name, mp3) pairs out of a Myinstants search / list page."""
++    out: list[SoundResult] = []
++    seen = set()
++    for name, page_url, mp3, slug in _SHARE_RE.findall(page):
++        url = urllib.parse.urljoin(BASE, mp3)
++        if url in seen:
++            continue
++        seen.add(url)
++        out.append(SoundResult(html.unescape(name.replace("\\'", "'")).strip(), url, page_url, slug))
++    if not out:  # markup changed: fall back to the play buttons
++        for mp3, slug, name in _PLAY_RE.findall(page):
++            url = urllib.parse.urljoin(BASE, mp3)
++            if url not in seen:
++                seen.add(url)
++                out.append(SoundResult(html.unescape(name).strip(), url, f"{BASE}/en/instant/{slug}/", slug))
++    return out
++
++
++def search(query: str, pages: int = 1, use_cache: bool = True) -> list[SoundResult]:
++    """Search Myinstants. Results are cached for a week; when offline the last cached search is used."""
++    query = (query or "").strip()
++    if not query:
++        return []
++    key = hashlib.sha1(f"{query.lower()}|{pages}".encode()).hexdigest()[:16]
++    cfile = cache_dir() / "searches" / f"{key}.json"
++    cached = None
++    if cfile.exists():
++        try:
++            cached = json.loads(cfile.read_text(encoding="utf-8"))
++        except Exception:
++            cached = None
++    if use_cache and cached and time.time() - cached.get("time", 0) < SEARCH_TTL:
++        return [SoundResult(**r) for r in cached["results"]]
++    results: list[SoundResult] = []
++    try:
++        for p in range(1, max(1, pages) + 1):
++            url = SEARCH_URL.format(q=urllib.parse.quote_plus(query)) + (f"&page={p}" if p > 1 else "")
++            got = parse_search(_get(url))  # type: ignore[arg-type]
++            new = [r for r in got if r.mp3_url not in {x.mp3_url for x in results}]
++            if not new:
++                break
++            results += new
++    except ConnectionError as e:
++        LOG.warning("myinstants search failed (%s), using cache if any", e)
++        if cached:
++            return [SoundResult(**r) for r in cached["results"]]
++        raise
++    try:
++        cfile.parent.mkdir(parents=True, exist_ok=True)
++        cfile.write_text(json.dumps({"query": query, "time": time.time(),
++                                     "results": [r.to_dict() for r in results]}, ensure_ascii=False), encoding="utf-8")
++    except OSError:
++        pass
++    return results
++
++
++def resolve(url_or_page: str) -> str:
++    """Turn a Myinstants instant page URL (or a direct mp3 URL) into the mp3 URL."""
++    u = url_or_page.strip()
++    if u.lower().split("?")[0].endswith(".mp3"):
++        return urllib.parse.urljoin(BASE, u)
++    page = _get(u)
++    m = _OG_AUDIO_RE.search(page) or _MP3_RE.search(page)  # type: ignore[arg-type]
++    if not m:
++        raise ValueError("no mp3 on that page")
++    return urllib.parse.urljoin(BASE, m.group(1))
++
++
++def _safe_name(url: str) -> str:
++    name = Path(urllib.parse.urlparse(url).path).name or "sound.mp3"
++    name = re.sub(r"[^A-Za-z0-9._-]+", "_", name)[:80]
++    if not name.lower().endswith(".mp3"):
++        name += ".mp3"
++    return f"{hashlib.sha1(url.encode()).hexdigest()[:8]}_{name}"
++
++
++def download(item: SoundResult | str) -> str:
++    """Download once into the cache and return the local path (cached file is reused forever)."""
++    url = item.mp3_url if isinstance(item, SoundResult) else resolve(item)
++    idx = _load_index()
++    known = idx["files"].get(url)
++    if known and Path(cache_dir() / known["file"]).exists():
++        return str(cache_dir() / known["file"])
++    data = _get(url, binary=True, limit=MAX_MP3_BYTES)
++    if len(data) < 200:  # type: ignore[arg-type]
++        raise ValueError("empty sound file")
++    fname = _safe_name(url)
++    path = cache_dir() / fname
++    path.write_bytes(data)  # type: ignore[arg-type]
++    idx["files"][url] = {"file": fname, "name": item.name if isinstance(item, SoundResult) else fname,
++                         "time": int(time.time())}
++    _save_index(idx)
++    return str(path)
++
++
++def cached_sounds() -> list[dict]:
++    """Every sound already in the cache (for the app's 'Downloaded' list)."""
++    idx = _load_index()
++    out = []
++    for url, v in idx["files"].items():
++        p = cache_dir() / v["file"]
++        if p.exists():
++            out.append({"name": v.get("name", v["file"]), "mp3_url": url, "path": str(p)})
++    return out
++
++
++# ---------------- pitch analysis ----------------
++def analyze(path: str) -> dict:
++    """Measure a clip: duration, spectral centroid (brightness, Hz), fundamental (Hz, if tonal), loudness.
++
++    Sorting uses the spectral centroid: it works for noisy pops as well as tonal dings, and a resample
++    pitch shift of r semitones multiplies it by exactly 2**(r/12), so tier targets can be hit precisely.
++    """
++    p = str(path)
++    idx = _load_index()
++    try:
++        st = os.stat(p)
++        key = f"{Path(p).name}|{st.st_size}"
++    except OSError:
++        key = p
++    if key in idx.get("analysis", {}):
++        return idx["analysis"][key]
++    from .audio import decode, SR
++    x = decode(p, 6.0)
++    res = {"duration": 0.0, "centroid": 0.0, "f0": 0.0, "tonal": False, "rms": 0.0, "pitch_hz": 0.0}
++    if x.size:
++        on = np.flatnonzero(np.abs(x) > 0.02 * (np.max(np.abs(x)) or 1))
++        if on.size:
++            x = x[on[0]: on[-1] + 1]
++        res["duration"] = round(len(x) / SR, 3)
++        res["rms"] = float(np.sqrt(np.mean(x ** 2)))
++        # analyse the loudest 120 ms (the "body" of the hit)
++        win = int(SR * 0.12)
++        if len(x) > win:
++            energy = np.convolve(x ** 2, np.ones(win // 4), "valid")
++            c = int(np.argmax(energy))
++            s = max(0, min(len(x) - win, c - win // 4))
++            seg = x[s: s + win]
++        else:
++            seg = np.pad(x, (0, max(0, win - len(x))))
++        seg = seg * np.hanning(len(seg))
++        spec = np.abs(np.fft.rfft(seg, n=8192))
++        freqs = np.fft.rfftfreq(8192, 1 / SR)
++        band = (freqs > 40) & (freqs < 12000)
++        if spec[band].sum() > 0:
++            res["centroid"] = float((freqs[band] * spec[band]).sum() / spec[band].sum())
++        # fundamental via autocorrelation (60 Hz .. 2 kHz)
++        ac = np.correlate(seg, seg, "full")[len(seg) - 1:]
++        if ac[0] > 0:
++            lo, hi = int(SR / 2000), int(SR / 60)
++            lag = lo + int(np.argmax(ac[lo:hi]))
++            clarity = float(ac[lag] / ac[0])
++            res["f0"] = round(SR / lag, 1)
++            res["tonal"] = clarity > 0.55
++        res["pitch_hz"] = round(res["centroid"], 1)
++    idx.setdefault("analysis", {})[key] = res
++    _save_index(idx)
++    return res
++
++
++def semitones(hz: float) -> float:
++    return 12 * math.log2(max(hz, 1.0) / 440.0)
++
++
++def tier_pitches(measured_hz: list[float], tiers: int, step: float = 1.6, clamp: float = 12.0) -> list[float]:
++    """Semitone shift per tier so tier 1 is lowest and the final tier highest.
++
++    measured_hz[t] is the (brightness) pitch of the sound used by tier t, already sorted low -> high.
++    Targets rise evenly from the lowest sound by at least `step` semitones per tier.
++    """
++    if not measured_hz:
++        return []
++    m = [semitones(h) for h in measured_hz]
++    span = max(step * (tiers - 1), m[-1] - m[0])
++    out = []
++    for t in range(tiers):
++        target = m[0] + span * t / max(1, tiers - 1)
++        out.append(round(max(-clamp, min(clamp, target - m[t])), 2))
++    # clamping can break the order: nudge so the final pitch never falls tier to tier
++    for t in range(1, tiers):
++        if m[t] + out[t] < m[t - 1] + out[t - 1]:
++            out[t] = round(min(24.0, m[t - 1] + out[t - 1] - m[t] + 0.5), 2)
++    return out
++
++
++# ---------------- auto mode ----------------
++def _keywords(keywords) -> list[str]:
++    from .config import SATISFYING_KEYWORDS
++    if isinstance(keywords, str):
++        keywords = [k for k in re.split(r"[,;|]", keywords)]
++    kws = [k.strip() for k in (keywords or []) if k and k.strip()]
++    return kws or list(SATISFYING_KEYWORDS)
++
++
++def _candidates(kws: list[str], rng: random.Random, want: int, max_tries: int) -> list[dict]:
++    """Search, shuffle (seeded), download and measure until `want` short clips are found."""
++    pool: list[SoundResult] = []
++    for kw in kws:
++        try:
++            pool += search(kw)
++        except ConnectionError as e:
++            LOG.warning("search %r failed: %s", kw, e)
++        if len(pool) >= want * 4:
++            break
++    # keep search order roughly (relevance) but shuffle within the top results so videos differ
++    top = pool[: max(want * 4, 12)]
++    rng.shuffle(top)
++    out, tries, longs = [], 0, []
++    for r in top:
++        if len(out) >= want or tries >= max_tries:
++            break
++        tries += 1
++        try:
++            path = download(r)
++            a = analyze(path)
++        except Exception as e:
++            LOG.info("skip %s: %s", r.mp3_url, e)
++            continue
++        if a["duration"] <= 0.02 or a["centroid"] <= 0:
++            continue
++        item = {"name": r.name, "url": r.mp3_url, "path": path, **a}
++        (out if a["duration"] <= MAX_CLIP_SECONDS else longs).append(item)
++    if len(out) < want:  # not enough short clips: allow longer ones (load_sound caps them anyway)
++        out += sorted(longs, key=lambda d: d["duration"])[: want - len(out)]
++    return out
++
++
++def auto_plan(keywords=None, tiers: int = 9, strategy: str = "sorted", count: int = 4,
++              separate: bool = True, drop_keyword: str = "", final_keyword: str = "",
++              step: float = 1.6, seed: int = 1) -> dict:
++    """Pick Myinstants sounds and map them to tiers, low pitch -> high pitch.
++
++    Returns {"tier_sounds", "tier_semitones", "sound_path", "drop_sound", "final_sound", "sounds", "keywords"}.
++    Empty lists / strings mean "use the built-in pop" (offline or nothing found)."""
++    rng = random.Random(seed)
++    kws = _keywords(keywords)
++    plan = {"tier_sounds": [], "tier_semitones": [], "sound_path": "", "drop_sound": "", "final_sound": "",
++            "sounds": [], "keywords": kws}
++    want = 1 if strategy == "pitch_up" else max(1, min(count, tiers))
++    extra = 1 if (separate and not drop_keyword) else 0
++    found = _candidates(kws, rng, want + extra, max_tries=(want + extra) * 3 + 2)
++    if not found:
++        return plan
++    drop = None
++    if separate and not drop_keyword and len(found) > want:
++        drop = min(found, key=lambda d: d["duration"])        # shortest clip = the lightest "tick"
++        found = [f for f in found if f is not drop]
++    found = found[:want]
++    if strategy == "pitch_up" or len(found) == 1:
++        base = found[0]
++        plan["sound_path"] = base["path"]
++        plan["tier_semitones"] = [round(t * step, 2) for t in range(tiers)]
++    else:
++        found.sort(key=lambda d: d["pitch_hz"])
++        n = len(found)
++        per_tier = [found[min(n - 1, t * n // tiers)] for t in range(tiers)]
++        plan["tier_sounds"] = [d["path"] for d in per_tier]
++        plan["tier_semitones"] = tier_pitches([d["pitch_hz"] for d in per_tier], tiers, step)
++        plan["sound_path"] = found[0]["path"]
++    plan["sounds"] = [{k: d[k] for k in ("name", "url", "path", "pitch_hz", "f0", "duration")} for d in found]
++    if separate:
++        for kw, key in ((drop_keyword, "drop_sound"), (final_keyword, "final_sound")):
++            if kw:
++                got = _candidates([kw], rng, 1, 4)
++                if got:
++                    plan[key] = got[0]["path"]
++        if not plan["drop_sound"] and drop is not None:
++            plan["drop_sound"] = drop["path"]
++    return plan
++
++
++def apply_plan(cfg, plan: dict) -> None:
++    """Write an auto_plan result into a MergeConfig (in place)."""
++    cfg.tier_sounds = list(plan.get("tier_sounds") or [])
++    cfg.tier_semitones = list(plan.get("tier_semitones") or [])
++    cfg.sound_path = plan.get("sound_path") or ""
++    cfg.drop_sound = plan.get("drop_sound") or ""
++    cfg.final_sound = plan.get("final_sound") or ""
++
++
++def resolve_auto(cfg) -> dict | None:
++    """If cfg.auto_sounds is on, fetch + assign sounds (in place). Never raises: offline = built-in pop."""
++    if not getattr(cfg, "auto_sounds", False):
++        return None
++    try:
++        plan = auto_plan(cfg.auto_sound_keywords, cfg.tiers, cfg.auto_sound_strategy, cfg.auto_sound_count,
++                         cfg.auto_sound_separate, cfg.auto_drop_keyword, cfg.auto_final_keyword,
++                         cfg.pitch_step, cfg.seed)
++    except Exception as e:  # pragma: no cover - network edge cases
++        LOG.warning("auto sounds failed, using built-in pop: %s", e)
++        return None
++    if not (plan["sound_path"] or plan["tier_sounds"]):
++        LOG.warning("auto sounds: nothing found for %s, using built-in pop", plan["keywords"])
++        return plan
++    apply_plan(cfg, plan)
++    return plan
+diff --git a/presets/custom_bowl_confetti.json b/presets/custom_bowl_confetti.json
+new file mode 100644
+index 0000000..cc55411
+--- /dev/null
++++ b/presets/custom_bowl_confetti.json
+@@ -0,0 +1,78 @@
++{
++  "theme_name": "Candy",
++  "palette": "Candy",
++  "hook": "Satisfying candy bowl",
++  "container_shape": "custom",
++  "container_points": [
++    [
++      -1.0,
++      -0.55
++    ],
++    [
++      -0.92,
++      0.05
++    ],
++    [
++      -0.75,
++      0.5
++    ],
++    [
++      -0.45,
++      0.82
++    ],
++    [
++      0.0,
++      0.95
++    ],
++    [
++      0.45,
++      0.82
++    ],
++    [
++      0.75,
++      0.5
++    ],
++    [
++      0.92,
++      0.05
++    ],
++    [
++      1.0,
++      -0.55
++    ],
++    [
++      0.0,
++      -0.75
++    ]
++  ],
++  "container_radius": 480,
++  "container_thickness": 22,
++  "container_color": "#5B5F97",
++  "tiers": 10,
++  "size_curve": "linear",
++  "base_radius": 18.0,
++  "growth": 1.3,
++  "bg_mode": "gradient",
++  "bg_colors": [
++    "#FDE2E4",
++    "#CDE7F0"
++  ],
++  "bg_angle": 90,
++  "particle_style": "confetti",
++  "particle_amount": 1.6,
++  "particle_colors": [
++    "#FF6B6B",
++    "#FFD166",
++    "#06D6A0",
++    "#118AB2",
++    "#C77DFF"
++  ],
++  "ball_outline": 4,
++  "ball_shadow": 0.5,
++  "show_progress_bar": true,
++  "progress_bar_color": "#5B5F97",
++  "max_seconds": 43.0,
++  "seed": 7,
++  "spawn_max_tier": 5,
++  "spawn_interval": 0.14
++}
+diff --git a/presets/minimal_mono_15s.json b/presets/minimal_mono_15s.json
+new file mode 100644
+index 0000000..83d40cb
+--- /dev/null
++++ b/presets/minimal_mono_15s.json
+@@ -0,0 +1,22 @@
++{
++  "theme_name": "Mono",
++  "palette": "Mono",
++  "hook": "15 seconds. Can it finish?",
++  "bg_mode": "solid",
++  "bg_colors": [
++    "#F4F4F4"
++  ],
++  "container_shape": "rounded",
++  "tiers": 7,
++  "spawn_interval": 0.12,
++  "gravity": 2200,
++  "combo_popups": false,
++  "tier_banners": false,
++  "show_counter": true,
++  "counter_text": "{time}s",
++  "max_seconds": 13.0,
++  "fps": 60,
++  "sound_path": "",
++  "pitch_step": 2.0,
++  "seed": 1
++}
+diff --git a/presets/neon_triangle_combo.json b/presets/neon_triangle_combo.json
+new file mode 100644
+index 0000000..cbf63e5
+--- /dev/null
++++ b/presets/neon_triangle_combo.json
+@@ -0,0 +1,56 @@
++{
++  "theme_name": "Fruit",
++  "palette": "Sunset",
++  "hook": "Can it hit a x5 combo?",
++  "container_shape": "triangle",
++  "container_radius": 500,
++  "container_y": 0.5,
++  "container_color": "#FFE66D",
++  "container_glow": 0.8,
++  "container_thickness": 14,
++  "ball_scale": 0.72,
++  "bg_mode": "gradient",
++  "bg_colors": [
++    "#1A1A40",
++    "#7A1FA2",
++    "#FF6F61"
++  ],
++  "bg_angle": 60,
++  "tier_emojis": [
++    "🍒",
++    "🍓",
++    "🍇",
++    "🍋",
++    "🍊",
++    "🍎",
++    "🍐",
++    "🍑",
++    "🍉"
++  ],
++  "ball_shadow": 0.6,
++  "ball_glow": 0.5,
++  "ball_outline": 3,
++  "particle_style": "stars",
++  "particle_colors": [
++    "#FFFFFF",
++    "#FFD166",
++    "#FF9AA2"
++  ],
++  "particle_amount": 1.4,
++  "shake_strength": 12,
++  "combo_min": 2,
++  "show_counter": true,
++  "counter_text": "{merges} merges · best x{combo}",
++  "show_progress_bar": true,
++  "hook_color": "#FFFFFF",
++  "counter_color": "#FFFFFF",
++  "final_text_color": "#FFE66D",
++  "watermark": "@yourchannel",
++  "watermark_color": "#FFFFFF",
++  "auto_sounds": true,
++  "auto_sound_keywords": "bubble pop",
++  "auto_sound_strategy": "sorted",
++  "auto_sound_count": 4,
++  "max_seconds": 43.0,
++  "seed": 2
++}
+diff --git a/presets/space_planets_slowmo.json b/presets/space_planets_slowmo.json
+new file mode 100644
+index 0000000..a782581
+--- /dev/null
++++ b/presets/space_planets_slowmo.json
+@@ -0,0 +1,66 @@
++{
++  "theme_name": "Planet",
++  "palette": "Ocean",
++  "hook": "Watch it become a STAR",
++  "tiers": 10,
++  "base_radius": 17.0,
++  "growth": 1.36,
++  "tier_emojis": [
++    "⭐",
++    "🌑",
++    "🌙",
++    "🌍",
++    "🪐",
++    "☀️",
++    "☀️",
++    "☀️",
++    "☀️",
++    "☀️"
++  ],
++  "tier_names": [
++    "Dust",
++    "Rock",
++    "Moon",
++    "Earth",
++    "Saturn",
++    "Sun"
++  ],
++  "bg_mode": "gradient",
++  "bg_colors": [
++    "#03001C",
++    "#301E67",
++    "#5B8FB9"
++  ],
++  "bg_angle": 100,
++  "container_shape": "octagon",
++  "container_spin": 10,
++  "spin_wobble": 18,
++  "spin_wobble_period": 5,
++  "container_color": "#B6EADA",
++  "container_glow": 0.6,
++  "ball_glow": 0.7,
++  "particle_style": "rings",
++  "particle_colors": [
++    "#B6EADA",
++    "#FFFFFF"
++  ],
++  "slowmo_final": true,
++  "slowmo_factor": 0.2,
++  "slowmo_seconds": 1.8,
++  "end_hold_seconds": 2.5,
++  "near_miss": true,
++  "near_miss_chance": 0.9,
++  "near_miss_text": "ONE MORE...",
++  "banner_text": "{name} unlocked!",
++  "banner_min_tier": 3,
++  "final_text": "SUPERNOVA!",
++  "hook_color": "#FFFFFF",
++  "final_text_color": "#FFD166",
++  "until_finished": true,
++  "auto_sounds": true,
++  "auto_sound_keywords": "ding, xylophone",
++  "auto_final_keyword": "wow",
++  "seed": 2,
++  "spawn_max_tier": 5,
++  "spawn_interval": 0.13
++}
+-- 
+2.47.3
+
+
+From 203fa66ea01ff089f0e1e08aece01452b9959f15 Mon Sep 17 00:00:00 2001
+From: Team RealHackers <realmrhacker26@gmail.com>
+Date: Sat, 7 Nov 2026 21:33:23 +0000
+Subject: [PATCH 2/3] =?UTF-8?q?=F0=9F=96=A5=EF=B8=8F=20GUI:=20Sounds=20?=
+ =?UTF-8?q?=C2=B7=20Myinstants=20panel,=20themes,=20full=20inspector=20+?=
+ =?UTF-8?q?=20tests?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Sounds panel: search + keyword chips, ▶ preview, Use for tiers / drop / final, ✨ Auto fill low → high,
+  per-tier sound + pitch with exact pitched preview; keeps v0.4 Listen button, drop-sounds toggle,
+  live preview sound (now following pitch step / overrides / drop & final offsets) and music row
+- Themes: save / load / delete / import / export
+- Inspector sections for every new knob (Look, Background, Balls, Effects, Text styles, Gameplay),
+  batch "vary per video" checkboxes + sound keywords; v0.4 Export studio section kept as is
+- per-form pictures, AI cut-out status and the 4-step onboarding kept; 'Auto-pick pops' on the sound step
+- boot tolerates older bootstrap payloads; inspector overflow fix
+- tests/test_sounds_customization.py (offline); CI smoke step for a customization preset
+---
+ .github/workflows/build.yml        |   5 +
+ mm911/gui/app.py                   | 221 ++++++++++++++++++++++++++++-
+ mm911/gui/web/app.js               | 166 ++++++++++++++++++++--
+ mm911/gui/web/index.html           | 126 ++++++++++++++--
+ mm911/gui/web/style.css            |  37 +++++
+ mm911/modes/merge.py               |  13 +-
+ mm911/render.py                    |   2 +-
+ mm911/sounds.py                    |   8 +-
+ presets/custom_bowl_confetti.json  |   4 +-
+ presets/neon_triangle_combo.json   |   3 +-
+ presets/space_planets_slowmo.json  |   4 +-
+ tests/test_sounds_customization.py |  93 ++++++++++++
+ 12 files changed, 645 insertions(+), 37 deletions(-)
+ create mode 100644 tests/test_sounds_customization.py
+
+diff --git a/.github/workflows/build.yml b/.github/workflows/build.yml
+index d519be3..5509ca2 100644
+--- a/.github/workflows/build.yml
++++ b/.github/workflows/build.yml
+@@ -34,6 +34,11 @@ jobs:
+       - name: Smoke test (emoji tiers + thumbnail)
+         run: python main.py thumb --preset presets/emoji_fruit.json --seed 12 --out output/thumb.jpg
+ 
++      - name: Smoke test (customization preset + sounds CLI parses)
++        run: |
++          python main.py render --preset presets/minimal_mono_15s.json --seconds 4 --fps 30 --set slowmo_final=true --out output/custom.mp4
++          python main.py sounds cache
++
+       - name: Smoke test (AI add-on imports, app still imports without models)
+         run: python -c "import onnxruntime, mm911.imageprep as ip, mm911.gui.app; print(onnxruntime.__version__, ip.status()['onnx'])"
+ 
+diff --git a/mm911/gui/app.py b/mm911/gui/app.py
+index 1bf4780..799e278 100644
+--- a/mm911/gui/app.py
++++ b/mm911/gui/app.py
+@@ -18,9 +18,11 @@ from pathlib import Path
+ import webview
+ 
+ from ..config import (MergeConfig, PALETTES, SHAPES, HOOKS, APP_NAME, CREDIT, VERSION, LENGTH_PRESETS,
+-                      EMOJI_SETS, hex_to_rgb, MIN_TIERS, MAX_TIERS, FPS_CHOICES, RESOLUTIONS, QUALITIES,
+-                      CODECS, ENCODERS, FORMATS, AUDIO_BITRATES)
++                      EMOJI_SETS, BG_MODES, SIZE_CURVES, PARTICLE_STYLES, SOUND_STRATEGIES,
++                      SATISFYING_KEYWORDS, RANDOM_KNOBS, hex_to_rgb, MIN_TIERS, MAX_TIERS, FPS_CHOICES,
++                      RESOLUTIONS, QUALITIES, CODECS, ENCODERS, FORMATS, AUDIO_BITRATES)
+ from .. import audio as _audio
++from .. import sounds as myinstants
+ from ..modes.merge import MergeSim
+ from ..render import Renderer, render_video, render_preview_frame, make_thumbnail, prepare_images
+ from .. import imageprep
+@@ -112,6 +114,9 @@ class Api:
+         return {"app": APP_NAME, "credit": CREDIT, "version": VERSION, "config": self._cfg.to_dict(),
+                 "palettes": {k: v for k, v in PALETTES.items()}, "shapes": SHAPES, "hooks": HOOKS,
+                 "lengths": LENGTH_PRESETS, "emoji_sets": EMOJI_SETS, "cutout": imageprep.status(),
++                "bg_modes": BG_MODES, "size_curves": SIZE_CURVES, "particle_styles": PARTICLE_STYLES,
++                "sound_strategies": SOUND_STRATEGIES, "keywords": SATISFYING_KEYWORDS, "random_knobs": RANDOM_KNOBS,
++                "themes": self.list_themes(),
+                 "onboarded": self._settings.get("onboarded", False),
+                 "min_tiers": MIN_TIERS, "max_tiers": MAX_TIERS,
+                 "export": {"fps": FPS_CHOICES, "resolutions": list(RESOLUTIONS), "qualities": list(QUALITIES),
+@@ -157,6 +162,10 @@ class Api:
+                     v = max(MIN_TIERS, min(MAX_TIERS, v))
+                 setattr(self._cfg, k, v)
+         self._cfg.sanitize_export()
++        try:
++            self._cfg.clamp()
++        except (TypeError, ValueError):
++            pass
+         self._preview_dirty = True
+         self._save()
+         return self._cfg.to_dict()
+@@ -171,7 +180,9 @@ class Api:
+     def pick_file(self, kind: str) -> str:
+         types = {"sound": ("Audio (*.mp3;*.wav;*.ogg;*.m4a;*.aac;*.flac;*.opus;*.mp4)",),
+                  "image": ("Images (*.png;*.jpg;*.jpeg;*.webp)",),
+-                 "font": ("Fonts (*.ttf;*.otf)",)}.get(kind, ("All files (*.*)",))
++                 "video": ("Videos (*.mp4;*.mov;*.webm;*.mkv;*.gif)",),
++                 "font": ("Fonts (*.ttf;*.otf)",),
++                 "theme": ("Theme / preset (*.json)",)}.get(kind, ("All files (*.*)",))
+         try:
+             res = self._window.create_file_dialog(webview.FileDialog.OPEN, file_types=types)
+         except Exception as e:
+@@ -358,6 +369,210 @@ class Api:
+         except Exception as e:
+             LOG.error("open folder failed: %s", e)
+ 
++    # ---------- sounds (Myinstants) ----------
++    def sound_search(self, query: str) -> dict:
++        """Search Myinstants. Returns {"results": [{name, mp3_url, page_url}], "error": ""}."""
++        try:
++            res = myinstants.search(str(query or ""))
++            return {"results": [r.to_dict() for r in res[:60]], "error": ""}
++        except Exception as e:
++            LOG.warning("sound search failed: %s", e)
++            return {"results": [], "error": "Myinstants not reachable (offline?). The built-in pop still works."}
++
++    def sound_use(self, mp3_url: str, target: str = "all") -> dict:
++        """Download (once) and use a sound. target: all | drop | final | tier:N"""
++        try:
++            path = myinstants.download(myinstants.SoundResult("", mp3_url) if mp3_url.endswith(".mp3")
++                                       else mp3_url)
++        except Exception as e:
++            LOG.warning("sound download failed: %s", e)
++            return {"error": "Download failed: " + str(e), "rows": self.sound_rows()}
++        self._assign_sound(path, target)
++        return {"error": "", "rows": self.sound_rows(), "config": self._cfg.to_dict()}
++
++    def _assign_sound(self, path: str, target: str) -> None:
++        c = self._cfg
++        if target == "drop":
++            c.drop_sound = path
++        elif target == "final":
++            c.final_sound = path
++        elif str(target).startswith("tier:"):
++            i = int(str(target).split(":")[1])
++            lst = list(c.tier_sounds)
++            while len(lst) <= i:
++                lst.append("")
++            lst[i] = path
++            c.tier_sounds = lst
++        else:  # one sound for every tier, auto pitched up
++            c.sound_path, c.tier_sounds, c.tier_semitones = path, [], []
++        c.auto_sounds = False
++        self._preview_dirty = True
++        self._save()
++
++    def pick_sound_for(self, target: str) -> dict:
++        f = self.pick_file("sound")
++        if f:
++            self._assign_sound(f, target)
++        return {"rows": self.sound_rows(), "config": self._cfg.to_dict()}
++
++    def sound_auto_fill(self, keywords: str = "", strategy: str = "", count: int = 0) -> dict:
++        """Pick sounds automatically and lay them out low -> high pitch across the tiers."""
++        c = self._cfg
++        if strategy in SOUND_STRATEGIES:
++            c.auto_sound_strategy = strategy
++        if count:
++            c.auto_sound_count = max(1, min(12, int(count)))
++        try:
++            plan = myinstants.auto_plan(keywords or c.auto_sound_keywords, c.tiers, c.auto_sound_strategy,
++                                        c.auto_sound_count, c.auto_sound_separate, c.auto_drop_keyword,
++                                        c.auto_final_keyword, c.pitch_step, c.seed)
++        except Exception as e:
++            LOG.warning("auto fill failed: %s", e)
++            return {"error": "Auto fill failed: " + str(e), "rows": self.sound_rows(), "config": c.to_dict()}
++        if not (plan["sound_path"] or plan["tier_sounds"]):
++            return {"error": "Nothing found (offline?). Keeping the current sounds.", "rows": self.sound_rows(),
++                    "config": c.to_dict()}
++        myinstants.apply_plan(c, plan)
++        c.auto_sounds = False   # fixed sounds now; tick "new sounds every render" to fetch per video
++        self._save()
++        return {"error": "", "rows": self.sound_rows(), "config": c.to_dict(),
++                "picked": [s["name"] for s in plan["sounds"]]}
++
++    def sound_rows(self) -> list[dict]:
++        """One row per tier + drop + final: which sound, which pitch (auto or manual)."""
++        c = self._cfg
++        names = {v["path"]: v["name"] for v in myinstants.cached_sounds()}
++        label = lambda p: (names.get(p) or Path(p).stem) if p else "Built-in pop"
++        rows = []
++        for t in range(c.tiers):
++            p = c.tier_value("tier_sounds", t) or c.sound_path
++            manual = t < len(c.tier_semitones) and c.tier_semitones[t] not in (None, "")
++            rows.append({"key": f"tier:{t}", "label": f"{t + 1}", "sound": label(p),
++                         "own": bool(c.tier_value("tier_sounds", t)),
++                         "pitch": round(c.tier_pitch(t), 2), "manual": manual})
++        rows.append({"key": "drop", "label": "Drop", "sound": label(c.drop_sound) if c.drop_sound else "same as tier",
++                     "own": bool(c.drop_sound), "pitch": c.drop_pitch, "manual": True})
++        rows.append({"key": "final", "label": "Final", "sound": label(c.final_sound) if c.final_sound else "top tier",
++                     "own": bool(c.final_sound), "pitch": c.final_pitch, "manual": True})
++        return rows
++
++    def set_sound_pitch(self, key: str, value) -> list[dict]:
++        """Manual pitch (semitones). Empty value = back to auto for tiers."""
++        c = self._cfg
++        try:
++            v = None if value in (None, "") else max(-24.0, min(24.0, float(value)))
++        except (TypeError, ValueError):
++            v = None
++        if key == "drop":
++            c.drop_pitch = -4.0 if v is None else v
++        elif key == "final":
++            c.final_pitch = 7.0 if v is None else v
++        elif key.startswith("tier:"):
++            i = int(key.split(":")[1])
++            lst = list(c.tier_semitones)
++            while len(lst) <= i:
++                lst.append(None)
++            lst[i] = v
++            while lst and lst[-1] in (None, ""):
++                lst.pop()
++            c.tier_semitones = lst
++        self._save()
++        return self.sound_rows()
++
++    def clear_sound(self, key: str) -> dict:
++        c = self._cfg
++        if key == "drop":
++            c.drop_sound = ""
++        elif key == "final":
++            c.final_sound = ""
++        elif key.startswith("tier:"):
++            i = int(key.split(":")[1])
++            if i < len(c.tier_sounds):
++                lst = list(c.tier_sounds)
++                lst[i] = ""
++                while lst and not lst[-1]:
++                    lst.pop()
++                c.tier_sounds = lst
++        else:  # everything back to the built-in pop
++            c.sound_path, c.tier_sounds, c.tier_semitones, c.drop_sound, c.final_sound = "", [], [], "", ""
++            c.auto_sounds = False
++        self._save()
++        return {"rows": self.sound_rows(), "config": c.to_dict()}
++
++    def preview_sound(self, key: str) -> str:
++        """Exactly what that tier / drop / final will sound like (pitched), as a data: URL."""
++        from ..audio import SoundBank, to_wav_bytes, pitch
++        try:
++            bank = SoundBank(copy.deepcopy(self._cfg))
++            if key == "drop":
++                smp, semis, _ = bank.event("drop", 0)
++            elif key == "final":
++                smp, semis, _ = bank.event("final", self._cfg.tiers - 1)
++            else:
++                smp, semis, _ = bank.event("merge", int(str(key).split(":")[1]))
++            return "data:audio/wav;base64," + base64.b64encode(to_wav_bytes(pitch(smp, semis))).decode()
++        except Exception as e:
++            LOG.warning("sound preview failed: %s", e)
++            return ""
++
++    # ---------- themes: save / load / import / export ----------
++    def _themes_dir(self) -> Path:
++        d = app_dir() / "themes"
++        d.mkdir(parents=True, exist_ok=True)
++        return d
++
++    def list_themes(self) -> list[str]:
++        return sorted(p.stem for p in self._themes_dir().glob("*.json"))
++
++    def save_theme(self, name: str) -> list[str]:
++        safe = "".join(ch for ch in str(name or "").strip() if ch.isalnum() or ch in " -_")[:40].strip()
++        if safe:
++            self._cfg.save(self._themes_dir() / f"{safe}.json")
++        return self.list_themes()
++
++    def load_theme(self, name: str) -> dict:
++        p = self._themes_dir() / f"{name}.json"
++        if p.exists():
++            try:
++                self._cfg = MergeConfig.load(p).clamp()
++                self._preview_dirty = True
++                self._save()
++            except Exception as e:
++                LOG.error("theme load failed: %s", e)
++        return self._cfg.to_dict()
++
++    def delete_theme(self, name: str) -> list[str]:
++        p = self._themes_dir() / f"{name}.json"
++        try:
++            p.unlink()
++        except OSError:
++            pass
++        return self.list_themes()
++
++    def export_theme(self) -> str:
++        try:
++            res = self._window.create_file_dialog(webview.FileDialog.SAVE, save_filename=f"{self._cfg.theme_name}_theme.json",
++                                                 file_types=("Theme (*.json)",))
++        except Exception as e:
++            LOG.error("save dialog failed: %s", e)
++            return ""
++        path = res if isinstance(res, str) else (res[0] if res else "")
++        if path:
++            self._cfg.save(path)
++        return path or ""
++
++    def import_theme(self) -> dict:
++        f = self.pick_file("theme")
++        if f:
++            try:
++                self._cfg = MergeConfig.load(f).clamp()
++                self._preview_dirty = True
++                self._save()
++            except Exception as e:
++                LOG.error("theme import failed: %s", e)
++                return {"error": str(e), "config": self._cfg.to_dict()}
++        return {"error": "", "config": self._cfg.to_dict()}
++
+     # ---------- live preview ----------
+     # The old version pushed every frame into the page with evaluate_js() 30x a second. evaluate_js
+     # blocks on the UI thread, so the window (and the onboarding buttons) stuttered and froze.
+diff --git a/mm911/gui/web/app.js b/mm911/gui/web/app.js
+index 5fb6923..92df1ef 100644
+--- a/mm911/gui/web/app.js
++++ b/mm911/gui/web/app.js
+@@ -69,7 +69,9 @@ const sfx = {
+     if (!this.on || !this.buf || !this.ctx || this.ctx.state !== "running") return;
+     const vol = Math.min(1.2, +state.config.sound_volume || 0);
+     events.slice(-6).forEach(([kind, tier]) => {
+-      const semis = ({ drop: -4, merge: 0, final: 7 }[kind] || 0) + tier * 1.6;
++      const c = state.config, ov = (c.tier_semitones || [])[tier];
++      const base = ov !== undefined && ov !== null && ov !== "" ? +ov : tier * (c.pitch_step ?? 1.6);
++      const semis = base + (kind === "drop" ? (c.drop_pitch ?? -4) : kind === "final" ? (c.final_pitch ?? 7) : 0);
+       const src = this.ctx.createBufferSource(), g = this.ctx.createGain();
+       src.buffer = this.buf; src.playbackRate.value = Math.pow(2, semis / 12);
+       g.gain.value = vol * (kind === "drop" ? 0.35 : kind === "final" ? 1.2 : 0.9) * 0.6;
+@@ -112,7 +114,9 @@ const mm = {
+   async set(patch) {
+     state.config = await call("set_config", patch); fill();
+     if (PREP_KEYS.some((k) => k in patch)) mm.prep();
+-    else if (["tiers", "palette", "tier_images", "show_tier_labels", "cutout_outline"].some((k) => k in patch)) tiers();
++    else if (["tiers", "palette", "tier_images", "show_tier_labels", "cutout_outline", "ball_scale", "base_radius", "growth",
++              "size_curve", "tier_sizes", "ball_outline", "ball_outline_color", "auto_fit"].some((k) => k in patch)) tiers();
++    if (["tiers", "pitch_step", "sound_path", "auto_sounds"].some((k) => k in patch)) soundRows();
+   },
+   // AI cut-outs / text check run in Python on their own thread; we poll a status line meanwhile.
+   async prep() {
+@@ -135,9 +139,9 @@ const mm = {
+     await tiers();
+     if (prepAgain) { prepAgain = false; mm.prep(); }
+   },
+-  async pick(key, kind) {
++  async pick(key, kind, extra) {
+     const f = await pywebview.api.pick_file(kind);
+-    if (f) await mm.set({ [key]: f });
++    if (f) await mm.set({ [key]: f, ...(extra || {}) });
+   },
+   async pickImages() {
+     await call("pick_images"); state.config = (await call("bootstrap")).config; fill(); await tiers(); mm.prep();
+@@ -150,6 +154,67 @@ const mm = {
+   async setTier(i, key, v) { tiers(await call("set_tier", i, key, v)); },
+   async tierImage(i) { tiers(await call("pick_tier_image", i)); state.config = (await call("bootstrap")).config; fill(); mm.prep(); },
+   async clearTierImage(i) { tiers(await call("clear_tier_image", i)); state.config = (await call("bootstrap")).config; fill(); },
++  // ---- themes ----
++  async saveTheme() {
++    const n = $("#themename").value.trim();
++    if (!n) return toast("Give the theme a name first");
++    themes(await call("save_theme", n)); toast("Theme saved ✓");
++  },
++  async loadTheme() {
++    const n = $("#themes").value; if (!n) return;
++    state.config = await call("load_theme", n); fill(); tiers(); soundRows(); toast("Loaded " + n);
++  },
++  async deleteTheme() { const n = $("#themes").value; if (n) themes(await call("delete_theme", n)); },
++  async exportTheme() { const f = await call("export_theme"); if (f) toast("Exported ✓ " + f.split(/[\\/]/).pop()); },
++  async importTheme() {
++    const r = await call("import_theme");
++    if (r.error) return toast("Import failed: " + r.error);
++    state.config = r.config; fill(); tiers(); soundRows();
++  },
++  setPoints() {
++    try {
++      const pts = JSON.parse($("#ptsbox").value);
++      if (!Array.isArray(pts) || pts.length < 3) throw new Error("need 3+ points");
++      mm.set({ container_points: pts, container_shape: "custom" });
++    } catch (e) { toast("Points must look like [[-1,-0.5],[0,1],[1,-0.5]]"); }
++  },
++  bgThird() {
++    const c = [...(state.config.bg_colors || [])];
++    if (c.length >= 3) c.length = 2; else { while (c.length < 2) c.push(c.length ? "#E2ECE9" : "#FDE2E4"); c.push("#FFFFFF"); }
++    mm.set({ bg_colors: c, bg_mode: c.length === 1 ? "solid" : "gradient" });
++  },
++  // ---- sounds ----
++  async soundSearch(q) {
++    q = (q || $("#sq").value || "").trim(); if (!q) return;
++    $("#sq").value = q; $("#smsg").textContent = "Searching Myinstants…";
++    const r = await call("sound_search", q);
++    $("#smsg").textContent = r.error || (r.results.length ? `${r.results.length} sounds · ▶ preview · use for all tiers, drop or final` : "Nothing found");
++    $("#sresults").innerHTML = r.results.map((x, i) => `
++      <div class="sres"><button class="play" onclick="mm.play('${esc(x.mp3_url)}')">▶</button>
++        <span title="${esc(x.name)}">${esc(x.name)}</span>
++        <button class="ghost xs" onclick="mm.useSound(${i},'all')" title="One sound, auto pitched per tier">Use for tiers</button>
++        <button class="link xs" onclick="mm.useSound(${i},'drop')">drop</button><button class="link xs" onclick="mm.useSound(${i},'final')">final</button></div>`).join("");
++    state.sresults = r.results;
++  },
++  play(src) { const a = $("#player"); a.src = src; a.currentTime = 0; a.play().catch(() => toast("Can't play that preview")); },
++  async useSound(i, target) {
++    const x = state.sresults[i]; toast("Downloading " + x.name + "…");
++    const r = await call("sound_use", x.mp3_url, target);
++    if (r.error) return toast(r.error);
++    state.config = r.config; fill(); soundRows(r.rows); toast("Using " + x.name + " ✓");
++  },
++  async autoFill(kw) {
++    kw = kw || $("#sq").value.trim() || state.config.auto_sound_keywords || "";
++    toast("Picking sounds" + (kw ? " for “" + kw + "”" : "") + "…");
++    const r = await call("sound_auto_fill", kw, "", 0);
++    if (r.error) return toast(r.error);
++    state.config = r.config; fill(); soundRows(r.rows);
++    toast("✓ " + r.picked.join(", ") + " (low → high)");
++  },
++  async previewTier(key) { const u = await call("preview_sound", key); if (u) mm.play(u); },
++  async setPitch(key, v) { soundRows(await call("set_sound_pitch", key, v)); },
++  async pickSound(key) { const r = await call("pick_sound_for", key); state.config = r.config; fill(); soundRows(r.rows); },
++  async clearSound(key) { const r = await call("clear_sound", key); state.config = r.config; fill(); soundRows(r.rows); },
+   async emojiSet(name) { tiers(await pywebview.api.apply_emoji_set(name)); state.config = (await pywebview.api.bootstrap()).config; fill(); },
+   async clearTiers() { tiers(await pywebview.api.clear_tiers()); state.config = (await pywebview.api.bootstrap()).config; fill(); aiHint(); },
+   async thumb() {
+@@ -227,6 +292,43 @@ function aiHint(r) {
+   el.textContent = bits.join(" ");
+ }
+ 
++async function soundRows(rows) {
++  rows = rows || await pywebview.api.sound_rows();
++  $("#stiers").innerHTML = rows.map((r) => `
++    <div class="stier">
++      <b>${esc(r.label)}</b>
++      <span class="${r.own ? "own" : ""}" title="${esc(r.sound)}">${esc(r.sound)}</span>
++      <button class="play" onclick="mm.previewTier('${r.key}')" title="Hear it">▶</button>
++      <input type="number" step="0.1" value="${r.manual ? r.pitch : ""}" placeholder="${r.pitch}" title="Semitones" onchange="mm.setPitch('${r.key}', this.value)">
++      <button class="link xs" onclick="mm.pickSound('${r.key}')" title="Choose a file">file</button>
++      <button class="link xs" onclick="mm.clearSound('${r.key}')" title="Reset">×</button>
++    </div>`).join("");
++}
++
++function themes(list) {
++  $("#themes").innerHTML = `<option value="">Saved themes…</option>` + (list || []).map((t) => `<option>${esc(t)}</option>`).join("");
++}
++
++function textStyles() {
++  document.querySelectorAll(".textstyle").forEach((el) => {
++    const p = el.dataset.p;
++    el.innerHTML = `
++      <div class="row"><span>Size</span><input type="range" data-k="${p}_size" min="16" max="140"></div>
++      <div class="row"><span>Height</span><input type="range" data-k="${p}_y" min="0.02" max="0.97" step="0.005"></div>
++      <div class="row"><span>Colour</span><span><input type="color" data-k="${p}_color" data-def="#FFFFFF"><button class="link" onclick="mm.set({${p}_color:''})">palette</button></span></div>
++      <div class="row"><span>Font</span><span><button class="ghost sm" onclick="mm.pick('${p}_font_path','font')">.ttf…</button><button class="link" onclick="mm.set({${p}_font_path:''})">default</button></span></div>`;
++  });
++}
++
++function knobs() {
++  $("#knobs").innerHTML = Object.entries(state.random_knobs || {}).map(([k, label]) =>
++    `<label class="chk"><input type="checkbox" data-knob="${k}"> ${esc(label)}</label>`).join("");
++  document.querySelectorAll("[data-knob]").forEach((el) => el.addEventListener("change", () => {
++    const on = [...document.querySelectorAll("[data-knob]")].filter((x) => x.checked).map((x) => x.dataset.knob);
++    mm.set({ random_knobs: on });
++  }));
++}
++
+ function lengths() {
+   const cur = state.config.max_seconds;
+   $("#lengths").innerHTML = Object.entries(state.lengths).map(([k, v]) =>
+@@ -236,14 +338,32 @@ function lengths() {
+ function fill() {
+   const c = state.config;
+   document.querySelectorAll("[data-k]").forEach((el) => {
++    if (el === document.activeElement && el.type === "text") return;   // don't fight the user's typing
+     const v = c[el.dataset.k];
+-    if (el.type === "checkbox") el.checked = !!v; else el.value = v;
++    if (el.type === "checkbox") el.checked = !!v;
++    else if (el.type === "color") el.value = /^#[0-9a-f]{6}$/i.test(v || "") ? v : (el.dataset.def || "#000000");
++    else el.value = v;
++    if (el.type === "range") showVal(el);
++  });
++  document.querySelectorAll("[data-l]").forEach((el) => {
++    const lst = c[el.dataset.l] || [], v = lst[+el.dataset.i];
++    el.value = /^#[0-9a-f]{6}$/i.test(v || "") ? v : el.dataset.def;
++    el.style.opacity = v ? 1 : 0.45;
+   });
++  document.querySelectorAll("[data-csv]").forEach((el) => { if (el !== document.activeElement) el.value = (c[el.dataset.csv] || []).join(", "); });
++  document.querySelectorAll("[data-knob]").forEach((el) => (el.checked = (c.random_knobs || []).includes(el.dataset.knob)));
++  $("#custompts").hidden = c.container_shape !== "custom";
++  if (c.container_shape === "custom" && document.activeElement !== $("#ptsbox")) $("#ptsbox").value = JSON.stringify(c.container_points || []);
++  $("#customsizes").hidden = c.size_curve !== "custom";
++  $("#bgname").textContent = c.bg_mode === "image" ? (c.background_image ? c.background_image.split(/[\\/]/).pop() : "Pick an image")
++    : c.bg_mode === "video" ? (c.background_video ? c.background_video.split(/[\\/]/).pop() + " (loops)" : "Pick a video") : "";
+   swatches($("#palettes"), (n) => mm.set({ palette: n }), c.palette);
+   $("#imgcount").textContent = c.tier_image_folder ? "Folder: " + c.tier_image_folder.split(/[\\/]/).pop() + " (sorted by name)"
+     : c.tier_images.length ? `${c.tier_images.length} image(s) loaded` : "Folder or files, one image per tier, smallest first. Name them 1, 2, 3…";
+   if (state.lengths) lengths();
+-  $("#soundname").textContent = c.sound_path ? c.sound_path.split(/[\\/]/).pop() : "Built-in pop. Any Myinstants mp3 works.";
++  $("#soundname").textContent = c.auto_sounds ? "New Myinstants sounds are fetched for every render (" + (c.auto_sound_keywords || "satisfying list") + ")"
++    : c.tier_sounds.length ? `${new Set(c.tier_sounds.filter(Boolean)).size} different sounds across the tiers`
++    : c.sound_path ? c.sound_path.split(/[\\/]/).pop() : "Built-in pop. Search Myinstants above or drop any file.";
+   $("#outdir").textContent = state.output_dir || "";
+   $("#musicname").textContent = c.music_path ? c.music_path.split(/[\\/]/).pop() : "No background music.";
+   const res = { "720p": "720×1280", "1080p": "1080×1920", "1440p": "1440×2560", "4k": "2160×3840" }[c.export_resolution] || "";
+@@ -251,17 +371,37 @@ function fill() {
+   if (sfx.bufKey && sfx.bufKey !== (c.sound_path || "") + "|") sfx.load();
+ }
+ 
++function showVal(el) {
++  let o = el.nextElementSibling;
++  if (!o || !o.classList.contains("v")) { o = document.createElement("i"); o.className = "v"; el.after(o); }
++  const n = parseFloat(el.value);
++  o.textContent = Math.abs(n) >= 100 || Number.isInteger(n) ? Math.round(n) : n.toFixed(2).replace(/0$/, "");
++}
++
+ function bindInputs() {
+   const pv = $("#pvsound");
+   if (pv) { pv.checked = sfx.on; pv.onchange = () => { sfx.on = pv.checked; localStorage.setItem("mm_pvsound", pv.checked ? "1" : "0"); if (sfx.on) { sfx.ensure(); sfx.load(); } }; }
+   document.querySelectorAll("[data-k]").forEach((el) => {
+-    const ev = el.type === "text" ? "change" : "input";
++    const ev = el.type === "text" || el.type === "number" ? "change" : "input";
+     el.addEventListener(ev, () => {
+       let v = el.type === "checkbox" ? el.checked : el.value;
+-      if (el.type === "range" || (el.tagName === "SELECT" && !isNaN(v))) v = parseFloat(v);
+-      if (el.type === "range") queueSet({ [el.dataset.k]: v }); else mm.set({ [el.dataset.k]: v });
++      if (el.type === "range" || el.type === "number" || (el.tagName === "SELECT" && v !== "" && !isNaN(v))) v = parseFloat(v);
++      if (el.type === "range") showVal(el);
++      if (el.type === "range" || el.type === "color") queueSet({ [el.dataset.k]: v }); else mm.set({ [el.dataset.k]: v });
+     });
+   });
++  document.querySelectorAll("[data-l]").forEach((el) => el.addEventListener("input", () => {
++    const key = el.dataset.l, lst = [...(state.config[key] || [])];
++    while (lst.length <= +el.dataset.i) lst.push(lst.length ? "#E2ECE9" : "#FDE2E4");
++    lst[+el.dataset.i] = el.value;
++    queueSet({ [key]: lst, bg_mode: lst.length === 1 ? "solid" : "gradient" });
++  }));
++  document.querySelectorAll("[data-csv]").forEach((el) => el.addEventListener("change", () => {
++    let parts = el.value.split(",").map((x) => x.trim()).filter(Boolean);
++    if (el.dataset.csv === "tier_sizes") parts = parts.map(parseFloat).filter((n) => n > 0);
++    mm.set({ [el.dataset.csv]: parts });
++  }));
++  $("#sq").addEventListener("keydown", (e) => { if (e.key === "Enter") mm.soundSearch(); });
+ }
+ 
+ function onboarding() {
+@@ -330,11 +470,19 @@ async function boot() {
+   $("#hooks").innerHTML = state.hooks.map((h) => `<option value="${esc(h)}">`).join("");
+   $("#emojiset").innerHTML += Object.entries(state.emoji_sets).map(([k, v]) => `<option value="${k}">${v.slice(0, 3).join("")} ${k}</option>`).join("");
+   $("#emojiset").onchange = (e) => mm.emojiSet(e.target.value);
++  $("#bgmodes").innerHTML = (state.bg_modes || []).map((s) => `<option>${s}</option>`).join("");
++  $("#curves").innerHTML = (state.size_curves || []).map((s) => `<option>${s}</option>`).join("");
++  $("#pstyles").innerHTML = (state.particle_styles || []).map((s) => `<option>${s}</option>`).join("");
++  $("#kwchips").innerHTML = (state.keywords || []).map((k) => `<button onclick="mm.soundSearch('${esc(k)}')">${esc(k)}</button>`).join("");
++  themes(state.themes);
++  textStyles();
++  knobs();
+   aiModels();
+   bindInputs();
+   fill();
+   aiHint();
+   mm.prep().catch(() => {});   // cached after the first run, so this is instant
++  soundRows().catch(() => {});
+   if (state.onboarded) setPreview(true); else onboarding();   // preview waits until onboarding is done
+ }
+ 
+diff --git a/mm911/gui/web/index.html b/mm911/gui/web/index.html
+index 192a554..8b12e23 100644
+--- a/mm911/gui/web/index.html
++++ b/mm911/gui/web/index.html
+@@ -34,30 +34,104 @@
+ </main>
+ 
+ <section class="inspector" id="inspector">
++  <details open><summary>Themes</summary>
++    <div class="row"><select id="themes"><option value="">Saved themes…</option></select><button class="ghost sm" onclick="mm.loadTheme()">Load</button><button class="link" onclick="mm.deleteTheme()">delete</button></div>
++    <div class="row"><input type="text" id="themename" placeholder="Theme name"><button class="ghost sm" onclick="mm.saveTheme()">Save</button></div>
++    <div class="row"><span>Share</span><span><button class="ghost sm" onclick="mm.importTheme()">Import…</button> <button class="ghost sm" onclick="mm.exportTheme()">Export…</button></span></div>
++  </details>
+   <details open><summary>Look</summary>
+     <div class="row"><span>Palette</span><div id="palettes" class="swatches"></div></div>
+     <div class="row"><span>Container</span><select data-k="container_shape" id="shapes"></select></div>
+-    <div class="row"><span>Size</span><input type="range" data-k="container_radius" min="320" max="520" step="5"></div>
+-    <div class="row"><span>Wall</span><input type="range" data-k="container_thickness" min="4" max="40"></div>
+-    <div class="row"><span>Spin °/s</span><input type="range" data-k="container_spin" min="-60" max="60"></div>
+-    <div class="row"><span>Background</span><button class="ghost sm" onclick="mm.pick('background_image','image')">Choose…</button><button class="link" onclick="mm.set({background_image:''})">clear</button></div>
++    <div class="row col" id="custompts" hidden><span>Custom points <em class="hint">[[x,y],…] from -1 to 1, y down</em></span><textarea id="ptsbox" rows="3" spellcheck="false"></textarea><button class="ghost sm" onclick="mm.setPoints()">Apply shape</button></div>
++    <div class="row"><span>Size</span><input type="range" data-k="container_radius" min="240" max="530" step="5"></div>
++    <div class="row"><span>Wall</span><input type="range" data-k="container_thickness" min="2" max="48"></div>
++    <div class="row"><span>Height</span><input type="range" data-k="container_y" min="0.4" max="0.65" step="0.005"></div>
++    <div class="row"><span>Wall colour</span><span><input type="color" data-k="container_color" data-def="#5B5F97"><button class="link" onclick="mm.set({container_color:''})">palette</button></span></div>
++    <div class="row"><span>Glow</span><input type="range" data-k="container_glow" min="0" max="1" step="0.05"></div>
++    <div class="row"><span>Glow colour</span><span><input type="color" data-k="container_glow_color" data-def="#FFFFFF"><button class="link" onclick="mm.set({container_glow_color:''})">wall</button></span></div>
++    <div class="row"><span>Spin °/s</span><input type="range" data-k="container_spin" min="-90" max="90"></div>
++    <div class="row"><span>Wobble °/s</span><input type="range" data-k="spin_wobble" min="0" max="60"></div>
++    <div class="row"><span>Wobble period</span><input type="range" data-k="spin_wobble_period" min="1" max="12" step="0.5"></div>
+     <div class="row"><span>Tier numbers</span><input type="checkbox" data-k="show_tier_labels"></div>
+-    <div class="row"><span>Progress strip</span><input type="checkbox" data-k="show_progress"></div>
++    <div class="row"><span>Tier strip</span><input type="checkbox" data-k="show_progress"></div>
++  </details>
++  <details><summary>Background</summary>
++    <div class="row"><span>Type</span><select data-k="bg_mode" id="bgmodes"></select></div>
++    <div class="row"><span>Colours</span><span class="bgcols"><input type="color" data-l="bg_colors" data-i="0" data-def="#FDE2E4"><input type="color" data-l="bg_colors" data-i="1" data-def="#E2ECE9"><input type="color" data-l="bg_colors" data-i="2" data-def="#FFFFFF"><button class="link" onclick="mm.bgThird()">±3rd</button></span></div>
++    <div class="row"><span>Angle °</span><input type="range" data-k="bg_angle" min="0" max="360" step="5"></div>
++    <div class="row"><span>Image</span><span><button class="ghost sm" onclick="mm.pick('background_image','image',{bg_mode:'image'})">Choose…</button><button class="link" onclick="mm.set({background_image:''})">clear</button></span></div>
++    <div class="row"><span>Video loop</span><span><button class="ghost sm" onclick="mm.pick('background_video','video',{bg_mode:'video'})">Choose…</button><button class="link" onclick="mm.set({background_video:''})">clear</button></span></div>
++    <div class="row"><span>Dim image/video</span><input type="range" data-k="bg_dim" min="0" max="200"></div>
++    <div class="hint" id="bgname"></div>
++  </details>
++  <details><summary>Balls</summary>
++    <div class="row"><span>Size</span><input type="range" data-k="ball_scale" min="0.4" max="1.8" step="0.02"></div>
++    <div class="row"><span>Smallest px</span><input type="range" data-k="base_radius" min="8" max="50"></div>
++    <div class="row"><span>Growth / tier</span><input type="range" data-k="growth" min="1.1" max="1.7" step="0.01"></div>
++    <div class="row"><span>Size curve</span><select data-k="size_curve" id="curves"></select></div>
++    <div class="row col" id="customsizes" hidden><span>Radius per tier (px, comma separated)</span><input type="text" data-csv="tier_sizes" placeholder="20, 28, 40, 57, 80…"></div>
++    <div class="row"><span>Fit container</span><input type="checkbox" data-k="auto_fit"></div>
++    <div class="row"><span>Outline px</span><input type="range" data-k="ball_outline" min="0" max="12"></div>
++    <div class="row"><span>Outline colour</span><span><input type="color" data-k="ball_outline_color" data-def="#333333"><button class="link" onclick="mm.set({ball_outline_color:''})">auto</button></span></div>
++    <div class="row"><span>Shadow</span><input type="range" data-k="ball_shadow" min="0" max="1" step="0.05"></div>
++    <div class="row"><span>Glow</span><input type="range" data-k="ball_glow" min="0" max="1" step="0.05"></div>
++  </details>
++  <details><summary>Effects</summary>
++    <div class="row"><span>Particles</span><select data-k="particle_style" id="pstyles"></select></div>
++    <div class="row"><span>Amount</span><input type="range" data-k="particle_amount" min="0" max="3" step="0.1"></div>
++    <div class="row"><span>Speed</span><input type="range" data-k="particle_speed" min="0.3" max="2.5" step="0.05"></div>
++    <div class="row"><span>Fall</span><input type="range" data-k="particle_gravity" min="0" max="2500" step="50"></div>
++    <div class="row col"><span>Particle colours <em class="hint">hex, comma separated, empty = tier colour</em></span><input type="text" data-csv="particle_colors" placeholder="#FFFFFF, #FFD166"></div>
++    <div class="row"><span>Screen shake px</span><input type="range" data-k="shake_strength" min="0" max="30"></div>
++    <div class="row"><span>Shake from tier</span><input type="range" data-k="shake_min_tier" min="1" max="20"></div>
++    <div class="row"><span>Combo popups</span><input type="checkbox" data-k="combo_popups"></div>
++    <div class="row"><span>Combo from x</span><input type="range" data-k="combo_min" min="2" max="6"></div>
++    <div class="row"><span>Tier banners</span><input type="checkbox" data-k="tier_banners"></div>
++    <div class="row"><span>Banner from tier</span><input type="range" data-k="banner_min_tier" min="2" max="20"></div>
++    <div class="row"><span>Slow-mo finale</span><input type="checkbox" data-k="slowmo_final"></div>
++    <div class="row"><span>Slow-mo speed</span><input type="range" data-k="slowmo_factor" min="0.1" max="0.9" step="0.05"></div>
++    <div class="row"><span>Slow-mo seconds</span><input type="range" data-k="slowmo_seconds" min="0.3" max="3" step="0.1"></div>
++    <div class="row"><span>Near-miss tension</span><input type="checkbox" data-k="near_miss"></div>
++    <div class="row"><span>Pause chance</span><input type="range" data-k="near_miss_chance" min="0" max="1" step="0.05"></div>
++    <div class="row"><span>Progress bar</span><input type="checkbox" data-k="show_progress_bar"></div>
++    <div class="row"><span>Bar height</span><input type="range" data-k="progress_bar_y" min="0.05" max="0.97" step="0.005"></div>
++    <div class="row"><span>Bar colour</span><span><input type="color" data-k="progress_bar_color" data-def="#FFFFFF"><button class="link" onclick="mm.set({progress_bar_color:''})">text</button></span></div>
+   </details>
+   <details open><summary>Text</summary>
+     <div class="row col"><span>Theme name</span><input type="text" data-k="theme_name"></div>
+     <div class="row col"><span>Hook</span><input type="text" data-k="hook" list="hooks"><datalist id="hooks"></datalist></div>
++    <div class="textstyle" data-p="hook"></div>
++    <div class="row"><span>Counter</span><input type="checkbox" data-k="show_counter"></div>
++    <div class="row col"><span>Counter text <em class="hint">{merges} {tier} {tiers} {time} {combo}</em></span><input type="text" data-k="counter_text"></div>
++    <div class="textstyle" data-p="counter"></div>
+     <div class="row col"><span>Watermark</span><input type="text" data-k="watermark" placeholder="@yourchannel"></div>
+-    <div class="row"><span>Font</span><button class="ghost sm" onclick="mm.pick('font_path','font')">Choose .ttf…</button><button class="link" onclick="mm.set({font_path:''})">default</button></div>
++    <div class="textstyle" data-p="watermark"></div>
++    <div class="row"><span>Watermark opacity</span><input type="range" data-k="watermark_opacity" min="20" max="255"></div>
++    <div class="row col"><span>Final Form text</span><input type="text" data-k="final_text"></div>
++    <div class="row"><span>Size</span><input type="range" data-k="final_text_size" min="40" max="200"></div>
++    <div class="row"><span>Height</span><input type="range" data-k="final_text_y" min="0.05" max="0.92" step="0.005"></div>
++    <div class="row"><span>Colour</span><span><input type="color" data-k="final_text_color" data-def="#FFFFFF"><button class="link" onclick="mm.set({final_text_color:''})">palette</button></span></div>
++    <div class="row"><span>Ending hold s</span><input type="range" data-k="end_hold_seconds" min="0.5" max="6" step="0.1"></div>
++    <div class="row col"><span>Miss text</span><input type="text" data-k="fail_text"></div>
++    <div class="row col"><span>Tension text</span><input type="text" data-k="near_miss_text"></div>
++    <div class="row col"><span>Combo text <em class="hint">{n}</em></span><input type="text" data-k="combo_text"></div>
++    <div class="row col"><span>Banner text <em class="hint">{name} {tier}</em></span><input type="text" data-k="banner_text"></div>
++    <div class="row"><span>Font (all)</span><span><button class="ghost sm" onclick="mm.pick('font_path','font')">Choose .ttf…</button><button class="link" onclick="mm.set({font_path:''})">default</button></span></div>
+   </details>
+   <details open><summary>Gameplay</summary>
+     <div class="row"><span>Forms</span><span><input type="range" data-k="tiers" min="3" max="15" style="width:110px"> <input class="num" type="number" data-k="tiers" min="3" max="15"></span></div>
+-    <div class="row"><span>Drop every</span><input type="range" data-k="spawn_interval" min="0.08" max="0.6" step="0.01"></div>
+-    <div class="row"><span>Gravity</span><input type="range" data-k="gravity" min="600" max="3000" step="50"></div>
+-    <div class="row"><span>Bounce</span><input type="range" data-k="bounce" min="0" max="0.8" step="0.01"></div>
+-    <div class="row"><span>Speed</span><input type="range" data-k="speed" min="0.5" max="2" step="0.05"></div>
++    <div class="row"><span>Drop every</span><input type="range" data-k="spawn_interval" min="0.05" max="0.8" step="0.01"></div>
++    <div class="row"><span>Drop randomness</span><input type="range" data-k="spawn_jitter" min="0" max="0.8" step="0.05"></div>
++    <div class="row"><span>Drop speed</span><input type="range" data-k="drop_speed" min="0" max="1500" step="10"></div>
++    <div class="row"><span>Biggest drop tier</span><input type="range" data-k="spawn_max_tier" min="1" max="10"></div>
++    <div class="row"><span>Fill limit</span><input type="range" data-k="fill_cap" min="0.4" max="1.1" step="0.02"></div>
++    <div class="row"><span>Gravity</span><input type="range" data-k="gravity" min="200" max="4000" step="50"></div>
++    <div class="row"><span>Bounce</span><input type="range" data-k="bounce" min="0" max="0.95" step="0.01"></div>
++    <div class="row"><span>Friction</span><input type="range" data-k="friction" min="0" max="1.5" step="0.02"></div>
++    <div class="row"><span>Speed</span><input type="range" data-k="speed" min="0.3" max="2.5" step="0.05"></div>
+     <div class="row"><span>Length</span><div class="pills" id="lengths"></div></div>
+-    <div class="row"><span>Max length s</span><input type="range" data-k="max_seconds" min="15" max="60"></div>
++    <div class="row"><span>Custom seconds</span><input type="number" data-k="max_seconds" min="5" max="180" step="1"></div>
++    <div class="row"><span>Until Final Form</span><input type="checkbox" data-k="until_finished"></div>
+   </details>
+   <details open><summary>Tiers</summary>
+     <div class="row"><span>Emoji set</span><select id="emojiset"><option value="">None (numbers)</option></select></div>
+@@ -72,17 +146,40 @@
+     <div id="tierlist" class="tierlist"></div>
+     <button class="link" onclick="mm.clearTiers()">Clear tier names, colours, emoji and images</button>
+   </details>
+-  <details open><summary>Sound</summary>
+-    <div class="row"><span>Sound</span><span><button class="ghost sm" onclick="mm.pick('sound_path','sound')">Drop sound…</button> <button class="ghost sm play" id="playdemo" onclick="mm.listen('demo')" title="Listen: how it sounds in a video">▶</button></span></div>
++  <details open><summary>Sounds · Myinstants</summary>
++    <div class="row search"><input type="text" id="sq" placeholder="pop, bubble, boing, vine boom…"><button class="ghost sm" onclick="mm.soundSearch()">Search</button></div>
++    <div class="chips" id="kwchips"></div>
++    <div class="hint" id="smsg"></div>
++    <div class="sresults" id="sresults"></div>
++    <div class="row"><span>Auto mode</span><select data-k="auto_sound_strategy"><option value="sorted">Several sounds, sorted low→high</option><option value="pitch_up">One sound, pitched up</option></select></div>
++    <div class="row"><span>Different sounds</span><input type="range" data-k="auto_sound_count" min="2" max="8"></div>
++    <div class="row"><span>Own drop/final</span><input type="checkbox" data-k="auto_sound_separate"></div>
++    <div class="row col"><span>Drop keyword <em class="hint">empty = shortest clip</em></span><input type="text" data-k="auto_drop_keyword" placeholder="click"></div>
++    <div class="row col"><span>Final keyword <em class="hint">empty = top tier pitched up</em></span><input type="text" data-k="auto_final_keyword" placeholder="vine boom"></div>
++    <button class="primary sm wide" onclick="mm.autoFill()">✨ Auto fill low → high</button>
++    <div class="row"><span>New sounds every render</span><input type="checkbox" data-k="auto_sounds"></div>
++    <div class="row col"><span>Keywords for auto <em class="hint">comma separated, empty = satisfying list</em></span><input type="text" data-k="auto_sound_keywords" placeholder="pop, bubble"></div>
++    <div class="label sub">Per tier <em class="hint">▶ hear it exactly as rendered · pitch shift in semitones (empty = auto). Auto fill sorts the sounds low → high, so shifts can go down when the next sound is already higher.</em></div>
++    <div id="stiers" class="stiers"></div>
++    <div class="row"><span>Sound for all</span><span><button class="ghost sm" onclick="mm.pickSound('all')">File…</button> <button class="ghost sm play" id="playdemo" onclick="mm.listen('demo')" title="Listen: how it sounds in a video">▶</button><button class="link" onclick="mm.clearSound('all')">built-in pop</button></span></div>
+     <div class="hint" id="soundname">Built-in pop. Any Myinstants mp3 works.</div>
+-    <div class="row"><span></span><button class="link" onclick="mm.set({sound_path:''})">Use built-in pop</button></div>
++    <div class="row"><span>Pitch step</span><input type="range" data-k="pitch_step" min="0" max="4" step="0.1"></div>
++    <div class="row"><span>Pitch jitter</span><input type="range" data-k="pitch_jitter" min="0" max="2" step="0.1"></div>
+     <div class="row"><span>Volume</span><input type="range" data-k="sound_volume" min="0" max="1.5" step="0.05"></div>
++    <div class="row"><span>Drop volume</span><input type="range" data-k="drop_volume" min="0" max="1.5" step="0.05"></div>
++    <div class="row"><span>Final volume</span><input type="range" data-k="final_volume" min="0" max="2" step="0.05"></div>
+     <div class="row"><span>Drop sounds</span><input type="checkbox" data-k="drop_sounds"></div>
+     <div class="row"><span>🔊 Preview sound</span><input type="checkbox" id="pvsound"></div>
+     <div class="row"><span>Music</span><span><button class="ghost sm" onclick="mm.pick('music_path','sound')">Add music…</button> <button class="ghost sm play" onclick="mm.listen('music')" title="Listen to the music">▶</button></span></div>
+     <div class="hint" id="musicname">No background music.</div>
+     <div class="row"><span>Music volume</span><input type="range" data-k="music_volume" min="0" max="1" step="0.05"></div>
+     <div class="row"><span></span><button class="link" onclick="mm.set({music_path:''})">Remove music</button></div>
++    <audio id="player" preload="none"></audio>
++  </details>
++  <details><summary>Batch</summary>
++    <div class="label sub">Vary per video</div>
++    <div id="knobs" class="knobs"></div>
++    <div class="row col"><span>Sound keywords <em class="hint">one per video, comma separated</em></span><input type="text" data-csv="batch_sound_keywords" placeholder="pop, bubble, boing, water drop"></div>
+   </details>
+   <details open><summary>Export</summary>
+     <div class="row"><span>FPS</span><select data-k="fps"><option value="24">24 (film)</option><option value="25">25</option><option value="30">30</option><option value="48">48</option><option value="50">50</option><option value="60">60 (smooth)</option><option value="90">90</option><option value="120">120</option></select></div>
+@@ -131,6 +228,7 @@
+       <p>Use any clip, like one from Myinstants. It's pitched up automatically on every merge.</p>
+       <button class="ghost" onclick="mm.pick('sound_path','sound')">Choose a sound…</button>
+       <button class="ghost" onclick="mm.listen('demo')">▶ Listen</button>
++      <button class="ghost" onclick="mm.autoFill('pop')">✨ Auto-pick pops from Myinstants</button>
+       <p class="hint">Tip: plain pops and boings are safest from copyright claims.</p>
+     </div>
+     <div class="dots"><i></i><i></i><i></i><i></i></div>
+diff --git a/mm911/gui/web/style.css b/mm911/gui/web/style.css
+index e7baf0e..3d6366c 100644
+--- a/mm911/gui/web/style.css
++++ b/mm911/gui/web/style.css
+@@ -102,3 +102,40 @@ input[type=text]:focus,select:focus{border-color:#c9c9cf;background:#fff}
+ .tier img:hover{outline:2px solid var(--accent);outline-offset:1px}
+ .num{width:58px;border:1px solid var(--line);border-radius:8px;padding:5px 6px;font:inherit;text-align:center}
+ .card .hint{word-break:normal}
++/* v0.3: value labels, sounds panel, themes, batch knobs */
++.row input[type=range]{width:130px}
++.row i.v{font-style:normal;font-size:11px;color:var(--mute);min-width:30px;text-align:right;font-variant-numeric:tabular-nums}
++.row input[type=number]{width:70px;border:1px solid var(--line);border-radius:8px;padding:5px 7px;font:inherit;background:#FBFBFD}
++.row input[type=color]{width:26px;height:26px;border:0;padding:0;background:none;cursor:pointer;vertical-align:middle}
++.row input[type=color]::-webkit-color-swatch-wrapper{padding:0}
++.row input[type=color]::-webkit-color-swatch{border-radius:50%;border:1px solid var(--line)}
++.row select{max-width:170px}
++.row em.hint{font-style:normal;padding:0 0 0 4px}
++textarea{border:1px solid var(--line);border-radius:8px;padding:7px 9px;font:12px/1.4 ui-monospace,Consolas,monospace;background:#FBFBFD;resize:vertical}
++.textstyle{border-left:2px solid var(--line);margin:0 0 6px 4px;padding-left:8px}
++.bgcols{display:flex;gap:4px;align-items:center}
++.label.sub{padding:8px 2px 4px}
++.xs{padding:3px 7px;font-size:11.5px}
++.wide{width:100%;margin:6px 0}
++.row.search input{flex:1;min-width:0}
++.chips{display:flex;flex-wrap:wrap;gap:4px;padding:2px 0 6px}
++.chips button{background:#F0F0F3;color:#3a3a3c;padding:3px 9px;border-radius:20px;font-size:11.5px}
++.chips button:hover{background:#E5E5EA}
++.sresults{max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:3px;margin-bottom:6px}
++.sres{display:grid;grid-template-columns:24px 1fr auto auto auto;gap:4px;align-items:center;font-size:12.5px}
++.sres span,.stier span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
++.play{width:24px;height:24px;border-radius:50%;background:var(--ink);color:#fff;font-size:10px;padding:0}
++.stiers{display:flex;flex-direction:column;gap:3px;margin-bottom:6px}
++.stier{display:grid;grid-template-columns:34px 1fr 24px 56px auto auto;gap:4px;align-items:center;font-size:12px}
++.stier b{font-size:11.5px;color:var(--mute)}
++.stier span.own{color:var(--ink);font-weight:600}
++.stier span{color:var(--mute)}
++.stier input[type=number]{width:56px;border:1px solid var(--line);border-radius:7px;padding:3px 5px;font:inherit;font-size:12px}
++.knobs{display:grid;grid-template-columns:1fr 1fr;gap:4px 8px;padding-bottom:6px}
++#themes{flex:1;min-width:0}
++#themename{flex:1;min-width:0}
++.inspector{overflow-x:hidden}
++.row.col>span{white-space:normal}
++.label.sub em{text-transform:none;letter-spacing:0;font-weight:400}
++.stier input[type=number]{min-width:0}
++.label.sub em.hint{word-break:normal}
+diff --git a/mm911/modes/merge.py b/mm911/modes/merge.py
+index b13e1b5..5340a17 100644
+--- a/mm911/modes/merge.py
++++ b/mm911/modes/merge.py
+@@ -127,6 +127,8 @@ class MergeSim:
+         cfg.clamp()
+         self.cfg = cfg
+         self.rng = random.Random(cfg.seed if seed is None else seed)
++        # extra effect randomness (particle colour/rotation, near-miss) has its own stream
++        self.fx = random.Random((cfg.seed if seed is None else seed) * 7919 + 17)
+         self.space = pymunk.Space()
+         self.space.gravity = (0, cfg.gravity)
+         self.space.iterations = 20
+@@ -322,8 +324,8 @@ class MergeSim:
+         r = pen[0].shape.radius
+         if math.hypot(a.x - b.x, a.y - b.y) < r * 3.2:
+             self._near_miss_done = True
+-            if self.rng.random() < c.near_miss_chance:   # randomized: not every video gets the pause
+-                self._slow(0.45, self.rng.uniform(0.6, 1.1))
++            if self.fx.random() < c.near_miss_chance:   # randomized: not every video gets the pause
++                self._slow(0.45, self.fx.uniform(0.6, 1.1))
+ 
+     def _burst(self, pos, tier: int, n: int) -> None:
+         c = self.cfg
+@@ -331,13 +333,16 @@ class MergeSim:
+         r = c.tier_radius(tier)
+         ncol = max(1, len(c.particle_colors))
+         for _ in range(n):
++            # the same 4 draws per particle as v0.3 stay on the gameplay rng, so old seeds re-render identically;
++            # the new extras (colour, rotation, spin) come from the effects rng
+             a = self.rng.uniform(0, 2 * math.pi)
+             s = self.rng.uniform(150, 600) * (1 + tier * 0.08) * c.particle_speed
+             life = self.rng.uniform(0.4, 0.9) * (1.4 if c.particle_style == "confetti" else 1.0)
++            size = self.rng.uniform(4, 10)
+             self.particles.append(Particle(pos[0] + math.cos(a) * r * 0.5, pos[1] + math.sin(a) * r * 0.5,
+                                            math.cos(a) * s, math.sin(a) * s,
+-                                           life, (tier, self.rng.randrange(ncol)), self.rng.uniform(4, 10),
+-                                           self.rng.uniform(0, 360), self.rng.uniform(-720, 720), life))
++                                           life, (tier, self.fx.randrange(ncol)), size,
++                                           self.fx.uniform(0, 360), self.fx.uniform(-720, 720), life))
+ 
+     # ---------- main step ----------
+     def step(self, dt: float) -> None:
+diff --git a/mm911/render.py b/mm911/render.py
+index 080582d..beceb68 100644
+--- a/mm911/render.py
++++ b/mm911/render.py
+@@ -218,7 +218,7 @@ class Renderer:
+         """Supersampled ball sprite: fill, rim, soft highlight, label or image."""
+         cfg = self.cfg
+         r = cfg.tier_radius(t) * self.scale
+-        ss = 3
++        ss = 3 if r < 450 else 2 if r < 900 else 1     # supersample, but keep huge sprites in memory
+         R = max(2, int(r * ss))
+         big = pygame.Surface((R * 2 + 4, R * 2 + 4), pygame.SRCALPHA)
+         c = (R + 2, R + 2)
+diff --git a/mm911/sounds.py b/mm911/sounds.py
+index b8e4fae..16980e6 100644
+--- a/mm911/sounds.py
++++ b/mm911/sounds.py
+@@ -112,6 +112,12 @@ def _get(url: str, binary: bool = False, limit: int | None = None) -> bytes | st
+     raise ConnectionError(f"{url}: {last}")
+ 
+ 
++def _js_unescape(s: str) -> str:
++    """Names sit inside JS string literals: undo \\' and \\uXXXX escapes, then HTML entities."""
++    s = re.sub(r"\\u([0-9a-fA-F]{4})", lambda m: chr(int(m.group(1), 16)), s)
++    return html.unescape(s.replace("\\'", "'").replace("\\\\", "\\")).strip()
++
++
+ def parse_search(page: str) -> list[SoundResult]:
+     """Pull (name, mp3) pairs out of a Myinstants search / list page."""
+     out: list[SoundResult] = []
+@@ -121,7 +127,7 @@ def parse_search(page: str) -> list[SoundResult]:
+         if url in seen:
+             continue
+         seen.add(url)
+-        out.append(SoundResult(html.unescape(name.replace("\\'", "'")).strip(), url, page_url, slug))
++        out.append(SoundResult(_js_unescape(name), url, page_url, slug))
+     if not out:  # markup changed: fall back to the play buttons
+         for mp3, slug, name in _PLAY_RE.findall(page):
+             url = urllib.parse.urljoin(BASE, mp3)
+diff --git a/presets/custom_bowl_confetti.json b/presets/custom_bowl_confetti.json
+index cc55411..d49b067 100644
+--- a/presets/custom_bowl_confetti.json
++++ b/presets/custom_bowl_confetti.json
+@@ -72,7 +72,7 @@
+   "show_progress_bar": true,
+   "progress_bar_color": "#5B5F97",
+   "max_seconds": 43.0,
+-  "seed": 7,
+-  "spawn_max_tier": 5,
++  "seed": 4,
++  "spawn_max_tier": 3,
+   "spawn_interval": 0.14
+ }
+diff --git a/presets/neon_triangle_combo.json b/presets/neon_triangle_combo.json
+index cbf63e5..efd5ad3 100644
+--- a/presets/neon_triangle_combo.json
++++ b/presets/neon_triangle_combo.json
+@@ -52,5 +52,6 @@
+   "auto_sound_strategy": "sorted",
+   "auto_sound_count": 4,
+   "max_seconds": 43.0,
+-  "seed": 2
++  "seed": 1,
++  "spawn_max_tier": 3
+ }
+diff --git a/presets/space_planets_slowmo.json b/presets/space_planets_slowmo.json
+index a782581..3269ed3 100644
+--- a/presets/space_planets_slowmo.json
++++ b/presets/space_planets_slowmo.json
+@@ -60,7 +60,7 @@
+   "auto_sounds": true,
+   "auto_sound_keywords": "ding, xylophone",
+   "auto_final_keyword": "wow",
+-  "seed": 2,
+-  "spawn_max_tier": 5,
++  "seed": 1,
++  "spawn_max_tier": 3,
+   "spawn_interval": 0.13
+ }
+diff --git a/tests/test_sounds_customization.py b/tests/test_sounds_customization.py
+new file mode 100644
+index 0000000..f1ddd1c
+--- /dev/null
++++ b/tests/test_sounds_customization.py
+@@ -0,0 +1,93 @@
++"""Offline tests for Myinstants parsing / pitch mapping and the deep Merge customization (no network)."""
++import json
++
++import numpy as np
++
++from mm911 import sounds
++from mm911.config import MergeConfig, MAX_TIERS, SHAPES, PARTICLE_STYLES
++from mm911.modes.merge import MergeSim, container_points
++from mm911.render import Renderer, simulate, make_thumbnail
++from mm911.batch import vary
++
++SEARCH_HTML = """
++<div class="instant"><button class="small-button" onclick="play('/media/sounds/pop_7e9Is8L.mp3', 'loader-1', 'pop-sfx-75405')" title="Play Pop SFX sound" type="button"></button>
++<button type="button" class="webshare instant-action-button" onclick="share('Pop SFX', 'https://www.myinstants.com/en/instant/pop-sfx-75405/', '/media/sounds/pop_7e9Is8L.mp3', 'pop-sfx-75405')"></button></div>
++<div class="instant"><button onclick="share('It\\'s a \\u002D boing &amp; more', 'https://www.myinstants.com/en/instant/b/', '/media/sounds/boing.mp3', 'b')"></button></div>
++"""
++
++
++def test_parse_search():
++    res = sounds.parse_search(SEARCH_HTML)
++    assert [r.name for r in res] == ["Pop SFX", "It's a - boing & more"]
++    assert res[0].mp3_url == "https://www.myinstants.com/media/sounds/pop_7e9Is8L.mp3"
++
++
++def test_tier_pitches_rise_low_to_high():
++    measured = [800, 800, 800, 1500, 1500, 1500, 2600, 2600, 2600]
++    shifts = sounds.tier_pitches(measured, 9, step=1.6)
++    final = [sounds.semitones(h) + s for h, s in zip(measured, shifts)]
++    assert all(b > a for a, b in zip(final, final[1:]))
++    assert shifts[0] == 0
++
++
++def test_auto_offline_falls_back(monkeypatch, tmp_path):
++    monkeypatch.setenv("MM911_SOUND_CACHE", str(tmp_path))
++
++    def offline(*a, **k):
++        raise ConnectionError("offline")
++    monkeypatch.setattr(sounds, "_get", offline)
++    cfg = MergeConfig(auto_sounds=True, auto_sound_keywords="pop")
++    sounds.resolve_auto(cfg)                     # must not raise
++    assert cfg.sound_path == "" and cfg.tier_sounds == []
++
++
++def test_soundbank_pitch_order():
++    from mm911.audio import SoundBank
++    cfg = MergeConfig(tier_semitones=[0, None, 9])
++    bank = SoundBank(cfg)
++    assert bank.event("merge", 1)[1] == 1.6       # auto
++    assert bank.event("merge", 2)[1] == 9         # manual override
++    assert bank.event("final", 8)[1] > bank.event("merge", 8)[1]
++
++
++def test_every_shape_and_style_renders(tmp_path):
++    for i, shape in enumerate(SHAPES):
++        c = MergeConfig(container_shape=shape, max_seconds=1.5, fps=20, particle_style=PARTICLE_STYLES[i % 6],
++                        container_points=[[-1, -0.5], [0, 1], [1, -0.5]], bg_mode="gradient",
++                        bg_colors=["#112233", "#445566", "#778899"], ball_glow=0.5, ball_shadow=0.5,
++                        ball_outline=3, show_counter=True, show_progress_bar=True, shake_strength=8)
++        assert len(container_points(shape, 0, 0, 100, custom=c.container_points)) >= 3
++        sim, rend = MergeSim(c), Renderer(c, 0.25)
++        while not sim.done:
++            sim.step(1 / c.fps)
++            rend.draw(sim)
++        rend.close()
++
++
++def test_sizes_fit_and_curves():
++    for curve in ("exponential", "linear"):
++        for n in (3, 9, MAX_TIERS):
++            c = MergeConfig(tiers=n, size_curve=curve)
++            r = [c.tier_radius(t) for t in range(n)]
++            assert r == sorted(r) and r[-1] <= c.container_radius * 0.7 + 1e-6
++    c = MergeConfig(size_curve="custom", tier_sizes=[10, 20, 9999])
++    assert c.tier_radius(2) <= c.container_radius * 0.95
++
++
++def test_seeds_unchanged_by_visual_settings():
++    base = dict(seed=3, max_seconds=12, fps=30)
++    a = simulate(MergeConfig(**base))
++    b = simulate(MergeConfig(**base, particle_colors=["#fff", "#000"], particle_style="stars", shake_strength=10))
++    assert (a.merges, a.best_tier) == (b.merges, b.best_tier)
++
++
++def test_batch_knobs_and_presets(tmp_path):
++    import random
++    base = MergeConfig(random_knobs=["tiers", "background", "particles", "sound_keyword"],
++                       batch_sound_keywords=["pop", "boing"])
++    cfgs = [vary(base, i, random.Random(1), True) for i in range(4)]
++    assert {c.auto_sound_keywords for c in cfgs} == {"pop", "boing"}
++    assert all(c.bg_mode == "gradient" for c in cfgs)
++    from pathlib import Path
++    for p in Path(__file__).resolve().parent.parent.glob("presets/*.json"):
++        MergeConfig.from_dict(json.loads(p.read_text(encoding="utf-8")))
+-- 
+2.47.3
+
+
+From 63e5a45b9dd0ec6134f0e41d2ec8fc64e8ebcfb7 Mon Sep 17 00:00:00 2001
+From: Team RealHackers <realmrhacker26@gmail.com>
+Date: Sat, 7 Nov 2026 21:41:19 +0000
+Subject: [PATCH 3/3] =?UTF-8?q?=F0=9F=93=9D=20README=20+=20PROGRESS=20for?=
+ =?UTF-8?q?=20Myinstants=20sounds=20and=20deep=20customization=20(v0.5.0)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ README.md        | 33 ++++++++++++++++++++++++++++-----
+ docs/PROGRESS.md |  9 ++++++++-
+ mm911/config.py  |  2 +-
+ 3 files changed, 37 insertions(+), 7 deletions(-)
+
+diff --git a/README.md b/README.md
+index 7eef4a5..3110716 100644
+--- a/README.md
++++ b/README.md
+@@ -46,10 +46,13 @@
+ 
+ | Area | Status |
+ |------|--------|
+-| 🍉 Merge Evolution | ✅ **Working** (6 palettes, 6 shapes, spin, particles, Final Form ending) |
++| 🍉 Merge Evolution | ✅ **Working** (6 palettes, 11 shapes incl. custom polygon, spin + wobble, particles, Final Form ending) |
++| 🎛️ Unlimited Merge customization | ✅ Physics, 3-15 forms, size curves, container colour/glow, solid / 3-colour angled gradient / image / looping video backgrounds, ball outline/shadow/glow, 6 particle styles, screen shake, per-text font/size/colour/position, 15s preset + custom seconds + "until Final Form", themes save/load/import/export |
++| ✨ Shorts juice | ✅ Chain-combo popups, slow-mo final merge, progress bar to Final Form, near-miss tension ("ALMOST..."), tier-reached banners, merge counter |
++| 🔊 Myinstants auto sounds | ✅ Search + preview + download-once cache, auto-assign low → high pitch across tiers (one sound pitched up, or several sorted by measured pitch), separate drop / final sounds, per-tier sound + pitch override, offline fallback to the built-in pop |
+ | 🎨 Merge polish | ✅ Tier image folder + circle-crop preview, per-tier names / hex colours / emoji, 5 emoji sets, auto thumbnail `.jpg`, 30/45/60s presets |
+-| 🔊 Drop-in sound + auto pitch | ✅ Working (any mp3/wav/ogg, built-in pop) |
+-| 🏭 Batch factory + titles.csv | ✅ Working (anti-repeat rotation, "only wins" seed search) |
++| 🔊 Drop-in sound + auto pitch | ✅ Working (any mp3/wav/ogg, built-in pop, pitch step / jitter / volumes) |
++| 🏭 Batch factory + titles.csv | ✅ Working (anti-repeat rotation, pick which knobs vary, a Myinstants keyword per video, "only wins" seed search) |
+ | 🖥️ Desktop app | ✅ Splash, onboarding, live preview, inspector |
+ | 📦 Portable .exe | ✅ Built by GitHub Actions → [Nightly release](https://github.com/TeamRealHacker/money-maker-911/releases/tag/nightly) |
+ | ✂️ AI cut-outs + text filter | ✅ BiRefNet / ISNet / U²-Net offline (onnxruntime), sticker outline, skips images with text |
+@@ -155,7 +158,11 @@ pip install -r requirements-ai.txt   # only needed when running from source
+ 
+ ### 🔊 Sound
+ - Drop in **any sound file**: Myinstants clips, your own recordings, `.mp3 / .wav / .ogg`
+-- **Auto pitch** per tier, per bounce, per merge (rising pitch = more satisfying)
++- **Myinstants built in**: search, ▶ preview, "Use for tiers", or **✨ Auto fill low → high**. Several clips are
++  measured (spectral centroid + fundamental, decoded with the bundled FFmpeg), sorted, and pitch-shifted so tier 1 is
++  the lowest and the Final Form the highest. Optional separate drop / final sounds (e.g. `click` / `vine boom`).
++  Clips download once to `%APPDATA%\MoneyMaker911\sounds` (`~/.mm911/sounds` on Linux/macOS), never into the repo.
++- **Auto pitch** per tier, per bounce, per merge (rising pitch = more satisfying), with per-tier manual overrides
+ - Melody mode: import a MIDI file and every hit plays the next note
+ - Volume, reverb and random pitch-jitter so no two videos sound the same
+ - Optional background music slot (off by default)
+@@ -284,7 +291,22 @@ MoneyMaker911.exe render --preset presets\fruit_candy.json --out output\merge.mp
+ MoneyMaker911.exe batch --count 20 --out output --length 30 --emoji-set Fruit
+ MoneyMaker911.exe thumb --preset presets\emoji_fruit.json --out output\thumb.jpg
+ MoneyMaker911.exe render --image-folder C:\memes\cats --length 45 --out output\cats.mp4
++
++:: Myinstants sounds, picked automatically and laid out low -> high
++MoneyMaker911.exe render --myinstants "bubble pop" --out output\bubbles.mp4
++MoneyMaker911.exe render --auto-sounds --sound-strategy pitch_up --final-keyword "vine boom" --out output\pop.mp4
++MoneyMaker911.exe sounds search boing
++MoneyMaker911.exe sounds auto "pop, bubble" --tiers 9
++
++:: deep customization: flags for the common knobs, --set for any setting (export flags --fps --res --codec ... work too)
++MoneyMaker911.exe render --preset presets\neon_triangle_combo.json --length 15
++MoneyMaker911.exe render --forms 12 --shape triangle --bg-colors "#1a1a40,#7a1fa2,#ff6f61" --bg-angle 60 ^
++  --particles confetti --shake 12 --set ball_glow=0.6 --set show_progress_bar=true --out output\custom.mp4
++MoneyMaker911.exe batch --count 20 --randomize palette,shape,background,particles,sound_keyword ^
++  --sound-keywords "pop,bubble,boing,water drop" --out output
+ ```
++New showcase presets: `neon_triangle_combo`, `space_planets_slowmo`, `custom_bowl_confetti`, `minimal_mono_15s`. Every setting in the app is a key in the preset `.json` (see `mm911/config.py`), so a preset can change anything.
++
+ Every video also gets a matching `.jpg` thumbnail (the Final Form moment). Tier image folders are read in name order, so call files `1.png, 2.png, 3.png…`.
+ 
+ ### Option B: Run from source
+@@ -326,7 +348,8 @@ money-maker-911/
+ ├─ mm911/
+ │  ├─ config.py         # every editable setting, palettes, hooks
+ │  ├─ render.py         # renderer + FFmpeg export
+-│  ├─ audio.py          # sound loading, pitch, mixing
++│  ├─ audio.py          # sound loading, pitch, mixing (SoundBank: per-tier sounds)
++│  ├─ sounds.py         # Myinstants search / cache / pitch analysis / auto low->high
+ │  ├─ batch.py          # batch factory + titles.csv
+ │  ├─ modes/merge.py    # 🍉 Merge Evolution physics
+ │  ├─ gui/              # desktop app (splash, onboarding, studio)
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index ed18ea3..7845b5b 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -13,8 +13,15 @@
+ - **2026-11-08** · 🛠️ Stability fix: onboarding crash + freezing. pygame calls from the preview, render and UI threads are now serialized (was a native crash); preview thread snapshots the config and can't die on a bad setting; live preview is pulled by the page (requestAnimationFrame) instead of pushed with evaluate_js 30×/s, and pauses during onboarding / when minimized; JS API state made private (pywebview was walking the native Window object on load); sliders debounced; settings saved atomically; onboarding can't double-submit or get stuck; main window shows when loaded instead of after a fixed sleep; errors go to %APPDATA%\MoneyMaker911\app.log
+ - **2026-11-08** · ✂️ AI cut-outs + "Skip images with text" (v0.3.0): background removal with the rembg models BiRefNet-general (PCs with 12 GB+ RAM) / ISNet-general-use (default) / U²-Net, run offline with onnxruntime (uses your `rembg` install if you have one, otherwise a built-in runner with identical maths; the non-commercial BRIA model is never used). Models download once to `%APPDATA%\MoneyMaker911\models` (existing rembg downloads are reused). Cut-outs become stickers: tier-colour disc, white outline (toggle), soft shadow, auto-crop to the subject. "Quick" no-AI cut-out for flat backgrounds. Text check uses the 5 MB PP-OCRv4 text detector and skips captioned memes / watermarked images (extra images in the folder fill the gap). Everything is cached per file, runs off the UI thread with a live status line, and is optional: without onnxruntime the app still starts and offers Quick mode. CLI: `--cutout [model]`, `--reject-text`, and `main.py cutout --in folder --out folder`. The .exe now ships with onnxruntime.
+ - **2026-11-08** · 🚑 v0.3.1 hotfix: onboarding could never close (CSS `display:flex` beat the `hidden` attribute, so the welcome card stayed on screen with dead buttons; same bug kept the progress bar always visible). New onboarding step **How many forms?** (3 to 15) + **Use my pictures / Picture folder** (photos of you, memes, anything; the number of pictures sets the forms). Click any tier circle to set its own picture, right-click to remove. Final Form auto-fits the container for any form count; bigger drops with many forms so the Final Form stays reachable (default 9 forms now actually wins). Broken/missing images no longer crash; big photos are shrunk and cached. Regression tests in `tests/` (incl. headless-Chromium onboarding test).
+-
+ - **2026-11-08** · 🎬 v0.4.0 Export studio + sound fixes. Export panel: FPS 24/25/30/48/50/60/90/120, resolution 720p / 1080p / 2K / 4K (9:16), quality Max/High/Balanced/Small, H.264 or H.265, encoder Auto/CPU/NVIDIA/Intel/AMD (falls back to CPU if the GPU encoder fails), MP4 or MOV, audio on/off + 128-320 kbps, thumbnail toggle, open folder when done, Open button, live export summary. Physics now runs at a fixed 60 Hz whatever the FPS, so a seed plays out identically at 24/30/60 fps. Sound: ▶ Listen button (hear your pop the way it sounds in a video), 🔊 live preview sound (pitched pops in the preview), background music UI (add / listen / volume / remove), drop-sound toggle. Bugs fixed: background music was cut to a 3 s loop; pops went out of sync when Speed ≠ 1; a broken sound/music file failed the whole render (now falls back); encoder errors were swallowed (now reported); batch crashed on theme names with characters Windows can't use in file names; odd pixel sizes broke encoders. `pytest` now runs in CI (21 tests incl. headless-Chromium UI tests). CLI: `--fps --res --quality --codec --encoder --format --no-audio --sound --music`.
++- **2026-11-08** · 🔊🎛️ v0.5.0 Myinstants auto sounds + unlimited Merge customization (branch `feature/merge-sounds-customization`):
++  - `mm911/sounds.py`: Myinstants search (stdlib only, polite User-Agent, timeout, retries), search cache (7 days) + download-once sound cache (`%APPDATA%\MoneyMaker911\sounds`, `~/.mm911/sounds`, or `MM911_SOUND_CACHE`), pitch analysis (spectral centroid + autocorrelation f0 via FFmpeg + numpy), auto plan: one sound pitched up per tier, or several sounds sorted by measured pitch then shifted so tier 1 is lowest and the Final Form highest; separate drop / final sounds (by keyword or auto). Offline / nothing found = built-in pop.
++  - Sound engine: per-tier sounds + semitone overrides, pitch step, jitter, drop / final sounds, pitches and volumes. Sound events carry both simulation time and video time; the mix uses video time, so pops stay in sync with Speed (v0.4.0 fix), slow motion and the near-miss pause. The live preview sound follows the same pitch settings.
++  - 86 new settings: gravity, bounce, friction, drop interval / jitter / speed, biggest drop tier, fill limit, ball scale + size curve (exponential / linear / custom radii, auto-fit kept from v0.3.1), container size / height / wall / colour / glow, 5 new shapes (triangle, pentagon, diamond, rounded, custom polygon), spin + wobble, backgrounds (palette, solid, 2-3 colour gradient at any angle, image, looping video via FFmpeg, dim), ball outline / shadow / glow, 6 particle styles + colours / amount / speed / fall, screen shake, hook / counter / watermark each with font file, size, colour, height, Final Form / miss / tension / combo / banner texts, ending hold, 15s length preset, custom seconds, "until Final Form", FPS.
++  - Shorts juice: chain-combo popups (a merged ball merging again), slow-mo final merge, progress bar to the Final Form, near-miss tension (pulsing "ALMOST..." + random dramatic slow-down when the last two big ones almost touch), tier-reached banners, merge counter.
++  - App: Sounds · Myinstants panel (search, keyword chips, ▶ preview, Use for tiers / drop / final, ✨ Auto fill low → high, per-tier sound + pitch with exact pitched preview), Themes (save / load / delete / import / export), Background, Balls and Effects sections, per-text styling, batch "vary per video" checkboxes + sound keywords.
++  - CLI: `--myinstants`, `--auto-sounds`, `--sound-strategy`, `--sound-count`, `--drop-keyword`, `--final-keyword`, look flags (`--forms --shape --gravity --bg-colors --particles --shake ...`), `--set KEY=VALUE` for anything, `sounds search|fetch|analyze|auto|cache`, batch `--randomize` + `--sound-keywords`.
++  - Seeds from v0.4.0 re-render identically (new effect randomness uses its own RNG), except runs where the near-miss slow-down fires (it changes the physics timing); turn `near_miss` off for exact old re-renders. New presets: neon_triangle_combo, space_planets_slowmo, custom_bowl_confetti, minimal_mono_15s. Offline tests in `tests/test_sounds_customization.py`.
+ 
+ ## 🔜 TODO (in order)
+ 1. Duplicate checker for batches
+diff --git a/mm911/config.py b/mm911/config.py
+index fddb53f..88a531d 100644
+--- a/mm911/config.py
++++ b/mm911/config.py
+@@ -7,7 +7,7 @@ from pathlib import Path
+ 
+ APP_NAME = "Money Maker 911"
+ CREDIT = "made by TeamRealHackers"
+-VERSION = "0.4.0"
++VERSION = "0.5.0"
+ 
+ # Soft, non-neon palettes. Each: background top, background bottom, container, text, tier colors
+ PALETTES: dict[str, dict] = {
+-- 
+2.47.3
+

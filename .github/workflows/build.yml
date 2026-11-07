@@ -34,6 +34,11 @@ jobs:
       - name: Smoke test (emoji tiers + thumbnail)
         run: python main.py thumb --preset presets/emoji_fruit.json --seed 12 --out output/thumb.jpg
 
+      - name: Smoke test (customization preset + sounds CLI parses)
+        run: |
+          python main.py render --preset presets/minimal_mono_15s.json --seconds 4 --fps 30 --set slowmo_final=true --out output/custom.mp4
+          python main.py sounds cache
+
       - name: Smoke test (AI add-on imports, app still imports without models)
         run: python -c "import onnxruntime, mm911.imageprep as ip, mm911.gui.app; print(onnxruntime.__version__, ip.status()['onnx'])"
 

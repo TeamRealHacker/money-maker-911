@@ -16,9 +16,9 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 import pygame  # noqa: E402
 
-from .audio import AudioTrack, load_sound, load_music  # noqa: E402
+from .audio import AudioTrack, SoundBank, load_sound, load_music  # noqa: E402
 from .emoji import render_emoji  # noqa: E402
-from .config import MergeConfig, PALETTES, CREDIT, hex_to_rgb  # noqa: E402
+from .config import MergeConfig, PALETTES, CREDIT, hex_to_rgb, color_or  # noqa: E402
 from .ffmpeg import ffmpeg_exe, best_encoder, encoder_args  # noqa: E402
 from .config import QUALITIES  # noqa: E402
 from .modes.merge import MergeSim  # noqa: E402
@@ -36,13 +36,67 @@ def asset_path(*parts: str) -> Path:
     return Path(__file__).resolve().parent / "assets" / Path(*parts)
 
 
-def _font(cfg: MergeConfig, size: int, bold: bool = True) -> pygame.font.Font:
-    path = cfg.font_path if cfg.font_path and Path(cfg.font_path).exists() else \
-        asset_path("fonts", "Poppins-Bold.ttf" if bold else "Poppins-SemiBold.ttf")
+def _font(cfg: MergeConfig, size: int, bold: bool = True, path: str = "") -> pygame.font.Font:
+    """Per-text font file > global font_path > bundled Poppins."""
+    for cand in (path, cfg.font_path):
+        if cand and Path(cand).exists():
+            try:
+                return pygame.font.Font(str(cand), max(6, size))
+            except Exception:
+                pass
     try:
-        return pygame.font.Font(str(path), size)
+        return pygame.font.Font(str(asset_path("fonts", "Poppins-Bold.ttf" if bold else "Poppins-SemiBold.ttf")),
+                                max(6, size))
     except Exception:
-        return pygame.font.Font(None, size)
+        return pygame.font.Font(None, max(6, size))
+
+
+def gradient_surface(w: int, h: int, colors: list[tuple], angle: float) -> pygame.Surface:
+    """Linear gradient with 2-3 colour stops at any angle (degrees, 90 = top to bottom). numpy, fast."""
+    import numpy as np
+    a = math.radians(angle)
+    ys, xs = np.mgrid[0:h, 0:w].astype(np.float32)
+    proj = (xs - w / 2) * math.cos(a) + (ys - h / 2) * math.sin(a)
+    half = abs(w / 2 * math.cos(a)) + abs(h / 2 * math.sin(a)) or 1.0
+    k = np.clip((proj / half + 1) / 2, 0, 1)
+    cols = np.array(colors, dtype=np.float32)
+    n = len(cols) - 1
+    pos = k * n
+    i = np.minimum(pos.astype(np.int32), n - 1) if n > 0 else np.zeros_like(pos, dtype=np.int32)
+    f = (pos - i)[..., None] if n > 0 else np.zeros((h, w, 1), np.float32)
+    rgb = cols[i] * (1 - f) + cols[np.minimum(i + 1, n)] * f
+    surf = pygame.Surface((w, h))
+    pygame.surfarray.blit_array(surf, rgb.transpose(1, 0, 2).astype(np.uint8))
+    return surf
+
+
+class VideoBackground:
+    """Looping background video: FFmpeg decodes frames (scaled + cropped to fill) into a pipe."""
+
+    def __init__(self, path: str, w: int, h: int, fps: int):
+        self.w, self.h, self.size = w, h, w * h * 3
+        vf = f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},fps={fps}"
+        cmd = [ffmpeg_exe(), "-v", "error", "-stream_loop", "-1", "-i", path, "-vf", vf, "-an",
+               "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
+        creation = 0x08000000 if os.name == "nt" else 0
+        self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, creationflags=creation)
+        self.last: pygame.Surface | None = None
+
+    def frame(self) -> pygame.Surface | None:
+        try:
+            raw = self.proc.stdout.read(self.size) if self.proc.stdout else b""
+        except Exception:
+            raw = b""
+        if len(raw) == self.size:
+            self.last = pygame.image.frombuffer(raw, (self.w, self.h), "RGB").copy()
+        return self.last
+
+    def close(self) -> None:
+        try:
+            self.proc.kill()
+            self.proc.wait(timeout=2)
+        except Exception:
+            pass
 
 
 def _shade(c: tuple, f: float) -> tuple:
@@ -92,26 +146,56 @@ class Renderer:
         self.W, self.H = int(round(cfg.width * scale)), int(round(cfg.height * scale))
         self.pal = PALETTES.get(cfg.palette, PALETTES["Candy"])
         self.surface = pygame.Surface((self.W, self.H))
+        cfg.clamp()
         # cached text-check + cut-outs only (instant); prepare_images() fills the caches beforehand
         self.images = imageprep.tier_images(cfg)["images"]
+        self.text_col = color_or("", hex_to_rgb(self.pal["text"]))
+        self.cont_col = color_or(cfg.container_color, hex_to_rgb(self.pal["container"]))
+        self.video_bg: VideoBackground | None = None
         self.bg = self._make_bg()
         self.sprites = [self._make_sprite(t) for t in range(cfg.tiers)]
-        self.f_hook = _font(cfg, int(64 * scale))
-        self.f_small = _font(cfg, int(34 * scale), bold=False)
-        self.f_big = _font(cfg, int(120 * scale))
+        self.shadows = [self._make_shadow(s) for s in self.sprites] if cfg.ball_shadow > 0 else []
+        self.glows = [self._make_glow(t) for t in range(cfg.tiers)] if cfg.ball_glow > 0 else []
+        self.f_hook = _font(cfg, int(cfg.hook_size * scale), path=cfg.hook_font_path)
+        self.f_small = _font(cfg, int(cfg.watermark_size * scale), bold=False, path=cfg.watermark_font_path)
+        self.f_big = _font(cfg, int(cfg.final_text_size * scale))
         self.f_label = _font(cfg, int(30 * scale))
+        self.f_counter = _font(cfg, int(cfg.counter_size * scale), path=cfg.counter_font_path)
+        self.f_popup = _font(cfg, int(54 * scale))
+        self.f_banner = _font(cfg, int(70 * scale))
+        self.f_tension = _font(cfg, int(64 * scale))
+        self.p_cols = [color_or(c, (255, 255, 255)) for c in cfg.particle_colors if c]
+        self._bar = 0.0
+        self._bar_t = -1.0
 
     # ---------- prebuilt layers ----------
     def _make_bg(self) -> pygame.Surface:
+        cfg = self.cfg
         s = pygame.Surface((self.W, self.H))
-        if self.cfg.background_image and Path(self.cfg.background_image).exists():
+        mode = cfg.bg_mode
+        if mode == "video" and cfg.background_video and Path(cfg.background_video).exists():
+            try:
+                self.video_bg = VideoBackground(cfg.background_video, self.W, self.H, cfg.fps)
+            except Exception:
+                self.video_bg = None
+        if mode == "solid":
+            s.fill(color_or(cfg.bg_colors[0] if cfg.bg_colors else "", hex_to_rgb(self.pal["bg_top"])))
+            return s
+        if mode == "gradient":
+            cols = [color_or(c, None) for c in cfg.bg_colors[:3]]
+            cols = [c for c in cols if c is not None]
+            if len(cols) < 2:
+                cols = [hex_to_rgb(self.pal["bg_top"]), hex_to_rgb(self.pal["bg_bottom"])]
+            return gradient_surface(self.W, self.H, cols, cfg.bg_angle)
+        use_image = mode in ("image", "palette") or mode not in ("solid", "gradient", "video")
+        if use_image and self.cfg.background_image and Path(self.cfg.background_image).exists():
             img = pygame.image.load(self.cfg.background_image).convert() if pygame.display.get_init() and pygame.display.get_surface() else pygame.image.load(self.cfg.background_image)
             iw, ih = img.get_size()
             k = max(self.W / iw, self.H / ih)
             img = pygame.transform.smoothscale(img, (int(iw * k) + 1, int(ih * k) + 1))
             s.blit(img, ((self.W - img.get_width()) // 2, (self.H - img.get_height()) // 2))
             dim = pygame.Surface((self.W, self.H), pygame.SRCALPHA)
-            dim.fill((0, 0, 0, 70))
+            dim.fill((0, 0, 0, max(0, min(255, cfg.bg_dim))))
             s.blit(dim, (0, 0))
             return s
         top, bot = hex_to_rgb(self.pal["bg_top"]), hex_to_rgb(self.pal["bg_bottom"])
@@ -134,7 +218,7 @@ class Renderer:
         """Supersampled ball sprite: fill, rim, soft highlight, label or image."""
         cfg = self.cfg
         r = cfg.tier_radius(t) * self.scale
-        ss = 3
+        ss = 3 if r < 450 else 2 if r < 900 else 1     # supersample, but keep huge sprites in memory
         R = max(2, int(r * ss))
         big = pygame.Surface((R * 2 + 4, R * 2 + 4), pygame.SRCALPHA)
         c = (R + 2, R + 2)
@@ -186,6 +270,9 @@ class Renderer:
                 txt_col = (30, 30, 40) if _luma(col) > 140 else (250, 250, 250)
                 ts = f.render(label, True, txt_col)
                 big.blit(ts, (c[0] - ts.get_width() // 2, c[1] - ts.get_height() // 2))
+        if cfg.ball_outline > 0:
+            oc = color_or(cfg.ball_outline_color, _shade(col, 0.55))
+            pygame.draw.circle(big, oc, c, R, max(1, int(cfg.ball_outline * ss * self.scale)))
         size = (max(1, big.get_width() // ss), max(1, big.get_height() // ss))
         return pygame.transform.smoothscale(big, size)
 
@@ -212,6 +299,30 @@ class Renderer:
         hl = pygame.Surface(big.get_size(), pygame.SRCALPHA)
         pygame.draw.ellipse(hl, (255, 255, 255, 38), (c[0] - R * 0.55, c[1] - R * 0.78, R * 0.7, R * 0.36))
         big.blit(hl, (0, 0))
+
+    def _make_shadow(self, spr: pygame.Surface) -> pygame.Surface:
+        sh = spr.copy()
+        sh.fill((0, 0, 0, int(140 * min(1.0, self.cfg.ball_shadow))), special_flags=pygame.BLEND_RGBA_MIN)
+        sh.fill((0, 0, 0, 255), special_flags=pygame.BLEND_RGB_MULT)
+        w, h = sh.get_size()
+        small = pygame.transform.smoothscale(sh, (max(1, w // 4), max(1, h // 4)))  # cheap blur
+        return pygame.transform.smoothscale(small, (w, h))
+
+    def _make_glow(self, t: int) -> pygame.Surface:
+        r = self.cfg.tier_radius(t) * self.scale
+        R = int(r * 1.6) + 2
+        g = pygame.Surface((R * 2, R * 2), pygame.SRCALPHA)
+        col = self._tier_color(t)
+        a = int(110 * min(1.0, self.cfg.ball_glow))
+        for i in range(12, 0, -1):
+            k = i / 12
+            pygame.draw.circle(g, (*col, int(a * (1 - k) ** 1.5 + 2)), (R, R), int(r + (R - r) * k))
+        return g
+
+    def close(self) -> None:
+        if self.video_bg:
+            self.video_bg.close()
+            self.video_bg = None
 
     def _spins(self, t: int) -> bool:
         """Pictures and emoji roll with the physics; plain numbered balls stay upright."""
@@ -245,37 +356,87 @@ class Renderer:
             lines.append(cur)
         return lines[:3]
 
+    def _tc(self, h: str) -> tuple:
+        return color_or(h, self.text_col)
+
+    def _text_at(self, font, text, y_frac, color, alpha=255):
+        s = font.render(text, True, color)
+        if alpha < 255:
+            s.set_alpha(alpha)
+        self.surface.blit(s, ((self.W - s.get_width()) // 2, int(self.H * y_frac)))
+
+    def _draw_particle(self, p, sx, sy):
+        cfg, sc, S = self.cfg, self.scale, self.surface
+        col = self.p_cols[p.color[1] % len(self.p_cols)] if self.p_cols else self._tier_color(p.color[0])
+        x, y = p.x * sc + sx, p.y * sc + sy
+        size = max(1.0, p.size * sc * min(1, p.life * 2))
+        st = cfg.particle_style
+        if st == "squares" or st == "confetti":
+            w, h = (size * 2, size * (0.9 if st == "confetti" else 2))
+            surf = pygame.Surface((max(1, int(w)), max(1, int(h))), pygame.SRCALPHA)
+            surf.fill(col)
+            surf = pygame.transform.rotate(surf, p.rot)
+            S.blit(surf, (x - surf.get_width() / 2, y - surf.get_height() / 2))
+        elif st == "stars":
+            pts = []
+            for i in range(10):
+                a = math.radians(p.rot) + math.pi * i / 5
+                rr = size * 1.5 if i % 2 == 0 else size * 0.65
+                pts.append((x + rr * math.cos(a), y + rr * math.sin(a)))
+            pygame.draw.polygon(S, col, pts)
+        elif st == "sparks":
+            k = 0.035
+            pygame.draw.line(S, col, (x, y), (x - p.vx * k * sc, y - p.vy * k * sc), max(1, int(size * 0.6)))
+        elif st == "rings":
+            pygame.draw.circle(S, col, (x, y), size * 1.4, max(1, int(size * 0.35)))
+        else:
+            pygame.draw.circle(S, col, (x, y), size)
+
     def draw(self, sim: MergeSim) -> pygame.Surface:
         cfg, sc, S = self.cfg, self.scale, self.surface
-        S.blit(self.bg, (0, 0))
-        text_col = hex_to_rgb(self.pal["text"])
-        cont_col = hex_to_rgb(self.pal["container"])
+        if self.video_bg is not None:
+            fr = self.video_bg.frame()
+            S.blit(fr if fr is not None else self.bg, (0, 0))
+            if fr is not None and cfg.bg_dim > 0:
+                dim = pygame.Surface((self.W, self.H), pygame.SRCALPHA)
+                dim.fill((0, 0, 0, min(255, cfg.bg_dim)))
+                S.blit(dim, (0, 0))
+        else:
+            S.blit(self.bg, (0, 0))
+        text_col = self.text_col
+        cont_col = self.cont_col
+        sx, sy = (v * sc for v in sim.shake_offset())
 
         # hook text
-        y = int(150 * sc)
+        y = int(cfg.hook_y * self.H)
+        hook_col = self._tc(cfg.hook_color)
         for line in self._wrap(self.f_hook, cfg.hook, self.W * 0.86):
-            y += self._text_center(self.f_hook, line, y, text_col)
+            y += self._text_center(self.f_hook, line, y, hook_col)
 
         # tier progress strip
         if cfg.show_progress:
             n = cfg.tiers
-            dot = int(min(70, (self.W * 0.8) / n) * sc / sc)
+            dot = int(min(70 * sc, (self.W * 0.8) / n))
             gap = dot * 0.2
             total = n * dot + (n - 1) * gap
             x0 = (self.W - total) / 2
             yy = y + int(30 * sc)
             for t in range(n):
-                spr = self.sprites[t]
-                k = dot / max(spr.get_width(), 1)
-                small = pygame.transform.smoothscale(spr, (dot, dot))
+                small = pygame.transform.smoothscale(self.sprites[t], (max(1, dot), max(1, dot)))
                 if t > sim.best_tier:
                     small.set_alpha(60)
                 S.blit(small, (x0 + t * (dot + gap), yy))
-                _ = k
 
-        # container shadow + walls
-        pts = [(x * sc, y_ * sc) for x, y_ in sim.outline_world()]
+        # container glow + shadow + walls
+        pts = [(x * sc + sx, y_ * sc + sy) for x, y_ in sim.outline_world()]
         th = max(2, int(cfg.container_thickness * sc))
+        if cfg.container_glow > 0:
+            gc = color_or(cfg.container_glow_color, cont_col)
+            gl = pygame.Surface((self.W, self.H), pygame.SRCALPHA)
+            for i in range(6, 0, -1):
+                a = int(28 * cfg.container_glow * (7 - i) / 6)
+                pygame.draw.lines(gl, (*gc, a), True, pts, th + int(i * 7 * sc))
+            S.blit(gl, (0, 0))
         shadow = [(x + 6 * sc, y_ + 10 * sc) for x, y_ in pts]
         sh = pygame.Surface((self.W, self.H), pygame.SRCALPHA)
         pygame.draw.lines(sh, (0, 0, 0, 55), True, shadow, th)
@@ -284,45 +445,118 @@ class Renderer:
         for p in pts:
             pygame.draw.circle(S, cont_col, p, th / 2)
 
-        # balls
+        # balls (glow -> shadow -> sprite)
         for b in sim.balls:
-            spr = self.sprites[b.tier]
             pos = b.shape.body.position
+            px, py = pos.x * sc + sx, pos.y * sc + sy
+            e = 1 - (1 - b.pop) ** 3
+            k = 0.6 + 0.4 * e + 0.12 * math.sin(e * math.pi) if b.pop < 1 else 1.0
+            if self.glows:
+                g = self.glows[b.tier] if k == 1.0 else pygame.transform.rotozoom(self.glows[b.tier], 0, k)
+                S.blit(g, (px - g.get_width() / 2, py - g.get_height() / 2))
+            if self.shadows:
+                shd = self.shadows[b.tier] if k == 1.0 else pygame.transform.rotozoom(self.shadows[b.tier], 0, k)
+                off = 8 * sc * (1 + b.tier * 0.15)
+                S.blit(shd, (px - shd.get_width() / 2 + off * 0.5, py - shd.get_height() / 2 + off))
+            spr = self.sprites[b.tier]
             ang = -math.degrees(b.shape.body.angle) if self._spins(b.tier) else 0
-            if b.pop < 1 or ang:
-                e = 1 - (1 - b.pop) ** 3
-                k = 0.6 + 0.4 * e + 0.12 * math.sin(e * math.pi)
+            if k != 1.0 or ang:
                 spr = pygame.transform.rotozoom(spr, ang, k)
-            S.blit(spr, (pos.x * sc - spr.get_width() / 2, pos.y * sc - spr.get_height() / 2))
+            S.blit(spr, (px - spr.get_width() / 2, py - spr.get_height() / 2))
 
         # particles
         for p in sim.particles:
-            col = self._tier_color(p.color[0])
-            pygame.draw.circle(S, col, (p.x * sc, p.y * sc), max(1, p.size * sc * min(1, p.life * 2)))
+            self._draw_particle(p, sx, sy)
+
+        # combo popups (float up and fade)
+        for pu in sim.popups:
+            age = (sim.vt - pu.born) / pu.life
+            pop = min(1.0, age / 0.15)
+            s = self.f_popup.render(pu.text, True, (255, 255, 255))
+            o = self.f_popup.render(pu.text, True, _shade(self._tier_color(pu.tier), 0.45))
+            k = 0.6 + 0.5 * pop - 0.1 * pop * pop
+            s, o = pygame.transform.rotozoom(s, 0, k), pygame.transform.rotozoom(o, 0, k)
+            a = int(255 * max(0.0, 1 - max(0.0, age - 0.6) / 0.4))
+            s.set_alpha(a); o.set_alpha(a)
+            x = pu.x * sc + sx - s.get_width() / 2
+            y_ = pu.y * sc + sy - s.get_height() / 2 - age * 120 * sc
+            for dx, dy in ((-3, 0), (3, 0), (0, -3), (0, 3)):
+                S.blit(o, (x + dx * sc, y_ + dy * sc))
+            S.blit(s, (x, y_))
+
+        # tier-reached banner
+        for bn in sim.banners:
+            age = (sim.vt - bn.born) / bn.life
+            slide = min(1.0, age / 0.18)
+            out = min(1.0, max(0.0, (age - 0.8) / 0.2))
+            col = self._tier_color(bn.tier)
+            h = int(110 * sc)
+            yb = int(self.H * 0.21)
+            band = pygame.Surface((self.W, h), pygame.SRCALPHA)
+            band.fill((*_shade(col, 0.55), int(200 * (1 - out))))
+            xoff = int((1 - (1 - (1 - slide) ** 3)) * -self.W + out * self.W)
+            S.blit(band, (xoff, yb))
+            txt = cfg.banner_text.replace("{name}", cfg.tier_label(bn.tier)).replace("{tier}", str(bn.tier + 1))
+            try:
+                ts = self.f_banner.render(txt, True, (255, 255, 255))
+            except Exception:
+                ts = self.f_banner.render(f"Tier {bn.tier + 1}!", True, (255, 255, 255))
+            ts.set_alpha(int(255 * (1 - out)))
+            S.blit(ts, (xoff + (self.W - ts.get_width()) // 2, yb + (h - ts.get_height()) // 2))
+
+        # progress bar toward the Final Form
+        if cfg.show_progress_bar:
+            goal = sim.best_tier / max(1, cfg.tiers - 1)
+            gap_t = sim.vt - self._bar_t
+            self._bar_t = sim.vt
+            if gap_t <= 0 or gap_t > 0.5:      # first frame / thumbnail: show the real value
+                self._bar = goal
+            else:                               # ease toward the goal (frame-rate independent)
+                self._bar += (goal - self._bar) * (1 - math.exp(-gap_t * 9))
+            bw, bh = int(self.W * 0.7), max(4, int(22 * sc))
+            bx, by = (self.W - bw) // 2, int(self.H * cfg.progress_bar_y)
+            bc = self._tc(cfg.progress_bar_color)
+            track = pygame.Surface((bw, bh), pygame.SRCALPHA)
+            pygame.draw.rect(track, (*bc, 60), (0, 0, bw, bh), border_radius=bh // 2)
+            S.blit(track, (bx, by))
+            if self._bar > 0.01:
+                pygame.draw.rect(S, bc, (bx, by, max(bh, int(bw * self._bar)), bh), border_radius=bh // 2)
+            pct = self.f_label.render(f"{int(round(self._bar * 100))}%", True, bc)
+            S.blit(pct, (bx + bw + int(14 * sc), by + (bh - pct.get_height()) // 2))
+
+        # merge counter
+        if cfg.show_counter:
+            txt = (cfg.counter_text.replace("{merges}", str(sim.merges)).replace("{tier}", str(sim.best_tier + 1))
+                   .replace("{tiers}", str(cfg.tiers)).replace("{time}", f"{sim.vt:.1f}")
+                   .replace("{combo}", str(sim.best_combo)))
+            self._text_at(self.f_counter, txt, cfg.counter_y, self._tc(cfg.counter_color))
 
         # watermark / credit
         wm = cfg.watermark or ""
         if wm:
-            s = self.f_small.render(wm, True, text_col)
-            s.set_alpha(150)
-            S.blit(s, ((self.W - s.get_width()) // 2, self.H - int(170 * sc)))
+            self._text_at(self.f_small, wm, cfg.watermark_y, self._tc(cfg.watermark_color),
+                          max(0, min(255, cfg.watermark_opacity)))
 
         # ending
+        final_col = self._tc(cfg.final_text_color)
         if sim.finished_at is not None:
-            k = min(1.0, (sim.t - sim.finished_at) / 0.4)
+            k = min(1.0, (sim.vt - sim.finished_at) / 0.4)
             scale = 0.5 + 0.5 * (1 - (1 - k) ** 3) + 0.08 * math.sin(k * math.pi)
-            s = self.f_big.render("FINAL FORM!", True, text_col)
+            s = self.f_big.render(cfg.final_text, True, final_col)
+            if s.get_width() * scale > self.W * 0.94:
+                scale *= self.W * 0.94 / (s.get_width() * scale)
             s = pygame.transform.rotozoom(s, 0, scale)
-            S.blit(s, ((self.W - s.get_width()) // 2, int(self.H * 0.83)))
-        elif sim.t > cfg.max_seconds - 2.0:
-            s = self.f_hook.render("So close...", True, text_col)
-            S.blit(s, ((self.W - s.get_width()) // 2, int(self.H * 0.84)))
+            S.blit(s, ((self.W - s.get_width()) // 2, int(self.H * cfg.final_text_y)))
+        elif not cfg.until_finished and sim.vt > cfg.max_seconds - 2.0:
+            s = self.f_hook.render(cfg.fail_text, True, final_col)
+            S.blit(s, ((self.W - s.get_width()) // 2, int(self.H * (cfg.final_text_y + 0.01))))
+        elif sim.tension and cfg.near_miss_text:
+            pulse = 0.5 + 0.5 * math.sin(sim.vt * 9)
+            s = self.f_tension.render(cfg.near_miss_text, True, final_col)
+            s = pygame.transform.rotozoom(s, 0, 0.92 + 0.08 * pulse)
+            s.set_alpha(int(150 + 105 * pulse))
+            S.blit(s, ((self.W - s.get_width()) // 2, int(self.H * (cfg.final_text_y + 0.01))))
         return S
-
-
-def _pitch_for(event_tier: int, kind: str) -> float:
-    base = {"drop": -4.0, "merge": 0.0, "final": 7.0}[kind]
-    return base + event_tier * 1.6
 
 
 PHYSICS_HZ = 60
@@ -369,11 +603,15 @@ def render_video(cfg: MergeConfig, out_path: str, progress: Callable[[float], No
     t0 = time.time()
     cfg.sanitize_export()
     prepare_images(cfg, lock)
+    sound_plan = None
+    if cfg.auto_sounds:      # Myinstants auto sounds (cached; offline = built-in pop)
+        from .sounds import resolve_auto
+        sound_plan = resolve_auto(cfg)
     sim = MergeSim(cfg)
     with lock:
         rend = Renderer(cfg, cfg.export_scale())
     steps = physics_steps(cfg.fps)
-    est_frames = int((cfg.max_seconds + cfg.end_hold_seconds) * cfg.fps)
+    est_frames = int(cfg.video_seconds() * cfg.fps)
     out_path = str(out_path)
     out_path = str(Path(out_path).with_suffix("." + cfg.export_format))   # .mp4 or .mov from Export settings
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
@@ -413,6 +651,7 @@ def render_video(cfg: MergeConfig, out_path: str, progress: Callable[[float], No
             pass
         err = proc.stderr.read().decode("utf-8", "replace") if proc.stderr else ""
         proc.wait()
+        rend.close()
     if proc.returncode != 0:
         raise RuntimeError(f"Video encoder ({enc_name}) failed: {err.strip()[-400:]}")
     seconds = frames / cfg.fps
@@ -441,8 +680,11 @@ def render_video(cfg: MergeConfig, out_path: str, progress: Callable[[float], No
     if progress:
         progress(1.0)
     return {"file": out_path, "seed": cfg.seed, "won": sim.won, "best_tier": sim.best_tier + 1,
-            "seconds": round(seconds, 2), "merges": sim.merges, "thumbnail": thumb_path, "fps": cfg.fps,
-            "size": f"{rend.W}x{rend.H}", "encoder": enc_name, "render_seconds": round(time.time() - t0, 1)}
+            "seconds": round(seconds, 2), "merges": sim.merges, "best_combo": sim.best_combo,
+            "thumbnail": thumb_path, "fps": cfg.fps, "size": f"{rend.W}x{rend.H}", "encoder": enc_name,
+            "render_seconds": round(time.time() - t0, 1),
+            "sounds": [d["name"] for d in (sound_plan or {}).get("sounds", [])]
+            + [f"{k}: {Path(getattr(cfg, k)).name}" for k in ("drop_sound", "final_sound") if getattr(cfg, k)]}
 
 
 def _rm(path: str) -> None:
@@ -453,19 +695,22 @@ def _rm(path: str) -> None:
 
 
 def build_audio(cfg: MergeConfig, sim: MergeSim, seconds: float) -> AudioTrack:
-    """Mix the pitched pops (drop / merge / final) and optional background music."""
+    """Mix the pitched pops (drop / merge / final, per-tier sounds via SoundBank) and optional music.
+    Events are placed at their VIDEO time (ev.vt), so they stay in sync with Speed, slow motion
+    and the near-miss pause (ev.t is simulation time)."""
     track = AudioTrack(seconds)
-    snd = load_sound(cfg.sound_path)
+    bank = SoundBank(cfg)
     last_t = -1.0
     for ev in sim.events:
+        at = getattr(ev, "vt", None)
+        if at is None:
+            at = ev.t / max(0.05, cfg.speed)
         if ev.kind == "drop":
-            if not cfg.drop_sounds or ev.t - last_t < 0.05:
+            if not cfg.drop_sounds or at - last_t < 0.05:
                 continue
-        vol = cfg.sound_volume * (0.35 if ev.kind == "drop" else 1.0 if ev.kind == "merge" else 1.3)
-        # event times are simulation time; with Speed != 1 the video runs at a different pace,
-        # so convert to video time (the old code put every pop out of sync when Speed was changed)
-        track.add(snd, ev.t / max(0.05, cfg.speed), _pitch_for(ev.tier, ev.kind), vol)
-        last_t = ev.t
+            last_t = at
+        sample, semis, vol = bank.event(ev.kind, ev.tier)
+        track.add(sample, at, semis, vol)
     if cfg.music_path and cfg.music_volume > 0:
         track.add_music(load_music(cfg.music_path, seconds + 3), cfg.music_volume)
     return track
@@ -480,13 +725,13 @@ def prepare_images(cfg: MergeConfig, lock=None, note=None) -> dict:
 
 def _thumb_moment_frame(sim: MergeSim, cfg: MergeConfig) -> bool:
     """First frame at/after the Final Form has popped in (works at any FPS)."""
-    return sim.finished_at is not None and sim.t >= sim.finished_at + 0.45
+    return sim.finished_at is not None and sim.vt >= sim.finished_at + 0.45   # finished_at is video time
 
 
 def _thumb_moment(sim: MergeSim, cfg: MergeConfig) -> bool:
     """Best frame for a thumbnail: FINAL FORM fully popped in (or the last second of a near miss)."""
     if sim.finished_at is not None:
-        return sim.finished_at + 0.45 <= sim.t < sim.finished_at + 0.45 + 1.0 / cfg.fps
+        return sim.finished_at + 0.45 <= sim.vt < sim.finished_at + 0.45 + 1.0 / cfg.fps
     return False
 
 
@@ -510,6 +755,7 @@ def make_thumbnail(cfg: MergeConfig, out_path: str) -> dict:
     if shot is None:
         shot = rend.draw(sim)
     _save_jpg(shot, out_path)
+    rend.close()
     return {"file": out_path, "seed": cfg.seed, "won": sim.won, "best_tier": sim.best_tier + 1}
 
 
@@ -522,4 +768,5 @@ def render_preview_frame(cfg: MergeConfig, sim: MergeSim, rend: Renderer) -> byt
     return buf.getvalue()
 
 
-__all__ = ["Renderer", "render_video", "make_thumbnail", "simulate", "render_preview_frame", "prepare_images", "CREDIT"]
+__all__ = ["Renderer", "render_video", "build_audio", "make_thumbnail", "simulate", "render_preview_frame",
+           "prepare_images", "CREDIT"]

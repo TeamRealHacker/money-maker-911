@@ -1,0 +1,22 @@
+{
+  "theme_name": "Mono",
+  "palette": "Mono",
+  "hook": "15 seconds. Can it finish?",
+  "bg_mode": "solid",
+  "bg_colors": [
+    "#F4F4F4"
+  ],
+  "container_shape": "rounded",
+  "tiers": 7,
+  "spawn_interval": 0.12,
+  "gravity": 2200,
+  "combo_popups": false,
+  "tier_banners": false,
+  "show_counter": true,
+  "counter_text": "{time}s",
+  "max_seconds": 13.0,
+  "fps": 60,
+  "sound_path": "",
+  "pitch_step": 2.0,
+  "seed": 1
+}

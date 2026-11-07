@@ -1,8 +1,10 @@
 """Sound: load any clip (Myinstants mp3, wav, ogg...), pitch it per event, mix into one track."""
 from __future__ import annotations
 
+import io
 import logging
 import os
+import random
 import subprocess
 import wave
 from pathlib import Path
@@ -45,6 +47,14 @@ def _decode(path: str, max_seconds: float | None) -> np.ndarray:
         _DECODE_CACHE.clear()
     _DECODE_CACHE[key] = data
     return data
+
+
+def decode(path: str, max_seconds: float = 8.0) -> np.ndarray:
+    """Raw mono float32 @44.1k (no trimming / normalising, cached). Empty array on failure."""
+    try:
+        return _decode(str(path), max_seconds)
+    except Exception:
+        return np.zeros(0, dtype=np.float32)
 
 
 def load_sound(path: str) -> np.ndarray:
@@ -115,6 +125,57 @@ def pitch(sample: np.ndarray, semitones: float) -> np.ndarray:
     n = max(1, int(len(sample) / ratio))
     x = np.linspace(0, len(sample) - 1, n)
     return np.interp(x, np.arange(len(sample)), sample).astype(np.float32)
+
+
+def to_wav_bytes(sample: np.ndarray) -> bytes:
+    """Alias of wav_bytes (kept for the sounds panel)."""
+    return wav_bytes(sample)
+
+
+class SoundBank:
+    """Picks the sample, pitch and volume for every drop / merge / final event of a config.
+
+    single mode   : one sound (sound_path or the built-in pop), pitched up pitch_step per tier.
+    per tier      : tier_sounds[t] for each tier (falls back to sound_path), tier_semitones overrides.
+    drop / final  : drop_sound / final_sound when set, else the tier's own sound.
+    """
+
+    def __init__(self, cfg, seed: int | None = None):
+        self.cfg = cfg
+        self._samples: dict[str, np.ndarray] = {}
+        self.rng = random.Random(cfg.seed if seed is None else seed)
+
+    def sample(self, path: str) -> np.ndarray:
+        key = path if path and Path(path).exists() else ""
+        if key not in self._samples:
+            try:
+                self._samples[key] = load_sound(key)
+            except Exception:
+                self._samples[key] = builtin_pop()
+        return self._samples[key]
+
+    def tier_path(self, tier: int) -> str:
+        return self.cfg.tier_value("tier_sounds", tier) or self.cfg.sound_path
+
+    def event(self, kind: str, tier: int) -> tuple[np.ndarray, float, float]:
+        c = self.cfg
+        semis = c.tier_pitch(tier)
+        path = self.tier_path(tier)
+        vol = c.sound_volume
+        if kind == "drop":
+            vol *= c.drop_volume
+            if c.drop_sound:
+                path, semis = c.drop_sound, tier * c.pitch_step * 0.5   # gentle rise on a dedicated drop sound
+            semis += c.drop_pitch
+        elif kind == "final":
+            vol *= c.final_volume
+            if c.final_sound:
+                path, semis = c.final_sound, 0.0                       # a dedicated final sound plays as-is
+            else:
+                semis += c.final_pitch
+        if c.pitch_jitter:
+            semis += self.rng.uniform(-c.pitch_jitter, c.pitch_jitter)
+        return self.sample(path), max(-24.0, min(24.0, semis)), vol
 
 
 class AudioTrack:
