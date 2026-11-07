@@ -24,12 +24,16 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
+          pip install -r requirements-ai.txt
 
       - name: Smoke test (render a 4s clip)
         run: python main.py render --preset presets/smoke_test.json --out output/smoke.mp4
 
       - name: Smoke test (emoji tiers + thumbnail)
         run: python main.py thumb --preset presets/emoji_fruit.json --seed 12 --out output/thumb.jpg
+
+      - name: Smoke test (AI add-on imports, app still imports without models)
+        run: python -c "import onnxruntime, mm911.imageprep as ip, mm911.gui.app; print(onnxruntime.__version__, ip.status()['onnx'])"
 
       - name: Build portable exe
         run: >
@@ -40,6 +44,7 @@ jobs:
           --add-data "mm911/gui/web;mm911/gui/web"
           --collect-all imageio_ffmpeg
           --collect-all webview
+          --collect-binaries onnxruntime
           --hidden-import clr
 
       - uses: actions/upload-artifact@v4

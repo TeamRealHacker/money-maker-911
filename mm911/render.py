@@ -21,6 +21,7 @@ from .emoji import render_emoji  # noqa: E402
 from .config import MergeConfig, PALETTES, CREDIT, hex_to_rgb  # noqa: E402
 from .ffmpeg import ffmpeg_exe, best_encoder  # noqa: E402
 from .modes.merge import MergeSim  # noqa: E402
+from . import imageprep  # noqa: E402
 
 if not pygame.get_init():
     pygame.init()
@@ -60,7 +61,8 @@ class Renderer:
         self.W, self.H = int(cfg.width * scale), int(cfg.height * scale)
         self.pal = PALETTES.get(cfg.palette, PALETTES["Candy"])
         self.surface = pygame.Surface((self.W, self.H))
-        self.images = cfg.resolved_tier_images()
+        # cached text-check + cut-outs only (instant); prepare_images() fills the caches beforehand
+        self.images = imageprep.tier_images(cfg)["images"]
         self.bg = self._make_bg()
         self.sprites = [self._make_sprite(t) for t in range(cfg.tiers)]
         self.f_hook = _font(cfg, int(64 * scale))
@@ -119,6 +121,8 @@ class Renderer:
             hl = pygame.Surface(big.get_size(), pygame.SRCALPHA)
             pygame.draw.ellipse(hl, (255, 255, 255, 45), (c[0] - R * 0.55, c[1] - R * 0.75, R * 0.7, R * 0.4))
             big.blit(hl, (0, 0))
+        elif img_path and imageprep.is_cutout(img_path) and Path(img_path).exists():
+            self._draw_cutout(big, c, R, col, img_path)
         elif img_path and Path(img_path).exists():
             img = pygame.image.load(img_path)
             iw, ih = img.get_size()
@@ -150,6 +154,30 @@ class Renderer:
                 big.blit(ts, (c[0] - ts.get_width() // 2, c[1] - ts.get_height() // 2))
         size = (max(1, big.get_width() // ss), max(1, big.get_height() // ss))
         return pygame.transform.smoothscale(big, size)
+
+    def _draw_cutout(self, big: pygame.Surface, c, R: int, col, path: str) -> None:
+        """Meme cut-out as a sticker: tier disc, soft shadow, white outline, subject on top."""
+        src = pygame.image.load(path)
+        img = pygame.Surface(src.get_size(), pygame.SRCALPHA, 32)
+        img.blit(src, (0, 0))
+        side = int(R * 1.62)
+        img = pygame.transform.smoothscale(img, (side, side))
+        pygame.draw.circle(big, _shade(col, 0.72), c, R)
+        pygame.draw.circle(big, col, c, int(R * 0.9))
+        x, y = c[0] - side // 2, c[1] - side // 2
+        mask = pygame.mask.from_surface(img, 100)
+        sh = mask.to_surface(setcolor=(0, 0, 0, 70), unsetcolor=(0, 0, 0, 0))
+        big.blit(sh, (x + R // 30, y + R // 16))
+        if self.cfg.cutout_outline:
+            w = max(2, R // 22)
+            ol = mask.to_surface(setcolor=(255, 255, 255, 255), unsetcolor=(0, 0, 0, 0))
+            for k in range(16):
+                a = k * math.pi / 8
+                big.blit(ol, (x + round(math.cos(a) * w), y + round(math.sin(a) * w)))
+        big.blit(img, (x, y))
+        hl = pygame.Surface(big.get_size(), pygame.SRCALPHA)
+        pygame.draw.ellipse(hl, (255, 255, 255, 38), (c[0] - R * 0.55, c[1] - R * 0.78, R * 0.7, R * 0.36))
+        big.blit(hl, (0, 0))
 
     def _spins(self, t: int) -> bool:
         """Pictures and emoji roll with the physics; plain numbered balls stay upright."""
@@ -279,6 +307,7 @@ def render_video(cfg: MergeConfig, out_path: str, progress: Callable[[float], No
     render thread never draws at the same time as the live preview — pygame is not thread-safe)."""
     lock = lock or contextlib.nullcontext()
     t0 = time.time()
+    prepare_images(cfg, lock)
     sim = MergeSim(cfg)
     with lock:
         rend = Renderer(cfg)
@@ -344,6 +373,13 @@ def render_video(cfg: MergeConfig, out_path: str, progress: Callable[[float], No
             "seconds": round(seconds, 2), "merges": sim.merges, "thumbnail": thumb_path, "render_seconds": round(time.time() - t0, 1)}
 
 
+def prepare_images(cfg: MergeConfig, lock=None, note=None) -> dict:
+    """Run the text check / cut-outs the config asks for (cached, so repeat renders are free)."""
+    if not (cfg.ai_cutout or cfg.reject_text) or not imageprep.candidate_images(cfg):
+        return {"images": [], "skipped": [], "cut": 0, "errors": []}
+    return imageprep.tier_images(cfg, prepare=True, lock=lock, note=note)
+
+
 def _thumb_moment(sim: MergeSim, cfg: MergeConfig) -> bool:
     """Best frame for a thumbnail: FINAL FORM fully popped in (or the last second of a near miss)."""
     if sim.finished_at is not None:
@@ -358,6 +394,7 @@ def _save_jpg(surf: pygame.Surface, path: str) -> None:
 
 def make_thumbnail(cfg: MergeConfig, out_path: str) -> dict:
     """Thumbnail only (no video): runs the physics fast and grabs the Final Form moment."""
+    prepare_images(cfg)
     sim = MergeSim(cfg)
     rend = Renderer(cfg)
     dt = 1 / cfg.fps
@@ -382,4 +419,4 @@ def render_preview_frame(cfg: MergeConfig, sim: MergeSim, rend: Renderer) -> byt
     return buf.getvalue()
 
 
-__all__ = ["Renderer", "render_video", "make_thumbnail", "simulate", "render_preview_frame", "CREDIT"]
+__all__ = ["Renderer", "render_video", "make_thumbnail", "simulate", "render_preview_frame", "prepare_images", "CREDIT"]

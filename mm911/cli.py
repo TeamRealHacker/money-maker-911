@@ -8,6 +8,9 @@ from .config import MergeConfig
 from .config import LENGTH_PRESETS, EMOJI_SETS
 from .render import render_video, make_thumbnail
 from .batch import run_batch
+from . import imageprep
+
+CUT_CHOICES = list(imageprep.MODELS) + [imageprep.QUICK]
 
 
 def main(argv=None) -> None:
@@ -21,20 +24,30 @@ def main(argv=None) -> None:
     t.add_argument("--preset")
     t.add_argument("--seed", type=int)
     t.add_argument("--out", default="output/thumb.jpg")
-    for sp in (r, t):
-        sp.add_argument("--length", choices=["30", "45", "60"], help="Shorts length preset")
-        sp.add_argument("--emoji-set", choices=list(EMOJI_SETS), help="use a built-in emoji tier set")
-        sp.add_argument("--image-folder", help="folder of tier images (sorted by name)")
     b = sub.add_parser("batch", help="render many videos")
     b.add_argument("--preset")
     b.add_argument("--count", type=int, default=10)
     b.add_argument("--out", default="output")
     b.add_argument("--no-random", action="store_true")
-    b.add_argument("--length", choices=["30", "45", "60"])
-    b.add_argument("--emoji-set", choices=list(EMOJI_SETS))
-    b.add_argument("--image-folder")
     b.add_argument("--allow-fails", action="store_true", help="keep runs that miss the Final Form")
+    for sp in (r, t, b):
+        sp.add_argument("--length", choices=["30", "45", "60"], help="Shorts length preset")
+        sp.add_argument("--emoji-set", choices=list(EMOJI_SETS), help="use a built-in emoji tier set")
+        sp.add_argument("--image-folder", help="folder of tier images (sorted by name)")
+        sp.add_argument("--cutout", nargs="?", const=imageprep.DEFAULT_MODEL, choices=CUT_CHOICES,
+                        help="AI background removal for tier images (default model: isnet-general-use)")
+        sp.add_argument("--reject-text", action="store_true", help="skip tier images that contain text")
+    c = sub.add_parser("cutout", help="cut out every image in a folder (AI background removal)")
+    c.add_argument("--in", dest="src", required=True, help="folder of images")
+    c.add_argument("--out", default="output/cutouts")
+    c.add_argument("--model", default=imageprep.DEFAULT_MODEL, choices=CUT_CHOICES)
+    c.add_argument("--reject-text", action="store_true", help="skip (don't cut) images that contain text")
     a = p.parse_args(argv)
+    if a.cmd == "cutout":
+        res = imageprep.cutout_folder(a.src, a.out, a.model, a.reject_text, note=lambda m: print(f"\r{m[:70]:70}", end=""))
+        print()
+        print(json.dumps(res, indent=2))
+        return
     cfg = MergeConfig.load(a.preset) if a.preset else MergeConfig()
     if a.length:
         cfg.max_seconds = LENGTH_PRESETS[a.length + "s"]
@@ -42,6 +55,10 @@ def main(argv=None) -> None:
         cfg.tier_emojis = EMOJI_SETS[a.emoji_set][: cfg.tiers]
     if a.image_folder:
         cfg.tier_image_folder = a.image_folder
+    if a.cutout:
+        cfg.ai_cutout, cfg.cutout_model = True, a.cutout
+    if a.reject_text:
+        cfg.reject_text = True
     if a.cmd in ("render", "thumb") and a.seed is not None:
         cfg.seed = a.seed
     if a.cmd == "thumb":

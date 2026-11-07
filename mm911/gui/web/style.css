@@ -84,3 +84,11 @@ input[type=text]:focus,select:focus{border-color:#c9c9cf;background:#fff}
 .tier input[type=color]::-webkit-color-swatch{border-radius:50%;border:1px solid var(--line)}
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:12px;font-size:13px;z-index:20;animation:rise .3s}
 .primary:disabled{opacity:.6;cursor:default}
+/* AI cut-outs */
+#cutmodel{max-width:170px;font-size:12.5px}
+.hint.ai{word-break:normal}
+.hint.ai.busy{color:var(--ink)}
+.hint.ai.busy:before{content:"";display:inline-block;width:9px;height:9px;margin-right:6px;border:2px solid var(--accent);border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-1px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.tier .cut{position:absolute;margin:20px 0 0 20px;font-size:10px}
+.tier{position:relative}

@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_NAME = "Money Maker 911"
 CREDIT = "made by TeamRealHackers"
-VERSION = "0.2.1"
+VERSION = "0.3.0"
 
 # Soft, non-neon palettes. Each: background top, background bottom, container, text, tier colors
 PALETTES: dict[str, dict] = {
@@ -108,6 +108,10 @@ class MergeConfig:
     tier_colors: list[str] = field(default_factory=list)   # custom hex per tier ("" = palette colour)
     tier_emojis: list[str] = field(default_factory=list)   # emoji per tier ("" = number/name)
     export_thumbnail: bool = True      # save a .jpg thumbnail next to every video
+    ai_cutout: bool = False            # remove image backgrounds (AI model or quick flat-bg cut)
+    cutout_model: str = "isnet-general-use"   # birefnet-general | isnet-general-use | u2net | quick
+    cutout_outline: bool = True        # white sticker outline around cut-outs
+    reject_text: bool = False          # skip tier images that contain text (meme captions, watermarks)
     sound_path: str = ""               # any sound (Myinstants etc). Empty = built-in pop
     sound_volume: float = 0.8
     music_path: str = ""               # optional background music (off by default)

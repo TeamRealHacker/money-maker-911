@@ -11,21 +11,21 @@
 - **2026-11-07** · GitHub Actions: smoke test + portable `MoneyMaker911.exe` → Nightly release
 - **2026-11-07** · 🎨 Merge polish: tier image folder (natural name order) + circle-crop previews in a per-tier editor (name, emoji, hex colour), 5 offline emoji sets (Twemoji SVG, any other emoji auto-downloads once), auto `.jpg` thumbnail per video + `thumb` command + "Save thumbnail" button, 30/45/60s length presets (`--length`), `presets/emoji_fruit.json`
 - **2026-11-08** · 🛠️ Stability fix: onboarding crash + freezing. pygame calls from the preview, render and UI threads are now serialized (was a native crash); preview thread snapshots the config and can't die on a bad setting; live preview is pulled by the page (requestAnimationFrame) instead of pushed with evaluate_js 30×/s, and pauses during onboarding / when minimized; JS API state made private (pywebview was walking the native Window object on load); sliders debounced; settings saved atomically; onboarding can't double-submit or get stuck; main window shows when loaded instead of after a fixed sleep; errors go to %APPDATA%\MoneyMaker911\app.log
+- **2026-11-08** · ✂️ AI cut-outs + "Skip images with text" (v0.3.0): background removal with the rembg models BiRefNet-general (PCs with 12 GB+ RAM) / ISNet-general-use (default) / U²-Net, run offline with onnxruntime (uses your `rembg` install if you have one, otherwise a built-in runner with identical maths; the non-commercial BRIA model is never used). Models download once to `%APPDATA%\MoneyMaker911\models` (existing rembg downloads are reused). Cut-outs become stickers: tier-colour disc, white outline (toggle), soft shadow, auto-crop to the subject. "Quick" no-AI cut-out for flat backgrounds. Text check uses the 5 MB PP-OCRv4 text detector and skips captioned memes / watermarked images (extra images in the folder fill the gap). Everything is cached per file, runs off the UI thread with a live status line, and is optional: without onnxruntime the app still starts and offers Quick mode. CLI: `--cutout [model]`, `--reject-text`, and `main.py cutout --in folder --out folder`. The .exe now ships with onnxruntime.
 
 ## 🔜 TODO (in order)
-1. AI cut-outs (rembg + birefnet-general / isnet-general-use / u2net, never the BRIA default) + "reject images with text"
-2. Duplicate checker for batches
-3. 🌀 Escape
-4. 🧱 Breaker
-5. 🥛 Glass Rush
-6. 👻 Ghost Escape
-7. 🎵 Rhythmic (MIDI)
-8. ➕ Accumulate
-9. ✏️ Drawer
-10. 🏢 Glass Tower
-11. 🚩 Flag Battle
-12. ⚔️ Weapon Ball Battle
-13. New 2D: Race, Plinko, Gravity Flip, Snake Grow, Chain Reaction, Countdown Survival, Color Sort, Voting
-14. ☁️ Colab rendering (google-colab-cli via WSL2)
-15. 3D modes: Wave, Marble Run, Ball Crush, Jelly, Cut Count, Magnet, then Hydraulic Press, Liquid Pour, Shatter, Coin Pusher
-16. YouTube upload queue
+1. Duplicate checker for batches
+2. 🌀 Escape
+3. 🧱 Breaker
+4. 🥛 Glass Rush
+5. 👻 Ghost Escape
+6. 🎵 Rhythmic (MIDI)
+7. ➕ Accumulate
+8. ✏️ Drawer
+9. 🏢 Glass Tower
+10. 🚩 Flag Battle
+11. ⚔️ Weapon Ball Battle
+12. New 2D: Race, Plinko, Gravity Flip, Snake Grow, Chain Reaction, Countdown Survival, Color Sort, Voting
+13. ☁️ Colab rendering (google-colab-cli via WSL2)
+14. 3D modes: Wave, Marble Run, Ball Crush, Jelly, Cut Count, Magnet, then Hydraulic Press, Liquid Pour, Shatter, Coin Pusher
+15. YouTube upload queue

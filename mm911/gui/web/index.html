@@ -63,6 +63,11 @@
     <div class="row"><span>Emoji set</span><select id="emojiset"><option value="">None (numbers)</option></select></div>
     <div class="row"><span>Images</span><span><button class="ghost sm" onclick="mm.pickImageFolder()">Folder…</button> <button class="ghost sm" onclick="mm.pickImages()">Files…</button></span></div>
     <div class="hint" id="imgcount">Pick one image per tier, smallest first.</div>
+    <div class="row"><span>✂️ AI cut-out</span><input type="checkbox" data-k="ai_cutout"></div>
+    <div class="row"><span>Model</span><select data-k="cutout_model" id="cutmodel"></select></div>
+    <div class="row"><span>Sticker outline</span><input type="checkbox" data-k="cutout_outline"></div>
+    <div class="row"><span>Skip images with text</span><input type="checkbox" data-k="reject_text"></div>
+    <div class="hint ai" id="aistatus"></div>
     <div id="tierlist" class="tierlist"></div>
     <button class="link" onclick="mm.clearTiers()">Clear tier names, colours, emoji and images</button>
   </details>

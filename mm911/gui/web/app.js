@@ -36,6 +36,9 @@ function setPreview(on) {
 }
 document.addEventListener("visibilitychange", () => { if (state.onboarded) setPreview(!document.hidden); });
 
+const PREP_KEYS = ["ai_cutout", "cutout_model", "reject_text", "tiers", "tier_images", "tier_image_folder"];
+let prepRunning = false, prepAgain = false;
+
 // Sliders fire dozens of events a second: send only the last value every 120 ms.
 let pending = {}, pendTimer = null;
 function queueSet(patch) {
@@ -68,17 +71,39 @@ const mm = {
   },
   async set(patch) {
     state.config = await call("set_config", patch); fill();
-    if (["tiers", "palette", "tier_images", "show_tier_labels"].some((k) => k in patch)) tiers();
+    if (PREP_KEYS.some((k) => k in patch)) mm.prep();
+    else if (["tiers", "palette", "tier_images", "show_tier_labels", "cutout_outline"].some((k) => k in patch)) tiers();
+  },
+  // AI cut-outs / text check run in Python on their own thread; we poll a status line meanwhile.
+  async prep() {
+    const c = state.config;
+    const hasImgs = c.tier_image_folder || (c.tier_images || []).length;
+    if (!hasImgs || !(c.ai_cutout || c.reject_text)) { aiHint(); return tiers(); }
+    if (prepRunning) { prepAgain = true; return; }
+    prepRunning = true;
+    const el = $("#aistatus");
+    el.classList.add("busy"); el.textContent = "Preparing images…";
+    const poll = setInterval(async () => {
+      try { const s = await pywebview.api.prep_status(); if (s.note) el.textContent = s.note; } catch (e) { /* closing */ }
+    }, 400);
+    let r = null;
+    try { r = await call("prepare_images"); } catch (e) { /* toast shown */ }
+    clearInterval(poll);
+    el.classList.remove("busy");
+    prepRunning = false;
+    if (r) { state.cutout = r.status; aiModels(); aiHint(r); }
+    await tiers();
+    if (prepAgain) { prepAgain = false; mm.prep(); }
   },
   async pick(key, kind) {
     const f = await pywebview.api.pick_file(kind);
     if (f) await mm.set({ [key]: f });
   },
-  async pickImages() { const imgs = await pywebview.api.pick_images(); state.config.tier_images = imgs; state.config.tier_image_folder = ""; fill(); tiers(); },
-  async pickImageFolder() { tiers(await pywebview.api.pick_image_folder()); state.config = (await pywebview.api.bootstrap()).config; fill(); },
+  async pickImages() { const imgs = await pywebview.api.pick_images(); state.config.tier_images = imgs; state.config.tier_image_folder = ""; fill(); mm.prep(); },
+  async pickImageFolder() { tiers(await pywebview.api.pick_image_folder()); state.config = (await pywebview.api.bootstrap()).config; fill(); mm.prep(); },
   async setTier(i, key, v) { tiers(await pywebview.api.set_tier(i, key, v)); },
   async emojiSet(name) { tiers(await pywebview.api.apply_emoji_set(name)); state.config = (await pywebview.api.bootstrap()).config; fill(); },
-  async clearTiers() { tiers(await pywebview.api.clear_tiers()); state.config = (await pywebview.api.bootstrap()).config; fill(); },
+  async clearTiers() { tiers(await pywebview.api.clear_tiers()); state.config = (await pywebview.api.bootstrap()).config; fill(); aiHint(); },
   async thumb() {
     toast("Making thumbnail…");
     const f = await call("save_thumbnail");
@@ -123,11 +148,35 @@ async function tiers(rows) {
   rows = rows || await pywebview.api.tier_previews();
   $("#tierlist").innerHTML = rows.map((r) => `
     <div class="tier" title="${r.image ? esc(r.image) : "Tier " + (r.i + 1)}">
-      <img src="data:image/png;base64,${r.png}" alt="">
+      <img src="data:image/png;base64,${r.png}" alt="">${r.cut ? '<i class="cut" title="AI cut-out">✂️</i>' : ""}
       <input type="text" value="${esc(r.name)}" placeholder="Tier ${r.i + 1} name" onchange="mm.setTier(${r.i},'name',this.value)">
       <input type="text" class="emo" value="${esc(r.emoji)}" placeholder="🙂" maxlength="8" onchange="mm.setTier(${r.i},'emoji',this.value)">
       <input type="color" value="${r.color}" onchange="mm.setTier(${r.i},'color',this.value)" ondblclick="mm.setTier(${r.i},'color','')" title="Colour (double-click = palette colour)">
     </div>`).join("");
+}
+
+function aiModels() {
+  const st = state.cutout; if (!st) return;
+  $("#cutmodel").innerHTML = st.models.map((m) => {
+    const off = (m.id !== "quick" && !st.onnx) || m.too_big;
+    return `<option value="${m.id}" ${off ? "disabled" : ""}>${m.ready && m.id !== "quick" ? "✓ " : ""}${esc(m.label)}</option>`;
+  }).join("");
+  $("#cutmodel").value = state.config.cutout_model;
+}
+
+function aiHint(r) {
+  const c = state.config, st = state.cutout || {}, el = $("#aistatus");
+  const bits = [];
+  if (!st.onnx && (c.ai_cutout || c.reject_text))
+    bits.push("AI add-on missing (pip install onnxruntime): Quick cut-out only, text check off.");
+  if (r) {
+    if (c.ai_cutout) bits.push(`${r.cut} of ${r.images} image(s) cut out.`);
+    if (c.reject_text) bits.push(r.skipped.length ? `Skipped ${r.skipped.length} with text: ${r.skipped.slice(0, 3).join(", ")}${r.skipped.length > 3 ? "…" : ""}` : "No text found.");
+    if (r.errors.length) bits.push("⚠ " + r.errors[0]);
+  } else if (c.ai_cutout || c.reject_text) {
+    bits.push("Runs offline. The model downloads once on first use.");
+  }
+  el.textContent = bits.join(" ");
 }
 
 function lengths() {
@@ -211,9 +260,11 @@ async function boot() {
   $("#hooks").innerHTML = state.hooks.map((h) => `<option value="${esc(h)}">`).join("");
   $("#emojiset").innerHTML += Object.entries(state.emoji_sets).map(([k, v]) => `<option value="${k}">${v.slice(0, 3).join("")} ${k}</option>`).join("");
   $("#emojiset").onchange = (e) => mm.emojiSet(e.target.value);
+  aiModels();
   bindInputs();
   fill();
-  tiers().catch(() => {});
+  aiHint();
+  mm.prep().catch(() => {});   // cached after the first run, so this is instant
   if (state.onboarded) setPreview(true); else onboarding();   // preview waits until onboarding is done
 }
 

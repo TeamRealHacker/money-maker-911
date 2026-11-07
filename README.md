@@ -52,7 +52,8 @@
 | 🏭 Batch factory + titles.csv | ✅ Working (anti-repeat rotation, "only wins" seed search) |
 | 🖥️ Desktop app | ✅ Splash, onboarding, live preview, inspector |
 | 📦 Portable .exe | ✅ Built by GitHub Actions → [Nightly release](https://github.com/TeamRealHacker/money-maker-911/releases/tag/nightly) |
-| 🖼️ AI cut-outs | 🔜 Next |
+| ✂️ AI cut-outs + text filter | ✅ BiRefNet / ISNet / U²-Net offline (onnxruntime), sticker outline, skips images with text |
+| 🔁 Duplicate checker | 🔜 Next |
 | 🌀 Other 2D modes | 🔜 One by one |
 | ☁️ Colab rendering | 🔜 Planned |
 | 🔵 3D modes | 🔜 Planned |
@@ -143,6 +144,13 @@ Everything it can do in one place:
 - **Built-in AI background removal** (BiRefNet / ISNet / U²-Net via ONNX, runs offline)
 - Auto crop, auto circle-mask, outline and drop-shadow
 - Caption remover: rejects or crops out images that contain text
+
+```bash
+# AI cut-outs from the command line (models download once, then work offline)
+python main.py render --image-folder memes/ --cutout isnet-general-use --reject-text
+python main.py cutout --in memes/ --out memes_cut/ --model birefnet-general --reject-text
+pip install -r requirements-ai.txt   # only needed when running from source
+```
 - Meme finder helpers: GIPHY search (free key) and bulk folder import
 
 ### 🔊 Sound

@@ -19,7 +19,8 @@ import webview
 from ..config import (MergeConfig, PALETTES, SHAPES, HOOKS, APP_NAME, CREDIT, VERSION, LENGTH_PRESETS,
                       EMOJI_SETS, hex_to_rgb)
 from ..modes.merge import MergeSim
-from ..render import Renderer, render_video, render_preview_frame, make_thumbnail
+from ..render import Renderer, render_video, render_preview_frame, make_thumbnail, prepare_images
+from .. import imageprep
 from ..batch import run_batch, make_title
 
 # pygame (fonts, surfaces, image codecs) is NOT thread-safe. Every pygame call made from the
@@ -75,6 +76,9 @@ class Api:
         self._frame: tuple[str, int, float] | None = None   # latest preview frame (b64, tier, t)
         self._frame_id = 0
         self._pthread: threading.Thread | None = None
+        self._prep_lock = threading.Lock()     # one image-prep run at a time
+        self._prep_note = ""
+        self._prep_busy = False
 
     # ---------- settings ----------
     def _load_settings(self) -> dict:
@@ -103,7 +107,7 @@ class Api:
     def bootstrap(self) -> dict:
         return {"app": APP_NAME, "credit": CREDIT, "version": VERSION, "config": self._cfg.to_dict(),
                 "palettes": {k: v for k, v in PALETTES.items()}, "shapes": SHAPES, "hooks": HOOKS,
-                "lengths": LENGTH_PRESETS, "emoji_sets": EMOJI_SETS,
+                "lengths": LENGTH_PRESETS, "emoji_sets": EMOJI_SETS, "cutout": imageprep.status(),
                 "onboarded": self._settings.get("onboarded", False),
                 "output_dir": self._settings.get("output_dir")}
 
@@ -163,7 +167,7 @@ class Api:
         res = self._window.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=True,
                                              file_types=("Images (*.png;*.jpg;*.jpeg;*.webp)",))
         files = sorted(res or [])
-        self._cfg.tier_images = files[: self._cfg.tiers]
+        self._cfg.tier_images = files[:40]   # extras fill in when "skip images with text" drops some
         self._cfg.tier_image_folder = ""
         self._preview_dirty = True
         self._save()
@@ -192,7 +196,8 @@ class Api:
         except Exception as e:
             LOG.exception("tier preview failed: %s", e)
             return []
-        imgs = cfg.resolved_tier_images()
+        prep = imageprep.tier_images(cfg)   # cached results only, never blocks on AI
+        imgs, cut = prep["sources"], prep["images"]
         rows = []
         for t in range(cfg.tiers):
             spr = pygame.transform.smoothscale(rend.sprites[t], (56, 56))
@@ -203,8 +208,35 @@ class Api:
                          "name": cfg.tier_value("tier_names", t),
                          "color": "#%02X%02X%02X" % col, "custom_color": bool(cfg.tier_value("tier_colors", t)),
                          "emoji": cfg.tier_value("tier_emojis", t),
-                         "image": Path(imgs[t]).name if t < len(imgs) else ""})
+                         "image": Path(imgs[t]).name if t < len(imgs) else "",
+                         "cut": t < len(cut) and imageprep.is_cutout(cut[t])})
         return rows
+
+    # ---------- AI cut-outs + text check ----------
+    def prepare_images(self) -> dict:
+        """Runs the text check and cut-outs for the current tier images (downloads the model once).
+        Called by the page after image settings change; pywebview runs it on its own thread, and the
+        page polls prep_status() for the progress line. Inference runs outside GFX_LOCK."""
+        with self._prep_lock:
+            self._prep_busy = True
+            cfg = copy.deepcopy(self._cfg)
+            try:
+                res = prepare_images(cfg, lock=GFX_LOCK, note=self._set_note)
+            except Exception as e:
+                LOG.exception("image prep failed")
+                res = {"images": [], "skipped": [], "cut": 0, "errors": [str(e)]}
+            finally:
+                self._prep_busy, self._prep_note = False, ""
+            self._preview_dirty = True
+            return {"images": len(res.get("images", [])), "skipped": res.get("skipped", []),
+                    "cut": res.get("cut", 0), "errors": res.get("errors", [])[:3],
+                    "status": imageprep.status()}
+
+    def _set_note(self, msg: str) -> None:
+        self._prep_note = msg
+
+    def prep_status(self) -> dict:
+        return {"busy": self._prep_busy, "note": self._prep_note}
 
     def set_tier(self, i: int, key: str, value: str) -> list[dict]:
         attr = {"name": "tier_names", "color": "tier_colors", "emoji": "tier_emojis"}.get(key)
