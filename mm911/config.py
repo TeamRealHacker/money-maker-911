@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_NAME = "Money Maker 911"
 CREDIT = "made by TeamRealHackers"
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 
 # Soft, non-neon palettes. Each: background top, background bottom, container, text, tier colors
 PALETTES: dict[str, dict] = {
@@ -56,6 +56,8 @@ EMOJI_SETS = {
     "Food": ["🍪", "🍩", "🍕", "🍔", "🍎", "🍉", "🍍", "🥥", "🍈", "🍑", "🍇"],
     "Meme": ["💀", "😂", "🗿", "🔥", "💎", "⚽", "🏀", "🍕", "🍔", "🪐", "☀️"],
 }
+
+MIN_TIERS, MAX_TIERS = 3, 15
 
 IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp")
 
@@ -124,8 +126,13 @@ class MergeConfig:
 
     @classmethod
     def from_dict(cls, d: dict) -> "MergeConfig":
-        known = {k: v for k, v in d.items() if k in cls.__dataclass_fields__}
-        return cls(**known)
+        known = {k: v for k, v in (d or {}).items() if k in cls.__dataclass_fields__}
+        try:
+            cfg = cls(**known)
+        except TypeError:
+            cfg = cls()
+        cfg.tiers = max(MIN_TIERS, min(MAX_TIERS, int(cfg.tiers)))
+        return cfg
 
     def save(self, path: str | Path) -> None:
         Path(path).write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")
@@ -148,7 +155,17 @@ class MergeConfig:
         return lst[t] if t < len(lst) and lst[t] else ""
 
     def tier_radius(self, tier: int) -> float:
-        return self.base_radius * (self.growth ** tier)
+        """Ball radius per tier. Growth is capped so the Final Form always fits the container,
+        whatever number of forms (3-15) the user picks."""
+        n = max(2, int(self.tiers))
+        cap = self.container_radius * 0.7
+        g = self.growth
+        floor = self.container_radius * 0.4   # few forms: still make the Final Form big and satisfying
+        if self.base_radius * g ** (n - 1) < floor:
+            g = (floor / self.base_radius) ** (1 / (n - 1))
+        if self.base_radius * g ** (n - 1) > cap:
+            g = (cap / self.base_radius) ** (1 / (n - 1))
+        return self.base_radius * (g ** min(tier, n - 1))
 
 
 def hex_to_rgb(h: str) -> tuple[int, int, int]:

@@ -17,7 +17,7 @@ from pathlib import Path
 import webview
 
 from ..config import (MergeConfig, PALETTES, SHAPES, HOOKS, APP_NAME, CREDIT, VERSION, LENGTH_PRESETS,
-                      EMOJI_SETS, hex_to_rgb)
+                      EMOJI_SETS, hex_to_rgb, MIN_TIERS, MAX_TIERS)
 from ..modes.merge import MergeSim
 from ..render import Renderer, render_video, render_preview_frame, make_thumbnail, prepare_images
 from .. import imageprep
@@ -109,6 +109,7 @@ class Api:
                 "palettes": {k: v for k, v in PALETTES.items()}, "shapes": SHAPES, "hooks": HOOKS,
                 "lengths": LENGTH_PRESETS, "emoji_sets": EMOJI_SETS, "cutout": imageprep.status(),
                 "onboarded": self._settings.get("onboarded", False),
+                "min_tiers": MIN_TIERS, "max_tiers": MAX_TIERS,
                 "output_dir": self._settings.get("output_dir")}
 
     def finish_onboarding(self, choices: dict) -> bool:
@@ -116,6 +117,11 @@ class Api:
         self._settings["onboarded"] = True
         if choices.get("palette") in PALETTES:
             self._cfg.palette = choices["palette"]
+        if choices.get("tiers"):
+            try:
+                self._cfg.tiers = max(MIN_TIERS, min(MAX_TIERS, int(choices["tiers"])))
+            except (TypeError, ValueError):
+                pass
         if str(choices.get("theme_name") or "").strip():
             self._cfg.theme_name = str(choices["theme_name"]).strip()[:40]
         self._preview_dirty = True
@@ -140,6 +146,8 @@ class Api:
                         continue
                 except (TypeError, ValueError):
                     continue  # ignore bad values instead of storing garbage that crashes the renderer
+                if k == "tiers":
+                    v = max(MIN_TIERS, min(MAX_TIERS, v))
                 setattr(self._cfg, k, v)
         self._preview_dirty = True
         self._save()
@@ -167,16 +175,55 @@ class Api:
         res = self._window.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=True,
                                              file_types=("Images (*.png;*.jpg;*.jpeg;*.webp)",))
         files = sorted(res or [])
+        if not files:
+            return self._cfg.tier_images
+        if len(files) >= MIN_TIERS:  # your pictures decide how many forms there are
+            self._cfg.tiers = min(MAX_TIERS, len(files))
         self._cfg.tier_images = files[:40]   # extras fill in when "skip images with text" drops some
         self._cfg.tier_image_folder = ""
         self._preview_dirty = True
         self._save()
         return self._cfg.tier_images
 
+    def pick_tier_image(self, i: int) -> list[dict]:
+        """Choose (or replace) the picture for ONE form. Works with photos of yourself, memes, anything."""
+        i = int(i)
+        try:
+            res = self._window.create_file_dialog(webview.FileDialog.OPEN,
+                                                  file_types=("Images (*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.gif)",))
+        except Exception as e:
+            LOG.error("file dialog failed: %s", e)
+            res = None
+        if res:
+            imgs = list(self._cfg.resolved_tier_images())   # folder mode -> explicit list so one can be swapped
+            while len(imgs) <= i:
+                imgs.append("")
+            imgs[i] = res[0]
+            self._cfg.tier_images = imgs[: self._cfg.tiers]
+            self._cfg.tier_image_folder = ""
+            self._preview_dirty = True
+            self._save()
+        return self.tier_previews()
+
+    def clear_tier_image(self, i: int) -> list[dict]:
+        i = int(i)
+        imgs = list(self._cfg.resolved_tier_images())
+        if i < len(imgs):
+            imgs[i] = ""
+            while imgs and not imgs[-1]:
+                imgs.pop()
+            self._cfg.tier_images, self._cfg.tier_image_folder = imgs, ""
+            self._preview_dirty = True
+            self._save()
+        return self.tier_previews()
+
     def pick_image_folder(self) -> list[dict]:
         res = self._window.create_file_dialog(webview.FileDialog.FOLDER)
         if res:
             self._cfg.tier_image_folder = res[0]
+            n = len(MergeConfig(tier_image_folder=res[0], tiers=MAX_TIERS).resolved_tier_images())
+            if n >= MIN_TIERS:
+                self._cfg.tiers = min(MAX_TIERS, n)
             self._preview_dirty = True
             self._save()
         return self.tier_previews()

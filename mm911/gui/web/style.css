@@ -1,5 +1,7 @@
 :root{--bg:#F5F5F7;--card:#fff;--ink:#1D1D1F;--mute:#86868B;--line:#E5E5EA;--accent:#E8323F;--accent2:#FF5E57;--r:14px}
 *{box-sizing:border-box}
+/* the hidden attribute must always win (display:flex on .onboard/.prog was overriding it: onboarding could never close) */
+[hidden]{display:none!important}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:14px/1.4 "Segoe UI Variable Text","Segoe UI",-apple-system,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
 body{display:grid;grid-template-columns:220px 1fr 320px;overflow:hidden}
 button{font:inherit;cursor:pointer;border:0;border-radius:10px;transition:transform .12s,background .2s,opacity .2s}
@@ -92,3 +94,11 @@ input[type=text]:focus,select:focus{border-color:#c9c9cf;background:#fff}
 @keyframes spin{to{transform:rotate(360deg)}}
 .tier .cut{position:absolute;margin:20px 0 0 20px;font-size:10px}
 .tier{position:relative}
+.formpills{display:flex;flex-wrap:wrap;gap:5px;justify-content:center;margin:6px 0 4px}
+.formpills button{min-width:33px;padding:7px 0;border-radius:10px;background:#F0F0F3;font-weight:600;color:#3a3a3c}
+.formpills button.on{background:var(--ink);color:#fff}
+.obimgs{display:flex;gap:8px;justify-content:center;margin-top:12px}
+.tier img{cursor:pointer;border-radius:50%}
+.tier img:hover{outline:2px solid var(--accent);outline-offset:1px}
+.num{width:58px;border:1px solid var(--line);border-radius:8px;padding:5px 6px;font:inherit;text-align:center}
+.card .hint{word-break:normal}

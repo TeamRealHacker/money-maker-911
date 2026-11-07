@@ -99,9 +99,17 @@ const mm = {
     const f = await pywebview.api.pick_file(kind);
     if (f) await mm.set({ [key]: f });
   },
-  async pickImages() { const imgs = await pywebview.api.pick_images(); state.config.tier_images = imgs; state.config.tier_image_folder = ""; fill(); mm.prep(); },
-  async pickImageFolder() { tiers(await pywebview.api.pick_image_folder()); state.config = (await pywebview.api.bootstrap()).config; fill(); mm.prep(); },
-  async setTier(i, key, v) { tiers(await pywebview.api.set_tier(i, key, v)); },
+  async pickImages() {
+    await call("pick_images"); state.config = (await call("bootstrap")).config; fill(); await tiers(); mm.prep();
+    if (state.config.tier_images.length) toast(`${state.config.tier_images.length} picture(s) loaded · ${state.config.tiers} forms`);
+  },
+  async pickImageFolder() {
+    tiers(await call("pick_image_folder")); state.config = (await call("bootstrap")).config; fill(); mm.prep();
+    if (state.config.tier_image_folder) toast(`Folder loaded · ${state.config.tiers} forms`);
+  },
+  async setTier(i, key, v) { tiers(await call("set_tier", i, key, v)); },
+  async tierImage(i) { tiers(await call("pick_tier_image", i)); state.config = (await call("bootstrap")).config; fill(); mm.prep(); },
+  async clearTierImage(i) { tiers(await call("clear_tier_image", i)); state.config = (await call("bootstrap")).config; fill(); },
   async emojiSet(name) { tiers(await pywebview.api.apply_emoji_set(name)); state.config = (await pywebview.api.bootstrap()).config; fill(); },
   async clearTiers() { tiers(await pywebview.api.clear_tiers()); state.config = (await pywebview.api.bootstrap()).config; fill(); aiHint(); },
   async thumb() {
@@ -148,7 +156,7 @@ async function tiers(rows) {
   rows = rows || await pywebview.api.tier_previews();
   $("#tierlist").innerHTML = rows.map((r) => `
     <div class="tier" title="${r.image ? esc(r.image) : "Tier " + (r.i + 1)}">
-      <img src="data:image/png;base64,${r.png}" alt="">${r.cut ? '<i class="cut" title="AI cut-out">✂️</i>' : ""}
+      <img src="data:image/png;base64,${r.png}" alt="" onclick="mm.tierImage(${r.i})" oncontextmenu="event.preventDefault();mm.clearTierImage(${r.i})" title="Click: choose a picture for form ${r.i + 1}${r.image ? " (" + esc(r.image) + "). Right-click: remove picture" : ""}">${r.cut ? '<i class="cut" title="AI cut-out">✂️</i>' : ""}
       <input type="text" value="${esc(r.name)}" placeholder="Tier ${r.i + 1} name" onchange="mm.setTier(${r.i},'name',this.value)">
       <input type="text" class="emo" value="${esc(r.emoji)}" placeholder="🙂" maxlength="8" onchange="mm.setTier(${r.i},'emoji',this.value)">
       <input type="color" value="${r.color}" onchange="mm.setTier(${r.i},'color',this.value)" ondblclick="mm.setTier(${r.i},'color','')" title="Colour (double-click = palette colour)">
@@ -224,6 +232,22 @@ function onboarding() {
     $("#obback").style.visibility = s ? "visible" : "hidden";
     $("#obnext").textContent = s === last ? "Get started" : "Continue";
   };
+  let forms = state.config.tiers;
+  const drawForms = () => {
+    const lo = state.min_tiers || 3, hi = Math.min(12, state.max_tiers || 15);
+    let html = "";
+    for (let n = lo; n <= hi; n++) html += `<button class="${n === forms ? "on" : ""}" data-n="${n}">${n}</button>`;
+    $("#obforms").innerHTML = html;
+    $("#obforms").querySelectorAll("button").forEach((b) => (b.onclick = () => { forms = +b.dataset.n; drawForms(); }));
+  };
+  drawForms();
+  const afterImages = async () => {
+    state.config = (await call("bootstrap")).config; forms = state.config.tiers; drawForms(); fill(); tiers();
+    const n = state.config.tier_image_folder ? "Folder" : state.config.tier_images.length + " picture(s)";
+    $("#obimghint").textContent = `${n} loaded · ${forms} forms`;
+  };
+  $("#obimgfiles").onclick = async () => { await call("pick_images"); afterImages(); };
+  $("#obimgfolder").onclick = async () => { await call("pick_image_folder"); afterImages(); };
   const close = () => { ob.hidden = true; state.onboarded = true; setPreview(true); };
   $("#obback").onclick = () => { s = Math.max(0, s - 1); draw(); };
   $("#obnext").onclick = async () => {
@@ -233,8 +257,8 @@ function onboarding() {
     $("#obnext").disabled = true;
     const theme = $("#obtheme").value.trim() || "Fruit";
     try {
-      await call("finish_onboarding", { palette: pal, theme_name: theme });
-      state.config.palette = pal; state.config.theme_name = theme; fill(); tiers();
+      await call("finish_onboarding", { palette: pal, theme_name: theme, tiers: forms });
+      state.config.palette = pal; state.config.theme_name = theme; state.config.tiers = forms; fill(); tiers();
     } catch (e) { /* settings will be asked again next launch, but never trap the user */ }
     finally { $("#obnext").disabled = false; finishing = false; close(); }
   };

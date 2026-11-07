@@ -51,7 +51,7 @@
     <div class="row"><span>Font</span><button class="ghost sm" onclick="mm.pick('font_path','font')">Choose .ttf…</button><button class="link" onclick="mm.set({font_path:''})">default</button></div>
   </details>
   <details open><summary>Gameplay</summary>
-    <div class="row"><span>Tiers</span><input type="range" data-k="tiers" min="5" max="11"></div>
+    <div class="row"><span>Forms</span><span><input type="range" data-k="tiers" min="3" max="15" style="width:110px"> <input class="num" type="number" data-k="tiers" min="3" max="15"></span></div>
     <div class="row"><span>Drop every</span><input type="range" data-k="spawn_interval" min="0.08" max="0.6" step="0.01"></div>
     <div class="row"><span>Gravity</span><input type="range" data-k="gravity" min="600" max="3000" step="50"></div>
     <div class="row"><span>Bounce</span><input type="range" data-k="bounce" min="0" max="0.8" step="0.01"></div>
@@ -68,6 +68,7 @@
     <div class="row"><span>Sticker outline</span><input type="checkbox" data-k="cutout_outline"></div>
     <div class="row"><span>Skip images with text</span><input type="checkbox" data-k="reject_text"></div>
     <div class="hint ai" id="aistatus"></div>
+    <div class="hint">Tip: click any circle below to put your own picture (a selfie, a meme, anything) on that form.</div>
     <div id="tierlist" class="tierlist"></div>
     <button class="link" onclick="mm.clearTiers()">Clear tier names, colours, emoji and images</button>
   </details>
@@ -99,12 +100,22 @@
       <input id="obtheme" type="text" value="Fruit" placeholder="Theme name, e.g. Fruit, Planet, Meme">
     </div>
     <div class="step" data-s="2" hidden>
+      <h2>How many forms?</h2>
+      <p>Smallest to Final Form. You can change it any time.</p>
+      <div id="obforms" class="formpills"></div>
+      <div class="obimgs">
+        <button class="ghost" id="obimgfiles">Use my pictures…</button>
+        <button class="ghost" id="obimgfolder">Picture folder…</button>
+      </div>
+      <p class="hint" id="obimghint">Optional. Photos of you, your friends, memes, anything. Smallest first; the number of pictures sets the forms.</p>
+    </div>
+    <div class="step" data-s="3" hidden>
       <h2>Drop your sound</h2>
       <p>Use any clip, like one from Myinstants. It's pitched up automatically on every merge.</p>
       <button class="ghost" onclick="mm.pick('sound_path','sound')">Choose a sound…</button>
       <p class="hint">Tip: plain pops and boings are safest from copyright claims.</p>
     </div>
-    <div class="dots"><i></i><i></i><i></i></div>
+    <div class="dots"><i></i><i></i><i></i><i></i></div>
     <div class="nav"><button class="link" id="obback">Back</button><button class="primary" id="obnext">Continue</button></div>
   </div>
 </div>

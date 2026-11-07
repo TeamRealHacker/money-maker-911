@@ -120,10 +120,12 @@ class MergeSim:
 
     def _spawn_tier(self) -> int:
         c = self.cfg
-        hi = max(1, min(c.spawn_max_tier, c.tiers - 1))
+        # lots of forms (10-15): drop bigger items too, otherwise the Final Form is unreachable in 60 s
+        extra = max(0, c.tiers - 7) + max(0, c.tiers - 10)
+        hi = max(1, min(c.spawn_max_tier + extra, c.tiers - 1))
         # weight small tiers more; slowly allow bigger drops as time goes on
         boost = min(2, int(self.t / 20))
-        weights = [1.0 / (1 + i) ** 1.2 for i in range(hi + boost)]
+        weights = [1.0 / (1 + i) ** 1.2 for i in range(min(hi + boost, c.tiers - 1))]
         return self.rng.choices(range(len(weights)), weights)[0]
 
     def add_ball(self, tier: int, x: float, y: float, vel=(0, 0)) -> Ball:

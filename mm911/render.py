@@ -54,6 +54,36 @@ def _luma(c) -> float:
     return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]
 
 
+_IMG_CACHE: dict = {}
+
+
+def _load_image(path: str, size: int = 0):
+    """Load a user picture once, shrunk to max 1024 px (12 MP phone photos made every settings
+    change slow). Returns None for missing / broken files instead of crashing the renderer."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    key = (path, st.st_mtime, st.st_size)
+    hit = _IMG_CACHE.get(key)
+    if hit is not None:
+        return hit
+    try:
+        img = pygame.image.load(path)
+    except Exception:
+        return None
+    iw, ih = img.get_size()
+    if iw < 1 or ih < 1:
+        return None
+    if max(iw, ih) > 1024:
+        k = 1024 / max(iw, ih)
+        img = pygame.transform.smoothscale(img, (max(1, int(iw * k)), max(1, int(ih * k))))
+    if len(_IMG_CACHE) > 64:
+        _IMG_CACHE.clear()
+    _IMG_CACHE[key] = img
+    return img
+
+
 class Renderer:
     def __init__(self, cfg: MergeConfig, scale: float = 1.0):
         self.cfg = cfg
@@ -109,6 +139,9 @@ class Renderer:
         c = (R + 2, R + 2)
         col = self._tier_color(t)
         img_path = self.images[t] if t < len(self.images) else ""
+        img_src = _load_image(img_path, 2 * R) if img_path else None
+        if img_src is None:
+            img_path = ""  # unreadable / missing picture: fall back to a normal ball instead of crashing
         emo = cfg.tier_value("tier_emojis", t)
         emo_surf = render_emoji(emo, R * 1.3) if emo and not (img_path and Path(img_path).exists()) else None
         if emo_surf is not None:
@@ -123,8 +156,8 @@ class Renderer:
             big.blit(hl, (0, 0))
         elif img_path and imageprep.is_cutout(img_path) and Path(img_path).exists():
             self._draw_cutout(big, c, R, col, img_path)
-        elif img_path and Path(img_path).exists():
-            img = pygame.image.load(img_path)
+        elif img_path and img_src is not None:
+            img = img_src
             iw, ih = img.get_size()
             k = (2 * R) / max(iw, ih)
             img = pygame.transform.smoothscale(img, (max(1, int(iw * k)), max(1, int(ih * k))))

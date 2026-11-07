@@ -443,7 +443,11 @@ def candidate_images(cfg) -> list[str]:
         files = [p for p in Path(cfg.tier_image_folder).iterdir() if p.suffix.lower() in IMAGE_EXTS]
         key = lambda p: [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", p.name)]
         return [str(p) for p in sorted(files, key=key)]
-    return [p for p in cfg.tier_images if p]
+    # keep empty slots: a form the user left without a picture must not shift the next pictures down
+    lst = list(cfg.tier_images)
+    while lst and not lst[-1]:
+        lst.pop()
+    return lst
 
 
 def total_ram_gb() -> float:
@@ -491,6 +495,9 @@ def tier_images(cfg, prepare: bool = False, lock=None, note: Callable[[str], Non
     for i, p in enumerate(cands):
         if len(imgs) >= cfg.tiers:
             break
+        if not p:
+            imgs.append("")
+            continue
         if reject:
             if prepare and note:
                 note(f"Checking for text {i + 1}/{len(cands)}…")
@@ -502,6 +509,8 @@ def tier_images(cfg, prepare: bool = False, lock=None, note: Callable[[str], Non
     sources = list(imgs)
     if cut:
         for i, p in enumerate(imgs):
+            if not p:
+                continue
             dst = cutout_path(p, model)
             if dst is not None and dst.exists():
                 imgs[i], ncut = str(dst), ncut + 1
