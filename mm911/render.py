@@ -16,10 +16,11 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 import pygame  # noqa: E402
 
-from .audio import AudioTrack, load_sound  # noqa: E402
+from .audio import AudioTrack, load_sound, load_music  # noqa: E402
 from .emoji import render_emoji  # noqa: E402
 from .config import MergeConfig, PALETTES, CREDIT, hex_to_rgb  # noqa: E402
-from .ffmpeg import ffmpeg_exe, best_encoder  # noqa: E402
+from .ffmpeg import ffmpeg_exe, best_encoder, encoder_args  # noqa: E402
+from .config import QUALITIES  # noqa: E402
 from .modes.merge import MergeSim  # noqa: E402
 from . import imageprep  # noqa: E402
 
@@ -88,7 +89,7 @@ class Renderer:
     def __init__(self, cfg: MergeConfig, scale: float = 1.0):
         self.cfg = cfg
         self.scale = scale
-        self.W, self.H = int(cfg.width * scale), int(cfg.height * scale)
+        self.W, self.H = int(round(cfg.width * scale)), int(round(cfg.height * scale))
         self.pal = PALETTES.get(cfg.palette, PALETTES["Candy"])
         self.surface = pygame.Surface((self.W, self.H))
         # cached text-check + cut-outs only (instant); prepare_images() fills the caches beforehand
@@ -324,13 +325,39 @@ def _pitch_for(event_tier: int, kind: str) -> float:
     return base + event_tier * 1.6
 
 
+PHYSICS_HZ = 60
+
+
+def physics_steps(fps: int):
+    """Physics runs at a fixed 60 Hz (or the frame rate when it is higher), whatever FPS you export.
+    So a seed plays out the same at 24, 30 or 60 fps, and 'only wins' seeds stay wins.
+    Yields, for each video frame, how many physics steps to run and their dt."""
+    fps = max(1, int(fps))
+    hz = max(PHYSICS_HZ, fps)
+    per = hz / fps
+    acc = 0.0
+    while True:
+        acc += per
+        n = int(acc + 1e-9)
+        acc -= n
+        yield n, 1.0 / hz
+
+
 def simulate(cfg: MergeConfig) -> MergeSim:
     """Run the physics only (fast) — used to find winning seeds."""
     sim = MergeSim(cfg)
-    dt = 1 / cfg.fps
+    hz = max(PHYSICS_HZ, int(cfg.fps))
     while not sim.done:
-        sim.step(dt)
+        sim.step(1.0 / hz)
     return sim
+
+
+def _step_frame(sim: MergeSim, steps) -> None:
+    n, dt = next(steps)
+    for _ in range(n):
+        if sim.done:
+            break
+        sim.step(dt)
 
 
 def render_video(cfg: MergeConfig, out_path: str, progress: Callable[[float], None] | None = None,
@@ -340,70 +367,108 @@ def render_video(cfg: MergeConfig, out_path: str, progress: Callable[[float], No
     render thread never draws at the same time as the live preview — pygame is not thread-safe)."""
     lock = lock or contextlib.nullcontext()
     t0 = time.time()
+    cfg.sanitize_export()
     prepare_images(cfg, lock)
     sim = MergeSim(cfg)
     with lock:
-        rend = Renderer(cfg)
-    dt = 1 / cfg.fps
+        rend = Renderer(cfg, cfg.export_scale())
+    steps = physics_steps(cfg.fps)
     est_frames = int((cfg.max_seconds + cfg.end_hold_seconds) * cfg.fps)
     out_path = str(out_path)
+    out_path = str(Path(out_path).with_suffix("." + cfg.export_format))   # .mp4 or .mov from Export settings
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     tmpdir = tempfile.mkdtemp(prefix="mm911_")
-    silent = os.path.join(tmpdir, "video.mp4")
-    enc = encoder or best_encoder()
+    silent = os.path.join(tmpdir, "video" + Path(out_path).suffix)
+    if encoder:
+        enc, enc_name = encoder, encoder[1] if len(encoder) > 1 else "custom"
+    else:
+        enc, enc_name = encoder_args(cfg.export_codec, QUALITIES.get(cfg.export_quality, 18), cfg.export_encoder)
     cmd = [ffmpeg_exe(), "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
            "-s", f"{rend.W}x{rend.H}", "-r", str(cfg.fps), "-i", "-",
-           *enc, "-pix_fmt", "yuv420p", "-movflags", "+faststart", silent]
+           "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2",   # encoders need even sizes
+           *enc, "-pix_fmt", "yuv420p", "-r", str(cfg.fps), "-movflags", "+faststart", silent]
     creation = 0x08000000 if os.name == "nt" else 0  # no console window on Windows
-    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, creationflags=creation)
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=creation)
     frames = 0
     thumb = None
     try:
         while not sim.done:
-            sim.step(dt)
+            _step_frame(sim, steps)
             with lock:
                 surf = rend.draw(sim)
-                if cfg.export_thumbnail and _thumb_moment(sim, cfg):
+                if cfg.export_thumbnail and thumb is None and _thumb_moment_frame(sim, cfg):
                     thumb = surf.copy()
                 raw = pygame.image.tobytes(surf, "RGB")
-            proc.stdin.write(raw)
+            try:
+                proc.stdin.write(raw)
+            except (BrokenPipeError, OSError):
+                break   # encoder died; the error is reported below
             frames += 1
             if progress and frames % 15 == 0:
                 progress(min(0.97, frames / est_frames))
     finally:
-        proc.stdin.close()
+        try:
+            proc.stdin.close()
+        except OSError:
+            pass
+        err = proc.stderr.read().decode("utf-8", "replace") if proc.stderr else ""
         proc.wait()
+    if proc.returncode != 0:
+        raise RuntimeError(f"Video encoder ({enc_name}) failed: {err.strip()[-400:]}")
     seconds = frames / cfg.fps
     thumb_path = ""
     if cfg.export_thumbnail:
         thumb_path = str(Path(out_path).with_suffix(".jpg"))
         with lock:
             _save_jpg(thumb if thumb is not None else rend.surface, thumb_path)
-    # audio
+    if cfg.export_audio:
+        wav = os.path.join(tmpdir, "audio.wav")
+        build_audio(cfg, sim, seconds).write(wav, seconds)
+        r = subprocess.run([ffmpeg_exe(), "-y", "-v", "error", "-i", silent, "-i", wav, "-map", "0:v:0", "-map", "1:a:0",
+                            "-c:v", "copy", "-c:a", "aac", "-b:a", f"{int(cfg.audio_bitrate)}k", "-ar", "44100",
+                            "-ac", "2", "-movflags", "+faststart", "-shortest", out_path],
+                           capture_output=True, creationflags=creation)
+        if r.returncode != 0:
+            raise RuntimeError("Adding the sound failed: " + r.stderr.decode("utf-8", "replace").strip()[-400:])
+        _rm(wav)
+        _rm(silent)
+    else:
+        os.replace(silent, out_path)
+    try:
+        os.rmdir(tmpdir)
+    except OSError:
+        pass
+    if progress:
+        progress(1.0)
+    return {"file": out_path, "seed": cfg.seed, "won": sim.won, "best_tier": sim.best_tier + 1,
+            "seconds": round(seconds, 2), "merges": sim.merges, "thumbnail": thumb_path, "fps": cfg.fps,
+            "size": f"{rend.W}x{rend.H}", "encoder": enc_name, "render_seconds": round(time.time() - t0, 1)}
+
+
+def _rm(path: str) -> None:
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+def build_audio(cfg: MergeConfig, sim: MergeSim, seconds: float) -> AudioTrack:
+    """Mix the pitched pops (drop / merge / final) and optional background music."""
     track = AudioTrack(seconds)
     snd = load_sound(cfg.sound_path)
     last_t = -1.0
     for ev in sim.events:
-        if ev.kind == "drop" and ev.t - last_t < 0.05:
-            continue
+        if ev.kind == "drop":
+            if not cfg.drop_sounds or ev.t - last_t < 0.05:
+                continue
         vol = cfg.sound_volume * (0.35 if ev.kind == "drop" else 1.0 if ev.kind == "merge" else 1.3)
-        track.add(snd, ev.t, _pitch_for(ev.tier, ev.kind), vol)
+        # event times are simulation time; with Speed != 1 the video runs at a different pace,
+        # so convert to video time (the old code put every pop out of sync when Speed was changed)
+        track.add(snd, ev.t / max(0.05, cfg.speed), _pitch_for(ev.tier, ev.kind), vol)
         last_t = ev.t
-    if cfg.music_path:
-        track.add_music(load_sound(cfg.music_path), cfg.music_volume)
-    wav = os.path.join(tmpdir, "audio.wav")
-    track.write(wav, seconds)
-    subprocess.run([ffmpeg_exe(), "-y", "-v", "error", "-i", silent, "-i", wav, "-c:v", "copy",
-                    "-c:a", "aac", "-b:a", "160k", "-shortest", out_path], check=True, creationflags=creation)
-    for f in (silent, wav):
-        try:
-            os.remove(f)
-        except OSError:
-            pass
-    if progress:
-        progress(1.0)
-    return {"file": out_path, "seed": cfg.seed, "won": sim.won, "best_tier": sim.best_tier + 1,
-            "seconds": round(seconds, 2), "merges": sim.merges, "thumbnail": thumb_path, "render_seconds": round(time.time() - t0, 1)}
+    if cfg.music_path and cfg.music_volume > 0:
+        track.add_music(load_music(cfg.music_path, seconds + 3), cfg.music_volume)
+    return track
 
 
 def prepare_images(cfg: MergeConfig, lock=None, note=None) -> dict:
@@ -411,6 +476,11 @@ def prepare_images(cfg: MergeConfig, lock=None, note=None) -> dict:
     if not (cfg.ai_cutout or cfg.reject_text) or not imageprep.candidate_images(cfg):
         return {"images": [], "skipped": [], "cut": 0, "errors": []}
     return imageprep.tier_images(cfg, prepare=True, lock=lock, note=note)
+
+
+def _thumb_moment_frame(sim: MergeSim, cfg: MergeConfig) -> bool:
+    """First frame at/after the Final Form has popped in (works at any FPS)."""
+    return sim.finished_at is not None and sim.t >= sim.finished_at + 0.45
 
 
 def _thumb_moment(sim: MergeSim, cfg: MergeConfig) -> bool:
@@ -430,11 +500,11 @@ def make_thumbnail(cfg: MergeConfig, out_path: str) -> dict:
     prepare_images(cfg)
     sim = MergeSim(cfg)
     rend = Renderer(cfg)
-    dt = 1 / cfg.fps
+    steps = physics_steps(cfg.fps)
     shot = None
     while not sim.done:
-        sim.step(dt)
-        if _thumb_moment(sim, cfg):
+        _step_frame(sim, steps)
+        if _thumb_moment_frame(sim, cfg):
             shot = rend.draw(sim).copy()
             break
     if shot is None:

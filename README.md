@@ -16,7 +16,7 @@
 ![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)
 ![Status](https://img.shields.io/badge/status-in%20development-orange?style=for-the-badge)
 
-**1080×1920 · 60 fps · YouTube Shorts / TikTok / Reels ready**
+**720p to 4K · 24 to 120 fps · H.264 / H.265 · YouTube Shorts / TikTok / Reels ready**
 
 **[⬇️ Download the portable .exe](https://github.com/TeamRealHacker/money-maker-911/releases/tag/nightly)**
 
@@ -174,7 +174,7 @@ pip install -r requirements-ai.txt   # only needed when running from source
 - Warns when you use real people, logos or copyrighted clips
 
 ### 🎞️ Export
-- 1080×1920 vertical, 60 fps (also 30 fps, 1080×1080, 1920×1080)
+- 9:16 vertical at 720p, 1080p, 2K or 4K; 24, 25, 30, 48, 50, 60, 90 or 120 fps; H.264 or H.265; MP4 or MOV; GPU encoding (NVIDIA / Intel / AMD) with CPU fallback
 - H.264 / H.265 / AV1 via FFmpeg
 - Hardware encoding: **NVIDIA NVENC**, AMD AMF, Intel QSV
 - Length presets: 15 s, 30 s, 45 s, 60 s, or "until finished"

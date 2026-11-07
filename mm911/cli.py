@@ -5,7 +5,7 @@ import argparse
 import json
 
 from .config import MergeConfig
-from .config import LENGTH_PRESETS, EMOJI_SETS
+from .config import LENGTH_PRESETS, EMOJI_SETS, RESOLUTIONS, QUALITIES, CODECS, ENCODERS, FORMATS
 from .render import render_video, make_thumbnail
 from .batch import run_batch
 from . import imageprep
@@ -37,6 +37,15 @@ def main(argv=None) -> None:
         sp.add_argument("--cutout", nargs="?", const=imageprep.DEFAULT_MODEL, choices=CUT_CHOICES,
                         help="AI background removal for tier images (default model: isnet-general-use)")
         sp.add_argument("--reject-text", action="store_true", help="skip tier images that contain text")
+        sp.add_argument("--fps", type=int, help="frames per second, 15-120 (24, 30, 50, 60, 120...)")
+        sp.add_argument("--res", choices=list(RESOLUTIONS), help="export resolution (9:16)")
+        sp.add_argument("--quality", choices=list(QUALITIES))
+        sp.add_argument("--codec", choices=CODECS)
+        sp.add_argument("--encoder", choices=ENCODERS)
+        sp.add_argument("--format", choices=FORMATS)
+        sp.add_argument("--no-audio", action="store_true", help="export a silent video")
+        sp.add_argument("--sound", help="sound file for drops/merges (mp3, wav...)")
+        sp.add_argument("--music", help="background music file")
     c = sub.add_parser("cutout", help="cut out every image in a folder (AI background removal)")
     c.add_argument("--in", dest="src", required=True, help="folder of images")
     c.add_argument("--out", default="output/cutouts")
@@ -59,6 +68,14 @@ def main(argv=None) -> None:
         cfg.ai_cutout, cfg.cutout_model = True, a.cutout
     if a.reject_text:
         cfg.reject_text = True
+    for arg, attr in (("fps", "fps"), ("res", "export_resolution"), ("quality", "export_quality"),
+                      ("codec", "export_codec"), ("encoder", "export_encoder"), ("format", "export_format"),
+                      ("sound", "sound_path"), ("music", "music_path")):
+        if getattr(a, arg) is not None:
+            setattr(cfg, attr, getattr(a, arg))
+    if a.no_audio:
+        cfg.export_audio = False
+    cfg.sanitize_export()
     if a.cmd in ("render", "thumb") and a.seed is not None:
         cfg.seed = a.seed
     if a.cmd == "thumb":

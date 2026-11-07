@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_NAME = "Money Maker 911"
 CREDIT = "made by TeamRealHackers"
-VERSION = "0.3.1"
+VERSION = "0.4.0"
 
 # Soft, non-neon palettes. Each: background top, background bottom, container, text, tier colors
 PALETTES: dict[str, dict] = {
@@ -58,6 +58,13 @@ EMOJI_SETS = {
 }
 
 MIN_TIERS, MAX_TIERS = 3, 15
+FPS_CHOICES = [24, 25, 30, 48, 50, 60, 90, 120]
+RESOLUTIONS = {"720p": (720, 1280), "1080p": (1080, 1920), "1440p": (1440, 2560), "4k": (2160, 3840)}
+QUALITIES = {"max": 15, "high": 18, "balanced": 21, "small": 25}   # x264-style CRF
+CODECS = ["h264", "h265"]
+ENCODERS = ["auto", "cpu", "nvidia", "intel", "amd"]
+FORMATS = ["mp4", "mov"]
+AUDIO_BITRATES = [128, 160, 192, 256, 320]
 
 IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp")
 
@@ -118,6 +125,16 @@ class MergeConfig:
     sound_volume: float = 0.8
     music_path: str = ""               # optional background music (off by default)
     music_volume: float = 0.25
+    drop_sounds: bool = True           # quiet sound on every drop (merges always make a sound)
+    # export
+    export_resolution: str = "1080p"   # 720p | 1080p | 1440p | 4k (always 9:16)
+    export_quality: str = "high"       # max | high | balanced | small
+    export_codec: str = "h264"         # h264 (plays everywhere) | h265 (smaller files)
+    export_encoder: str = "auto"       # auto | cpu | nvidia | intel | amd
+    export_format: str = "mp4"         # mp4 | mov
+    export_audio: bool = True          # False = silent video
+    audio_bitrate: int = 192           # kbps
+    open_folder_after: bool = False
     # randomness
     seed: int = 1
 
@@ -132,7 +149,27 @@ class MergeConfig:
         except TypeError:
             cfg = cls()
         cfg.tiers = max(MIN_TIERS, min(MAX_TIERS, int(cfg.tiers)))
+        cfg.sanitize_export()
         return cfg
+
+    def sanitize_export(self) -> None:
+        """Clamp export settings to supported values (old/hand-edited presets can't break a render)."""
+        try:
+            self.fps = max(15, min(120, int(self.fps)))
+        except (TypeError, ValueError):
+            self.fps = 60
+        if self.export_resolution not in RESOLUTIONS: self.export_resolution = "1080p"
+        if self.export_quality not in QUALITIES: self.export_quality = "high"
+        if self.export_codec not in CODECS: self.export_codec = "h264"
+        if self.export_encoder not in ENCODERS: self.export_encoder = "auto"
+        if self.export_format not in FORMATS: self.export_format = "mp4"
+        try:
+            self.audio_bitrate = max(64, min(320, int(self.audio_bitrate)))
+        except (TypeError, ValueError):
+            self.audio_bitrate = 192
+
+    def export_scale(self) -> float:
+        return RESOLUTIONS.get(self.export_resolution, (1080, 1920))[0] / self.width
 
     def save(self, path: str | Path) -> None:
         Path(path).write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")

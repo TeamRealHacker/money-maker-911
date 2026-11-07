@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import re
 import random
 from dataclasses import replace
 from pathlib import Path
@@ -51,7 +52,8 @@ def run_batch(base: MergeConfig, count: int, out_dir: str, randomize: bool = Tru
                 if simulate(cfg).won:
                     break
                 cfg = replace(cfg, seed=rng.randint(1, 10_000_000))
-        name = f"{cfg.theme_name.lower()}_merge_{i + 1:03d}_{cfg.seed}.mp4"
+        safe = re.sub(r"[^\w\-]+", "_", cfg.theme_name.lower()).strip("_") or "video"   # Windows-safe file name
+        name = f"{safe}_merge_{i + 1:03d}_{cfg.seed}.mp4"
         meta = render_video(cfg, str(out / name),
                             progress=(lambda p, i=i: progress(i, count, p)) if progress else None, lock=lock)
         meta["title"] = make_title(cfg)

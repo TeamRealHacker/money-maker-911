@@ -11,13 +11,16 @@ import subprocess
 import sys
 import threading
 import time
+from collections import deque
 from dataclasses import fields
 from pathlib import Path
 
 import webview
 
 from ..config import (MergeConfig, PALETTES, SHAPES, HOOKS, APP_NAME, CREDIT, VERSION, LENGTH_PRESETS,
-                      EMOJI_SETS, hex_to_rgb, MIN_TIERS, MAX_TIERS)
+                      EMOJI_SETS, hex_to_rgb, MIN_TIERS, MAX_TIERS, FPS_CHOICES, RESOLUTIONS, QUALITIES,
+                      CODECS, ENCODERS, FORMATS, AUDIO_BITRATES)
+from .. import audio as _audio
 from ..modes.merge import MergeSim
 from ..render import Renderer, render_video, render_preview_frame, make_thumbnail, prepare_images
 from .. import imageprep
@@ -75,6 +78,7 @@ class Api:
         self._stop = False
         self._frame: tuple[str, int, float] | None = None   # latest preview frame (b64, tier, t)
         self._frame_id = 0
+        self._sounds = deque(maxlen=48)   # preview sound events for the page to play
         self._pthread: threading.Thread | None = None
         self._prep_lock = threading.Lock()     # one image-prep run at a time
         self._prep_note = ""
@@ -110,6 +114,9 @@ class Api:
                 "lengths": LENGTH_PRESETS, "emoji_sets": EMOJI_SETS, "cutout": imageprep.status(),
                 "onboarded": self._settings.get("onboarded", False),
                 "min_tiers": MIN_TIERS, "max_tiers": MAX_TIERS,
+                "export": {"fps": FPS_CHOICES, "resolutions": list(RESOLUTIONS), "qualities": list(QUALITIES),
+                           "codecs": CODECS, "encoders": ENCODERS, "formats": FORMATS,
+                           "audio_bitrates": AUDIO_BITRATES},
                 "output_dir": self._settings.get("output_dir")}
 
     def finish_onboarding(self, choices: dict) -> bool:
@@ -149,6 +156,7 @@ class Api:
                 if k == "tiers":
                     v = max(MIN_TIERS, min(MAX_TIERS, v))
                 setattr(self._cfg, k, v)
+        self._cfg.sanitize_export()
         self._preview_dirty = True
         self._save()
         return self._cfg.to_dict()
@@ -161,7 +169,7 @@ class Api:
 
     # ---------- files ----------
     def pick_file(self, kind: str) -> str:
-        types = {"sound": ("Audio (*.mp3;*.wav;*.ogg;*.m4a)",),
+        types = {"sound": ("Audio (*.mp3;*.wav;*.ogg;*.m4a;*.aac;*.flac;*.opus;*.mp4)",),
                  "image": ("Images (*.png;*.jpg;*.jpeg;*.webp)",),
                  "font": ("Fonts (*.ttf;*.otf)",)}.get(kind, ("All files (*.*)",))
         try:
@@ -370,7 +378,32 @@ class Api:
         f = self._frame
         if f is None or self._frame_id == last_id:
             return None
-        return {"id": self._frame_id, "jpg": f[0], "tier": f[1], "t": f[2]}
+        snd = []
+        while self._sounds:
+            try:
+                snd.append(self._sounds.popleft())
+            except IndexError:
+                break
+        return {"id": self._frame_id, "jpg": f[0], "tier": f[1], "t": f[2], "snd": snd}
+
+    # ---------- listen to your sound ----------
+    def sound_sample(self, kind: str = "sound") -> str:
+        """Audio for the page as a data URL. kind: 'sound' (the raw pop, used for live preview sound),
+        'demo' (how it will sound in a video: drops, rising merges, final), 'music' (first 30 s)."""
+        try:
+            c = self._cfg
+            if kind == "music":
+                data = _audio.load_music(c.music_path, 30) * float(c.music_volume or 0.25) * 2
+                if data.size == 0:
+                    return ""
+            elif kind == "demo":
+                data = _audio.demo_track(_audio.load_sound(c.sound_path), min(1.0, float(c.sound_volume)))
+            else:
+                data = _audio.load_sound(c.sound_path)
+            return "data:audio/wav;base64," + base64.b64encode(_audio.wav_bytes(data)).decode()
+        except Exception:
+            LOG.exception("sound preview failed")
+            return ""
 
     def _preview_loop(self):
         sim = rend = cfg = None
@@ -391,7 +424,17 @@ class Api:
                     cfg = copy.deepcopy(self._cfg)
                     with GFX_LOCK:
                         sim, rend = MergeSim(cfg), Renderer(cfg, scale=0.36)
+                    ev_seen, last_drop = 0, -1.0
+                    self._sounds.clear()
                 sim.step(1 / fps)
+                # hand new sound events to the page (it plays them pitched, like the export)
+                for ev in sim.events[ev_seen:]:
+                    if ev.kind == "drop" and (not cfg.drop_sounds or ev.t - last_drop < 0.12):
+                        continue
+                    if ev.kind == "drop":
+                        last_drop = ev.t
+                    self._sounds.append([ev.kind, ev.tier])
+                ev_seen = len(sim.events)
                 with GFX_LOCK:
                     jpg = render_preview_frame(cfg, sim, rend)
                 self._frame = (base64.b64encode(jpg).decode(), sim.best_tier + 1, round(sim.t, 1))
@@ -422,12 +465,14 @@ class Api:
 
         def work():
             try:
-                out = Path(self._settings["output_dir"]) / f"merge_{int(time.time())}.mp4"
+                out = Path(self._settings["output_dir"]) / f"merge_{time.strftime('%Y%m%d_%H%M%S')}.mp4"
                 cfg = copy.deepcopy(self._cfg)
                 meta = render_video(cfg, str(out), progress=lambda p: self._emit({"i": 0, "n": 1, "p": p}),
                                     lock=GFX_LOCK)
                 meta["title"] = make_title(cfg)
                 self._emit({"done": True, "results": [meta]})
+                if cfg.open_folder_after:
+                    self.open_output()
             except Exception as e:  # pragma: no cover
                 LOG.exception("render failed")
                 self._emit({"error": str(e)})
@@ -448,6 +493,8 @@ class Api:
                                 progress=lambda i, n, p: self._emit({"i": i, "n": n, "p": p}),
                                 stop=lambda: self._stop, lock=GFX_LOCK)
                 self._emit({"done": True, "results": res})
+                if self._cfg.open_folder_after:
+                    self.open_output()
             except Exception as e:  # pragma: no cover
                 LOG.exception("render failed")
                 self._emit({"error": str(e)})

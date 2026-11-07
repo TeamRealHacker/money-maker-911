@@ -54,3 +54,44 @@ def _encoder_works(enc: str) -> bool:
         return r.returncode == 0
     except Exception:
         return False
+
+
+_HW = {  # (codec, vendor) -> encoder name
+    ("h264", "nvidia"): "h264_nvenc", ("h264", "intel"): "h264_qsv", ("h264", "amd"): "h264_amf",
+    ("h265", "nvidia"): "hevc_nvenc", ("h265", "intel"): "hevc_qsv", ("h265", "amd"): "hevc_amf",
+}
+
+
+@lru_cache(maxsize=None)
+def _available(enc: str) -> bool:
+    import subprocess
+    try:
+        out = subprocess.run([ffmpeg_exe(), "-hide_banner", "-encoders"], capture_output=True, text=True,
+                             timeout=20).stdout
+    except Exception:
+        return False
+    return enc in out and _encoder_works(enc)
+
+
+def encoder_args(codec: str = "h264", quality: int = 18, which: str = "auto") -> tuple[list[str], str]:
+    """Video encoder arguments for the export settings. Hardware (NVIDIA/Intel/AMD) when asked for or
+    when 'auto' finds one that really works; otherwise CPU (libx264 / libx265). Returns (args, name)."""
+    codec = "h265" if codec == "h265" else "h264"
+    q = int(quality)
+    vendors = ["nvidia", "intel", "amd"] if which == "auto" else ([which] if which in ("nvidia", "intel", "amd") else [])
+    for v in vendors:
+        enc = _HW[(codec, v)]
+        if _available(enc):
+            if v == "nvidia":
+                args = ["-c:v", enc, "-preset", "p5", "-rc", "vbr", "-cq", str(q + 2), "-b:v", "0"]
+            elif v == "intel":
+                args = ["-c:v", enc, "-global_quality", str(q + 3)]
+            else:
+                args = ["-c:v", enc, "-quality", "quality", "-rc", "cqp", "-qp_i", str(q + 2), "-qp_p", str(q + 4)]
+            if codec == "h265":
+                args += ["-tag:v", "hvc1"]
+            return args, enc
+    if codec == "h265" and _available("libx265"):
+        return ["-c:v", "libx265", "-preset", "fast", "-crf", str(q + 4), "-tag:v", "hvc1",
+                "-x265-params", "log-level=error"], "libx265"
+    return ["-c:v", "libx264", "-preset", "fast" if q <= 15 else "veryfast", "-crf", str(q)], "libx264"

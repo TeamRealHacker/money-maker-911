@@ -73,14 +73,31 @@
     <button class="link" onclick="mm.clearTiers()">Clear tier names, colours, emoji and images</button>
   </details>
   <details open><summary>Sound</summary>
-    <div class="row"><span>Sound</span><button class="ghost sm" onclick="mm.pick('sound_path','sound')">Drop sound…</button><button class="link" onclick="mm.set({sound_path:''})">built-in</button></div>
+    <div class="row"><span>Sound</span><span><button class="ghost sm" onclick="mm.pick('sound_path','sound')">Drop sound…</button> <button class="ghost sm play" id="playdemo" onclick="mm.listen('demo')" title="Listen: how it sounds in a video">▶</button></span></div>
     <div class="hint" id="soundname">Built-in pop. Any Myinstants mp3 works.</div>
+    <div class="row"><span></span><button class="link" onclick="mm.set({sound_path:''})">Use built-in pop</button></div>
     <div class="row"><span>Volume</span><input type="range" data-k="sound_volume" min="0" max="1.5" step="0.05"></div>
+    <div class="row"><span>Drop sounds</span><input type="checkbox" data-k="drop_sounds"></div>
+    <div class="row"><span>🔊 Preview sound</span><input type="checkbox" id="pvsound"></div>
+    <div class="row"><span>Music</span><span><button class="ghost sm" onclick="mm.pick('music_path','sound')">Add music…</button> <button class="ghost sm play" onclick="mm.listen('music')" title="Listen to the music">▶</button></span></div>
+    <div class="hint" id="musicname">No background music.</div>
+    <div class="row"><span>Music volume</span><input type="range" data-k="music_volume" min="0" max="1" step="0.05"></div>
+    <div class="row"><span></span><button class="link" onclick="mm.set({music_path:''})">Remove music</button></div>
   </details>
-  <details><summary>Export</summary>
-    <div class="row"><span>FPS</span><select data-k="fps"><option>60</option><option>30</option></select></div>
-    <div class="row"><span>Output</span><button class="ghost sm" onclick="mm.folder()">Folder…</button></div>
+  <details open><summary>Export</summary>
+    <div class="row"><span>FPS</span><select data-k="fps"><option value="24">24 (film)</option><option value="25">25</option><option value="30">30</option><option value="48">48</option><option value="50">50</option><option value="60">60 (smooth)</option><option value="90">90</option><option value="120">120</option></select></div>
+    <div class="row"><span>Resolution</span><select data-k="export_resolution"><option value="720p">720p · 720×1280</option><option value="1080p">1080p · 1080×1920</option><option value="1440p">2K · 1440×2560</option><option value="4k">4K · 2160×3840</option></select></div>
+    <div class="row"><span>Quality</span><select data-k="export_quality"><option value="max">Max</option><option value="high">High</option><option value="balanced">Balanced</option><option value="small">Small file</option></select></div>
+    <div class="row"><span>Codec</span><select data-k="export_codec"><option value="h264">H.264 (plays everywhere)</option><option value="h265">H.265 (smaller, slower)</option></select></div>
+    <div class="row"><span>Encoder</span><select data-k="export_encoder"><option value="auto">Auto (GPU if found)</option><option value="cpu">CPU</option><option value="nvidia">NVIDIA</option><option value="intel">Intel</option><option value="amd">AMD</option></select></div>
+    <div class="row"><span>Format</span><select data-k="export_format"><option value="mp4">MP4</option><option value="mov">MOV</option></select></div>
+    <div class="row"><span>Audio</span><input type="checkbox" data-k="export_audio"></div>
+    <div class="row"><span>Audio quality</span><select data-k="audio_bitrate"><option value="128">128 kbps</option><option value="160">160 kbps</option><option value="192">192 kbps</option><option value="256">256 kbps</option><option value="320">320 kbps</option></select></div>
+    <div class="row"><span>Thumbnail .jpg</span><input type="checkbox" data-k="export_thumbnail"></div>
+    <div class="row"><span>Open folder when done</span><input type="checkbox" data-k="open_folder_after"></div>
+    <div class="row"><span>Output</span><span><button class="ghost sm" onclick="mm.folder()">Folder…</button> <button class="ghost sm" onclick="pywebview.api.open_output()">Open</button></span></div>
     <div class="hint" id="outdir"></div>
+    <div class="hint" id="exportsum"></div>
   </details>
   <button class="link reset" onclick="mm.reset()">Reset to defaults</button>
 </section>
@@ -113,6 +130,7 @@
       <h2>Drop your sound</h2>
       <p>Use any clip, like one from Myinstants. It's pitched up automatically on every merge.</p>
       <button class="ghost" onclick="mm.pick('sound_path','sound')">Choose a sound…</button>
+      <button class="ghost" onclick="mm.listen('demo')">▶ Listen</button>
       <p class="hint">Tip: plain pops and boings are safest from copyright claims.</p>
     </div>
     <div class="dots"><i></i><i></i><i></i><i></i></div>

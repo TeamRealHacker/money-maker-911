@@ -22,7 +22,7 @@ async function pullFrame() {
     pulling = true;
     try {
       const f = await pywebview.api.get_frame(lastFrame);
-      if (f) { lastFrame = f.id; mm.frame(f.jpg, f.tier, f.t); }
+      if (f) { lastFrame = f.id; mm.frame(f.jpg, f.tier, f.t); if (f.snd && f.snd.length) sfx.play(f.snd); }
     } catch (e) { /* app closing */ }
     pulling = false;
   }
@@ -47,7 +47,47 @@ function queueSet(patch) {
   pendTimer = setTimeout(() => { const p = pending; pending = {}; mm.set(p); }, 120);
 }
 
+// ---- sound: listen to your sound, and hear the live preview (same pitch rules as the export) ----
+const sfx = {
+  ctx: null, buf: null, bufKey: "", on: localStorage.getItem("mm_pvsound") !== "0", player: null,
+  ensure() {
+    if (!this.ctx) { const C = window.AudioContext || window.webkitAudioContext; if (C) this.ctx = new C(); }
+    if (this.ctx && this.ctx.state === "suspended") this.ctx.resume();
+    return this.ctx;
+  },
+  async load() {
+    const key = (state.config.sound_path || "") + "|";
+    if (this.buf && this.bufKey === key) return;
+    this.bufKey = key; this.buf = null;
+    let url = "";
+    try { url = await pywebview.api.sound_sample("sound"); } catch (e) { return; }
+    if (typeof url !== "string" || !url.startsWith("data:") || !this.ensure()) return;
+    const bytes = Uint8Array.from(atob(url.split(",")[1]), (c) => c.charCodeAt(0));
+    try { this.buf = await this.ctx.decodeAudioData(bytes.buffer); } catch (e) { this.buf = null; }
+  },
+  play(events) {
+    if (!this.on || !this.buf || !this.ctx || this.ctx.state !== "running") return;
+    const vol = Math.min(1.2, +state.config.sound_volume || 0);
+    events.slice(-6).forEach(([kind, tier]) => {
+      const semis = ({ drop: -4, merge: 0, final: 7 }[kind] || 0) + tier * 1.6;
+      const src = this.ctx.createBufferSource(), g = this.ctx.createGain();
+      src.buffer = this.buf; src.playbackRate.value = Math.pow(2, semis / 12);
+      g.gain.value = vol * (kind === "drop" ? 0.35 : kind === "final" ? 1.2 : 0.9) * 0.6;
+      src.connect(g).connect(this.ctx.destination); src.start();
+    });
+  },
+};
+// browsers only allow sound after a click: unlock on the first one
+document.addEventListener("pointerdown", () => { sfx.ensure(); sfx.load(); }, { once: true });
+
 const mm = {
+  async listen(kind) {
+    if (sfx.player) { sfx.player.pause(); sfx.player = null; }
+    const url = await call("sound_sample", kind);
+    if (typeof url !== "string" || !url.startsWith("data:")) { toast(kind === "music" ? "Add a music file first." : "Couldn't read that sound file. Try an mp3 or wav."); return; }
+    sfx.player = new Audio(url);
+    sfx.player.play().catch(() => toast("Sound is blocked. Click anywhere in the app, then try again."));
+  },
   frame(b64, tier, t) {
     $("#frame").src = "data:image/jpeg;base64," + b64;
     $("#tier").textContent = "Tier " + tier;
@@ -205,9 +245,15 @@ function fill() {
   if (state.lengths) lengths();
   $("#soundname").textContent = c.sound_path ? c.sound_path.split(/[\\/]/).pop() : "Built-in pop. Any Myinstants mp3 works.";
   $("#outdir").textContent = state.output_dir || "";
+  $("#musicname").textContent = c.music_path ? c.music_path.split(/[\\/]/).pop() : "No background music.";
+  const res = { "720p": "720×1280", "1080p": "1080×1920", "1440p": "1440×2560", "4k": "2160×3840" }[c.export_resolution] || "";
+  $("#exportsum").textContent = `${res} · ${c.fps} fps · ${c.export_codec.toUpperCase()} · ${c.export_format.toUpperCase()}${c.export_audio ? "" : " · no audio"}`;
+  if (sfx.bufKey && sfx.bufKey !== (c.sound_path || "") + "|") sfx.load();
 }
 
 function bindInputs() {
+  const pv = $("#pvsound");
+  if (pv) { pv.checked = sfx.on; pv.onchange = () => { sfx.on = pv.checked; localStorage.setItem("mm_pvsound", pv.checked ? "1" : "0"); if (sfx.on) { sfx.ensure(); sfx.load(); } }; }
   document.querySelectorAll("[data-k]").forEach((el) => {
     const ev = el.type === "text" ? "change" : "input";
     el.addEventListener(ev, () => {
