@@ -1,0 +1,63 @@
+name: Build Windows .exe
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Smoke test (render a 4s clip)
+        run: python main.py render --preset presets/smoke_test.json --out output/smoke.mp4
+
+      - name: Build portable exe
+        run: >
+          pyinstaller main.py --noconfirm --onefile --windowed
+          --name MoneyMaker911
+          --icon mm911/assets/brand/logo.ico
+          --add-data "mm911/assets;mm911/assets"
+          --add-data "mm911/gui/web;mm911/gui/web"
+          --collect-all imageio_ffmpeg
+          --collect-all webview
+          --hidden-import clr
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MoneyMaker911-portable
+          path: dist/MoneyMaker911.exe
+
+      - name: Publish nightly release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          gh release delete nightly -y --cleanup-tag || true
+          gh release create nightly dist/MoneyMaker911.exe --prerelease --target "$GITHUB_SHA" \
+            --title "Nightly build" \
+            --notes "Portable Windows build of the latest commit ($GITHUB_SHA). Just download and double-click, no install."
+
+      - name: Publish versioned release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: gh release create "$GITHUB_REF_NAME" dist/MoneyMaker911.exe --title "$GITHUB_REF_NAME" --generate-notes

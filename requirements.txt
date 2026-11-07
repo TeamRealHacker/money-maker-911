@@ -1,0 +1,5 @@
+pymunk>=7.0
+pygame-ce>=2.5
+numpy>=1.26
+pywebview>=5.0
+imageio-ffmpeg>=0.5

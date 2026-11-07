@@ -1,14 +1,16 @@
 <div align="center">
 
-# 💸 Money Maker 911
+<img src="mm911/assets/brand/logo_256.png" width="120" alt="Money Maker 911 logo">
+
+# Money Maker 911
 
 ### The all-in-one Windows studio for faceless, satisfying physics Shorts
 
 **2D + 3D simulation modes · one-click batch rendering · local PC or Google Colab GPU**
 
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6?style=for-the-badge&logo=windows&logoColor=white)
-![Rust](https://img.shields.io/badge/core-Rust-000000?style=for-the-badge&logo=rust&logoColor=white)
-![Tauri](https://img.shields.io/badge/app-Tauri-24C8DB?style=for-the-badge&logo=tauri&logoColor=white)
+![Python](https://img.shields.io/badge/core-Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![Build](https://img.shields.io/github/actions/workflow/status/TeamRealHacker/money-maker-911/build.yml?style=for-the-badge&label=exe%20build)
 ![FFmpeg](https://img.shields.io/badge/encode-FFmpeg-007808?style=for-the-badge&logo=ffmpeg&logoColor=white)
 ![Colab](https://img.shields.io/badge/cloud-Google%20Colab-F9AB00?style=for-the-badge&logo=googlecolab&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)
@@ -16,9 +18,39 @@
 
 **1080×1920 · 60 fps · YouTube Shorts / TikTok / Reels ready**
 
-[Features](#-features) · [Modes](#-simulation-modes) · [Install](#-install-windows) · [Colab GPU](#%EF%B8%8F-google-colab-gpu-rendering) · [Roadmap](#%EF%B8%8F-roadmap)
+**[⬇️ Download the portable .exe](https://github.com/TeamRealHacker/money-maker-911/releases/tag/nightly)**
+
+[Progress](#-progress) · [Features](#-features) · [Modes](#-simulation-modes) · [Install](#-install-windows) · [Colab GPU](#%EF%B8%8F-google-colab-gpu-rendering) · [Roadmap](#%EF%B8%8F-roadmap)
 
 </div>
+
+---
+
+## 🚀 Progress
+
+<div align="center">
+<img src="docs/demo-merge.gif" width="260" alt="Merge demo">
+&nbsp;&nbsp;
+<img src="docs/merge-mid.png" width="260" alt="Merge mid-game">
+&nbsp;&nbsp;
+<img src="docs/merge-final.png" width="260" alt="Final Form">
+
+*Real output from the engine: 🍉 Merge Evolution, Candy palette, seed 2 (demo GIF sped up 2.5×)*
+</div>
+
+| Area | Status |
+|------|--------|
+| 🍉 Merge Evolution | ✅ **Working** (6 palettes, 6 shapes, spin, particles, Final Form ending) |
+| 🔊 Drop-in sound + auto pitch | ✅ Working (any mp3/wav/ogg, built-in pop) |
+| 🏭 Batch factory + titles.csv | ✅ Working (anti-repeat rotation, "only wins" seed search) |
+| 🖥️ Desktop app | ✅ Splash, onboarding, live preview, inspector |
+| 📦 Portable .exe | ✅ Built by GitHub Actions → [Nightly release](https://github.com/TeamRealHacker/money-maker-911/releases/tag/nightly) |
+| 🖼️ AI cut-outs | 🔜 Next |
+| 🌀 Other 2D modes | 🔜 One by one |
+| ☁️ Colab rendering | 🔜 Planned |
+| 🔵 3D modes | 🔜 Planned |
+
+Full log: [docs/PROGRESS.md](docs/PROGRESS.md)
 
 ---
 
@@ -37,7 +69,7 @@ Everything it can do in one place:
 - 🖼️ **Clean meme cut-outs**: built-in AI background removal, no captions
 - 🧠 **Anti-repeat engine**: every video comes out different, so channels stay fresh
 
-> 🚧 **Status:** active development. Merge mode ships first, then the other modes one by one. See the [Roadmap](#%EF%B8%8F-roadmap).
+> 🚧 **Status:** active development. 🍉 Merge mode works today; the other modes land one by one. See [Progress](#-progress).
 
 ---
 
@@ -224,27 +256,27 @@ After that, Money Maker 911 detects WSL + Colab CLI automatically and shows **�
 | GPU (3D) | GTX 1650 / 4 GB VRAM | RTX 3060+ / 8 GB VRAM |
 | Disk | 5 GB free | SSD, 50 GB+ for batches |
 
-### Option A: Installer (coming soon)
-Download `MoneyMaker911-Setup.exe` from **Releases**, run it, done. FFmpeg and the AI cut-out models are bundled.
+### Option A: Portable .exe (no install)
+1. Download **`MoneyMaker911.exe`** from the [Nightly release](https://github.com/TeamRealHacker/money-maker-911/releases/tag/nightly).
+2. Double-click it. FFmpeg is bundled.
+3. If Windows SmartScreen shows a warning, click **More info → Run anyway** (the app isn't code-signed yet).
 
-### Option B: Build from source
+> Needs Microsoft Edge WebView2, which Windows 10/11 already include.
+
+Command line works too:
 ```powershell
-# 1. Tools
-winget install Rustlang.Rustup
-winget install OpenJS.NodeJS.LTS
-winget install Gyan.FFmpeg
-winget install Git.Git
+MoneyMaker911.exe render --preset presets\fruit_candy.json --out output\merge.mp4
+MoneyMaker911.exe batch --count 20 --out output
+```
 
-# 2. Get the code
+### Option B: Run from source
+```powershell
+winget install Python.Python.3.12
 git clone https://github.com/TeamRealHacker/money-maker-911.git
 cd money-maker-911
-
-# 3. Install and run
-npm install
-npm run tauri dev
-
-# 4. Build the .exe installer
-npm run tauri build
+pip install -r requirements.txt
+python main.py            # desktop app
+python main.py batch --count 10 --out output
 ```
 
 ### Using your PC for 3D
@@ -259,28 +291,31 @@ npm run tauri build
 
 | Part | Tech |
 |------|------|
-| App shell | Tauri 2 (Rust + web UI) |
-| UI | React + TypeScript |
-| 2D physics | Rapier2D |
-| 3D physics | Rapier3D (+ soft-body for Jelly) |
-| Rendering | wgpu (GPU) with tiny-skia CPU fallback |
-| Encoding | FFmpeg (x264 / NVENC / AMF / QSV) |
-| Background removal | ONNX Runtime + BiRefNet / ISNet / U²-Net |
-| Cloud | Google Colab CLI via WSL2 |
+| App shell | Python 3.12 + pywebview (Edge WebView2, tiny and fast) |
+| UI | HTML/CSS/JS, Apple-style |
+| 2D physics | pymunk (Chipmunk2D) |
+| Rendering | pygame-ce offscreen, 3× supersampled sprites |
+| 3D (planned) | GPU renderer, chosen when 3D work starts |
+| Encoding | FFmpeg (x264 / NVENC / AMF / QSV, auto-detected) |
+| Background removal | rembg + BiRefNet / ISNet / U²-Net (planned) |
+| Packaging | PyInstaller → one portable .exe via GitHub Actions |
+| Cloud | Google Colab CLI via WSL2 (planned) |
 
-### 📁 Project structure (planned)
+### 📁 Project structure
 ```
 money-maker-911/
-├─ app/                 # Tauri + React studio UI
-├─ engine/
-│  ├─ core/             # shared physics, timing, seeds
-│  ├─ render/           # wgpu + CPU renderers
-│  ├─ audio/            # pitch-shift, mixing
-│  └─ modes/            # one folder per mode (merge, escape, …)
-├─ cutout/              # AI background removal
-├─ cloud/colab/         # job packer, render.ipynb, Colab CLI bridge
-├─ presets/             # themes and templates
-└─ docs/
+├─ main.py              # app + CLI entry
+├─ mm911/
+│  ├─ config.py         # every editable setting, palettes, hooks
+│  ├─ render.py         # renderer + FFmpeg export
+│  ├─ audio.py          # sound loading, pitch, mixing
+│  ├─ batch.py          # batch factory + titles.csv
+│  ├─ modes/merge.py    # 🍉 Merge Evolution physics
+│  ├─ gui/              # desktop app (splash, onboarding, studio)
+│  └─ assets/           # logo, fonts (Poppins, OFL)
+├─ presets/             # ready-made looks
+├─ docs/                # demo + progress log
+└─ .github/workflows/   # portable .exe build
 ```
 
 ---
@@ -288,15 +323,16 @@ money-maker-911/
 ## 🗺️ Roadmap
 
 - [x] Project plan and repository
-- [ ] **Phase 1: Core engine** (physics, renderer, audio pitch, FFmpeg export)
-- [ ] **Phase 2: 🍉 Merge Evolution** (first full mode + studio UI)
-- [ ] **Phase 3: Batch factory** + title/hashtag CSV + anti-repeat engine
+- [x] **Phase 1: Core engine** (physics, renderer, audio pitch, FFmpeg export)
+- [x] **Phase 2: 🍉 Merge Evolution** (first full mode + studio UI)
+- [x] **Phase 3: Batch factory** + title/hashtag CSV + anti-repeat rotation
 - [ ] **Phase 4: AI cut-outs** + image/meme import
 - [ ] **Phase 5: Escape, Breaker, Glass Rush, Ghost Escape, Rhythmic**
 - [ ] **Phase 6: Battle modes** (Flag, Weapon) + remaining 2D modes
 - [ ] **Phase 7: ☁️ Colab GPU rendering** (WSL2 bridge)
 - [ ] **Phase 8: 3D modes** (Wave, Marble Run, Ball Crush, Jelly, Cut Count, Magnet)
 - [ ] **Phase 9: New 3D modes** + YouTube auto-upload
+- [x] Portable .exe via GitHub Actions
 - [ ] **Phase 10: Windows installer** + auto-update
 
 ---
@@ -320,7 +356,9 @@ Ideas, bug reports and new mode concepts are welcome. Open an **Issue** or a **P
 
 <div align="center">
 
-**Made for creators who'd rather render than record. 💸**
+**Made for creators who'd rather render than record.**
+
+<sub>made by TeamRealHackers</sub>
 
 ⭐ Star the repo to follow progress!
 

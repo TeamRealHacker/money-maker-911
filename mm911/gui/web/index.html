@@ -1,0 +1,100 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Money Maker 911</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<aside class="side">
+  <div class="brand"><img src="logo.png" alt=""><div><b>Money Maker 911</b><small>Shorts Studio</small></div></div>
+  <div class="label">Modes</div>
+  <nav id="modes"></nav>
+  <div class="grow"></div>
+  <div class="credit">made by TeamRealHackers · <span id="ver"></span></div>
+</aside>
+
+<main class="stage">
+  <div class="topbar">
+    <div class="title"><span>Merge Evolution</span><em id="status">Live preview</em></div>
+    <div class="seg">
+      <button class="ghost" onclick="mm.restart()">↻ New run</button>
+      <button class="ghost" onclick="pywebview.api.open_output()">Open folder</button>
+    </div>
+  </div>
+  <div class="phone"><img id="frame" alt=""><div class="hud"><span id="tier">Tier 1</span><span id="time">0.0s</span></div></div>
+  <div class="dock">
+    <button class="primary" onclick="mm.renderOne()">Render video</button>
+    <div class="batch">
+      <input id="count" type="number" min="1" max="500" value="10">
+      <label class="chk"><input id="rand" type="checkbox" checked> Vary each video</label>
+      <label class="chk"><input id="wins" type="checkbox" checked> Only Final Form wins</label>
+      <button class="dark" onclick="mm.renderBatch()">Render batch</button>
+    </div>
+    <div class="prog" id="prog" hidden><div class="track"><i id="bar"></i></div><span id="ptext"></span><button class="ghost sm" onclick="pywebview.api.stop()">Stop</button></div>
+  </div>
+</main>
+
+<section class="inspector" id="inspector">
+  <details open><summary>Look</summary>
+    <div class="row"><span>Palette</span><div id="palettes" class="swatches"></div></div>
+    <div class="row"><span>Container</span><select data-k="container_shape" id="shapes"></select></div>
+    <div class="row"><span>Size</span><input type="range" data-k="container_radius" min="320" max="520" step="5"></div>
+    <div class="row"><span>Wall</span><input type="range" data-k="container_thickness" min="4" max="40"></div>
+    <div class="row"><span>Spin °/s</span><input type="range" data-k="container_spin" min="-60" max="60"></div>
+    <div class="row"><span>Background</span><button class="ghost sm" onclick="mm.pick('background_image','image')">Choose…</button><button class="link" onclick="mm.set({background_image:''})">clear</button></div>
+    <div class="row"><span>Tier numbers</span><input type="checkbox" data-k="show_tier_labels"></div>
+    <div class="row"><span>Progress strip</span><input type="checkbox" data-k="show_progress"></div>
+  </details>
+  <details open><summary>Text</summary>
+    <div class="row col"><span>Theme name</span><input type="text" data-k="theme_name"></div>
+    <div class="row col"><span>Hook</span><input type="text" data-k="hook" list="hooks"><datalist id="hooks"></datalist></div>
+    <div class="row col"><span>Watermark</span><input type="text" data-k="watermark" placeholder="@yourchannel"></div>
+    <div class="row"><span>Font</span><button class="ghost sm" onclick="mm.pick('font_path','font')">Choose .ttf…</button><button class="link" onclick="mm.set({font_path:''})">default</button></div>
+  </details>
+  <details open><summary>Gameplay</summary>
+    <div class="row"><span>Tiers</span><input type="range" data-k="tiers" min="5" max="11"></div>
+    <div class="row"><span>Drop every</span><input type="range" data-k="spawn_interval" min="0.08" max="0.6" step="0.01"></div>
+    <div class="row"><span>Gravity</span><input type="range" data-k="gravity" min="600" max="3000" step="50"></div>
+    <div class="row"><span>Bounce</span><input type="range" data-k="bounce" min="0" max="0.8" step="0.01"></div>
+    <div class="row"><span>Speed</span><input type="range" data-k="speed" min="0.5" max="2" step="0.05"></div>
+    <div class="row"><span>Max length s</span><input type="range" data-k="max_seconds" min="15" max="60"></div>
+  </details>
+  <details open><summary>Images & Sound</summary>
+    <div class="row"><span>Tier images</span><button class="ghost sm" onclick="mm.pickImages()">Choose…</button><button class="link" onclick="mm.set({tier_images:[]})">clear</button></div>
+    <div class="hint" id="imgcount">Pick one image per tier, smallest first.</div>
+    <div class="row"><span>Sound</span><button class="ghost sm" onclick="mm.pick('sound_path','sound')">Drop sound…</button><button class="link" onclick="mm.set({sound_path:''})">built-in</button></div>
+    <div class="hint" id="soundname">Built-in pop. Any Myinstants mp3 works.</div>
+    <div class="row"><span>Volume</span><input type="range" data-k="sound_volume" min="0" max="1.5" step="0.05"></div>
+  </details>
+  <details><summary>Export</summary>
+    <div class="row"><span>FPS</span><select data-k="fps"><option>60</option><option>30</option></select></div>
+    <div class="row"><span>Output</span><button class="ghost sm" onclick="mm.folder()">Folder…</button></div>
+    <div class="hint" id="outdir"></div>
+  </details>
+  <button class="link reset" onclick="mm.reset()">Reset to defaults</button>
+</section>
+
+<div class="onboard" id="onboard" hidden>
+  <div class="card">
+    <div class="step" data-s="0">
+      <img class="big" src="logo.png" alt="">
+      <h2>Welcome to Money Maker 911</h2>
+      <p>Make satisfying physics Shorts in one click. No camera, no editing.</p>
+      <small class="by">made by TeamRealHackers</small>
+    </div>
+    <div class="step" data-s="1" hidden>
+      <h2>Pick your look</h2>
+      <p>You can change everything later.</p>
+      <div id="obpal" class="swatches big"></div>
+      <input id="obtheme" type="text" value="Fruit" placeholder="Theme name, e.g. Fruit, Planet, Meme">
+    </div>
+    <div class="step" data-s="2" hidden>
+      <h2>Drop your sound</h2>
+      <p>Use any clip, like one from Myinstants. It's pitched up automatically on every merge.</p>
+      <button class="ghost" onclick="mm.pick('sound_path','sound')">Choose a sound…</button>
+      <p class="hint">Tip: plain pops and boings are safest from copyright claims.</p>
+    </div>
+    <div class="dots"><i></i><i></i><i></i></div>
+    <div class="nav"><button class="link" id="obback">Back</button><button class="primary" id="obnext">Continue</button></div>
+  </div>
+</div>
+<script src="app.js"></script>
+</body></html>
