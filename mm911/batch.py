@@ -37,7 +37,7 @@ def vary(base: MergeConfig, i: int, rng: random.Random, randomize: bool) -> Merg
 
 def run_batch(base: MergeConfig, count: int, out_dir: str, randomize: bool = True, only_wins: bool = True,
               progress: Callable[[int, int, float], None] | None = None,
-              stop: Callable[[], bool] | None = None) -> list[dict]:
+              stop: Callable[[], bool] | None = None, lock=None) -> list[dict]:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     rng = random.Random(base.seed)
@@ -53,7 +53,7 @@ def run_batch(base: MergeConfig, count: int, out_dir: str, randomize: bool = Tru
                 cfg = replace(cfg, seed=rng.randint(1, 10_000_000))
         name = f"{cfg.theme_name.lower()}_merge_{i + 1:03d}_{cfg.seed}.mp4"
         meta = render_video(cfg, str(out / name),
-                            progress=(lambda p, i=i: progress(i, count, p)) if progress else None)
+                            progress=(lambda p, i=i: progress(i, count, p)) if progress else None, lock=lock)
         meta["title"] = make_title(cfg)
         meta["description"] = f"{cfg.theme_name} merge simulation. {cfg.hook} #shorts #satisfying #merge"
         meta["hashtags"] = "#shorts #satisfying #merge #simulation"

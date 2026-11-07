@@ -83,3 +83,4 @@ input[type=text]:focus,select:focus{border-color:#c9c9cf;background:#fff}
 .tier input[type=color]::-webkit-color-swatch-wrapper{padding:0}
 .tier input[type=color]::-webkit-color-swatch{border-radius:50%;border:1px solid var(--line)}
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:12px;font-size:13px;z-index:20;animation:rise .3s}
+.primary:disabled{opacity:.6;cursor:default}

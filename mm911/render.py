@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import contextlib
 import time
 from pathlib import Path
 from typing import Callable
@@ -272,11 +273,15 @@ def simulate(cfg: MergeConfig) -> MergeSim:
 
 
 def render_video(cfg: MergeConfig, out_path: str, progress: Callable[[float], None] | None = None,
-                 encoder: list[str] | None = None) -> dict:
-    """Render one Merge video to MP4. Returns metadata."""
+                 encoder: list[str] | None = None, lock=None) -> dict:
+    """Render one Merge video to MP4. Returns metadata.
+    `lock`: optional lock held around every pygame call (the desktop app passes one so the
+    render thread never draws at the same time as the live preview — pygame is not thread-safe)."""
+    lock = lock or contextlib.nullcontext()
     t0 = time.time()
     sim = MergeSim(cfg)
-    rend = Renderer(cfg)
+    with lock:
+        rend = Renderer(cfg)
     dt = 1 / cfg.fps
     est_frames = int((cfg.max_seconds + cfg.end_hold_seconds) * cfg.fps)
     out_path = str(out_path)
@@ -294,10 +299,12 @@ def render_video(cfg: MergeConfig, out_path: str, progress: Callable[[float], No
     try:
         while not sim.done:
             sim.step(dt)
-            surf = rend.draw(sim)
-            if cfg.export_thumbnail and _thumb_moment(sim, cfg):
-                thumb = surf.copy()
-            proc.stdin.write(pygame.image.tobytes(surf, "RGB"))
+            with lock:
+                surf = rend.draw(sim)
+                if cfg.export_thumbnail and _thumb_moment(sim, cfg):
+                    thumb = surf.copy()
+                raw = pygame.image.tobytes(surf, "RGB")
+            proc.stdin.write(raw)
             frames += 1
             if progress and frames % 15 == 0:
                 progress(min(0.97, frames / est_frames))
@@ -308,7 +315,8 @@ def render_video(cfg: MergeConfig, out_path: str, progress: Callable[[float], No
     thumb_path = ""
     if cfg.export_thumbnail:
         thumb_path = str(Path(out_path).with_suffix(".jpg"))
-        _save_jpg(thumb if thumb is not None else rend.surface, thumb_path)
+        with lock:
+            _save_jpg(thumb if thumb is not None else rend.surface, thumb_path)
     # audio
     track = AudioTrack(seconds)
     snd = load_sound(cfg.sound_path)
