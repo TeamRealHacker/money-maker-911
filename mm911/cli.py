@@ -5,7 +5,8 @@ import argparse
 import json
 
 from .config import MergeConfig
-from .render import render_video
+from .config import LENGTH_PRESETS, EMOJI_SETS
+from .render import render_video, make_thumbnail
 from .batch import run_batch
 
 
@@ -16,17 +17,36 @@ def main(argv=None) -> None:
     r.add_argument("--preset", help="preset .json")
     r.add_argument("--seed", type=int)
     r.add_argument("--out", default="output/merge.mp4")
+    t = sub.add_parser("thumb", help="save only a thumbnail .jpg")
+    t.add_argument("--preset")
+    t.add_argument("--seed", type=int)
+    t.add_argument("--out", default="output/thumb.jpg")
+    for sp in (r, t):
+        sp.add_argument("--length", choices=["30", "45", "60"], help="Shorts length preset")
+        sp.add_argument("--emoji-set", choices=list(EMOJI_SETS), help="use a built-in emoji tier set")
+        sp.add_argument("--image-folder", help="folder of tier images (sorted by name)")
     b = sub.add_parser("batch", help="render many videos")
     b.add_argument("--preset")
     b.add_argument("--count", type=int, default=10)
     b.add_argument("--out", default="output")
     b.add_argument("--no-random", action="store_true")
+    b.add_argument("--length", choices=["30", "45", "60"])
+    b.add_argument("--emoji-set", choices=list(EMOJI_SETS))
+    b.add_argument("--image-folder")
     b.add_argument("--allow-fails", action="store_true", help="keep runs that miss the Final Form")
     a = p.parse_args(argv)
     cfg = MergeConfig.load(a.preset) if a.preset else MergeConfig()
-    if a.cmd == "render":
-        if a.seed is not None:
-            cfg.seed = a.seed
+    if a.length:
+        cfg.max_seconds = LENGTH_PRESETS[a.length + "s"]
+    if a.emoji_set:
+        cfg.tier_emojis = EMOJI_SETS[a.emoji_set][: cfg.tiers]
+    if a.image_folder:
+        cfg.tier_image_folder = a.image_folder
+    if a.cmd in ("render", "thumb") and a.seed is not None:
+        cfg.seed = a.seed
+    if a.cmd == "thumb":
+        print(json.dumps(make_thumbnail(cfg, a.out), indent=2))
+    elif a.cmd == "render":
         print(json.dumps(render_video(cfg, a.out, progress=lambda x: print(f"\r{x*100:5.1f}%", end="")), indent=2))
     else:
         def prog(i, n, x):

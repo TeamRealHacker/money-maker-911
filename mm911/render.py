@@ -16,6 +16,7 @@ os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 import pygame  # noqa: E402
 
 from .audio import AudioTrack, load_sound  # noqa: E402
+from .emoji import render_emoji  # noqa: E402
 from .config import MergeConfig, PALETTES, CREDIT, hex_to_rgb  # noqa: E402
 from .ffmpeg import ffmpeg_exe, best_encoder  # noqa: E402
 from .modes.merge import MergeSim  # noqa: E402
@@ -58,6 +59,7 @@ class Renderer:
         self.W, self.H = int(cfg.width * scale), int(cfg.height * scale)
         self.pal = PALETTES.get(cfg.palette, PALETTES["Candy"])
         self.surface = pygame.Surface((self.W, self.H))
+        self.images = cfg.resolved_tier_images()
         self.bg = self._make_bg()
         self.sprites = [self._make_sprite(t) for t in range(cfg.tiers)]
         self.f_hook = _font(cfg, int(64 * scale))
@@ -85,6 +87,12 @@ class Renderer:
         return s
 
     def _tier_color(self, t: int) -> tuple:
+        custom = self.cfg.tier_value("tier_colors", t)
+        if custom:
+            try:
+                return hex_to_rgb(custom)
+            except ValueError:
+                pass
         tiers = self.pal["tiers"]
         return hex_to_rgb(tiers[t % len(tiers)])
 
@@ -97,8 +105,20 @@ class Renderer:
         big = pygame.Surface((R * 2 + 4, R * 2 + 4), pygame.SRCALPHA)
         c = (R + 2, R + 2)
         col = self._tier_color(t)
-        img_path = cfg.tier_images[t] if t < len(cfg.tier_images) else ""
-        if img_path and Path(img_path).exists():
+        img_path = self.images[t] if t < len(self.images) else ""
+        emo = cfg.tier_value("tier_emojis", t)
+        emo_surf = render_emoji(emo, R * 1.3) if emo and not (img_path and Path(img_path).exists()) else None
+        if emo_surf is not None:
+            pygame.draw.circle(big, _shade(col, 0.72), c, R)
+            pygame.draw.circle(big, col, c, int(R * 0.9))
+            sh = emo_surf.copy()
+            sh.fill((0, 0, 0, 60), special_flags=pygame.BLEND_RGBA_MULT)
+            big.blit(sh, (c[0] - sh.get_width() // 2 + R // 30, c[1] - sh.get_height() // 2 + R // 18))
+            big.blit(emo_surf, (c[0] - emo_surf.get_width() // 2, c[1] - emo_surf.get_height() // 2))
+            hl = pygame.Surface(big.get_size(), pygame.SRCALPHA)
+            pygame.draw.ellipse(hl, (255, 255, 255, 45), (c[0] - R * 0.55, c[1] - R * 0.75, R * 0.7, R * 0.4))
+            big.blit(hl, (0, 0))
+        elif img_path and Path(img_path).exists():
             img = pygame.image.load(img_path)
             iw, ih = img.get_size()
             k = (2 * R) / max(iw, ih)
@@ -129,6 +149,13 @@ class Renderer:
                 big.blit(ts, (c[0] - ts.get_width() // 2, c[1] - ts.get_height() // 2))
         size = (max(1, big.get_width() // ss), max(1, big.get_height() // ss))
         return pygame.transform.smoothscale(big, size)
+
+    def _spins(self, t: int) -> bool:
+        """Pictures and emoji roll with the physics; plain numbered balls stay upright."""
+        if not hasattr(self, "_spin_cache"):
+            self._spin_cache = [bool((i < len(self.images) and self.images[i]) or self.cfg.tier_value("tier_emojis", i))
+                                for i in range(self.cfg.tiers)]
+        return self._spin_cache[t]
 
     # ---------- drawing ----------
     def _text_center(self, font, text, y, color, shadow=True):
@@ -198,7 +225,7 @@ class Renderer:
         for b in sim.balls:
             spr = self.sprites[b.tier]
             pos = b.shape.body.position
-            ang = -math.degrees(b.shape.body.angle) if (cfg.tier_images and b.tier < len(cfg.tier_images) and cfg.tier_images[b.tier]) else 0
+            ang = -math.degrees(b.shape.body.angle) if self._spins(b.tier) else 0
             if b.pop < 1 or ang:
                 e = 1 - (1 - b.pop) ** 3
                 k = 0.6 + 0.4 * e + 0.12 * math.sin(e * math.pi)
@@ -263,10 +290,13 @@ def render_video(cfg: MergeConfig, out_path: str, progress: Callable[[float], No
     creation = 0x08000000 if os.name == "nt" else 0  # no console window on Windows
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, creationflags=creation)
     frames = 0
+    thumb = None
     try:
         while not sim.done:
             sim.step(dt)
             surf = rend.draw(sim)
+            if cfg.export_thumbnail and _thumb_moment(sim, cfg):
+                thumb = surf.copy()
             proc.stdin.write(pygame.image.tobytes(surf, "RGB"))
             frames += 1
             if progress and frames % 15 == 0:
@@ -275,6 +305,10 @@ def render_video(cfg: MergeConfig, out_path: str, progress: Callable[[float], No
         proc.stdin.close()
         proc.wait()
     seconds = frames / cfg.fps
+    thumb_path = ""
+    if cfg.export_thumbnail:
+        thumb_path = str(Path(out_path).with_suffix(".jpg"))
+        _save_jpg(thumb if thumb is not None else rend.surface, thumb_path)
     # audio
     track = AudioTrack(seconds)
     snd = load_sound(cfg.sound_path)
@@ -299,7 +333,36 @@ def render_video(cfg: MergeConfig, out_path: str, progress: Callable[[float], No
     if progress:
         progress(1.0)
     return {"file": out_path, "seed": cfg.seed, "won": sim.won, "best_tier": sim.best_tier + 1,
-            "seconds": round(seconds, 2), "merges": sim.merges, "render_seconds": round(time.time() - t0, 1)}
+            "seconds": round(seconds, 2), "merges": sim.merges, "thumbnail": thumb_path, "render_seconds": round(time.time() - t0, 1)}
+
+
+def _thumb_moment(sim: MergeSim, cfg: MergeConfig) -> bool:
+    """Best frame for a thumbnail: FINAL FORM fully popped in (or the last second of a near miss)."""
+    if sim.finished_at is not None:
+        return sim.finished_at + 0.45 <= sim.t < sim.finished_at + 0.45 + 1.0 / cfg.fps
+    return False
+
+
+def _save_jpg(surf: pygame.Surface, path: str) -> None:
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    pygame.image.save(surf, path)
+
+
+def make_thumbnail(cfg: MergeConfig, out_path: str) -> dict:
+    """Thumbnail only (no video): runs the physics fast and grabs the Final Form moment."""
+    sim = MergeSim(cfg)
+    rend = Renderer(cfg)
+    dt = 1 / cfg.fps
+    shot = None
+    while not sim.done:
+        sim.step(dt)
+        if _thumb_moment(sim, cfg):
+            shot = rend.draw(sim).copy()
+            break
+    if shot is None:
+        shot = rend.draw(sim)
+    _save_jpg(shot, out_path)
+    return {"file": out_path, "seed": cfg.seed, "won": sim.won, "best_tier": sim.best_tier + 1}
 
 
 def render_preview_frame(cfg: MergeConfig, sim: MergeSim, rend: Renderer) -> bytes:
@@ -311,4 +374,4 @@ def render_preview_frame(cfg: MergeConfig, sim: MergeSim, rend: Renderer) -> byt
     return buf.getvalue()
 
 
-__all__ = ["Renderer", "render_video", "simulate", "render_preview_frame", "CREDIT"]
+__all__ = ["Renderer", "render_video", "make_thumbnail", "simulate", "render_preview_frame", "CREDIT"]

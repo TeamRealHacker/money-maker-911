@@ -28,6 +28,9 @@ jobs:
       - name: Smoke test (render a 4s clip)
         run: python main.py render --preset presets/smoke_test.json --out output/smoke.mp4
 
+      - name: Smoke test (emoji tiers + thumbnail)
+        run: python main.py thumb --preset presets/emoji_fruit.json --seed 12 --out output/thumb.jpg
+
       - name: Build portable exe
         run: >
           pyinstaller main.py --noconfirm --onefile --windowed

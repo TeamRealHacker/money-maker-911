@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_NAME = "Money Maker 911"
 CREDIT = "made by TeamRealHackers"
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 # Soft, non-neon palettes. Each: background top, background bottom, container, text, tier colors
 PALETTES: dict[str, dict] = {
@@ -44,6 +44,20 @@ PALETTES: dict[str, dict] = {
 }
 
 SHAPES = ["circle", "hexagon", "octagon", "square", "heart", "star"]
+
+# Length presets (button label -> max seconds before the run stops; +end hold = final length)
+LENGTH_PRESETS = {"30s": 28.0, "45s": 43.0, "60s": 58.0}
+
+# Ready-made emoji tier sets (smallest first). Any emoji works; these ship offline.
+EMOJI_SETS = {
+    "Fruit": ["🍒", "🍓", "🍇", "🍋", "🍊", "🍎", "🍐", "🍑", "🍍", "🍈", "🍉"],
+    "Animal": ["🐭", "🐱", "🐶", "🦊", "🐼", "🐻", "🐯", "🦁", "🐘", "🐳", "🐳"],
+    "Planet": ["⭐", "🌑", "🌙", "🌍", "🪐", "☀️", "☀️", "☀️", "☀️", "☀️", "☀️"],
+    "Food": ["🍪", "🍩", "🍕", "🍔", "🍎", "🍉", "🍍", "🥥", "🍈", "🍑", "🍇"],
+    "Meme": ["💀", "😂", "🗿", "🔥", "💎", "⚽", "🏀", "🍕", "🍔", "🪐", "☀️"],
+}
+
+IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp")
 
 HOOKS = [
     "Will it reach the Final Form?",
@@ -90,6 +104,10 @@ class MergeConfig:
     # assets
     tier_images: list[str] = field(default_factory=list)   # one image per tier (optional)
     tier_names: list[str] = field(default_factory=list)    # labels per tier (optional)
+    tier_image_folder: str = ""        # folder of images, sorted by name = tier order (overrides tier_images)
+    tier_colors: list[str] = field(default_factory=list)   # custom hex per tier ("" = palette colour)
+    tier_emojis: list[str] = field(default_factory=list)   # emoji per tier ("" = number/name)
+    export_thumbnail: bool = True      # save a .jpg thumbnail next to every video
     sound_path: str = ""               # any sound (Myinstants etc). Empty = built-in pop
     sound_volume: float = 0.8
     music_path: str = ""               # optional background music (off by default)
@@ -111,6 +129,19 @@ class MergeConfig:
     @classmethod
     def load(cls, path: str | Path) -> "MergeConfig":
         return cls.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
+
+    def resolved_tier_images(self) -> list[str]:
+        """Images per tier: folder (natural name order) wins over the picked list."""
+        if self.tier_image_folder and Path(self.tier_image_folder).is_dir():
+            import re
+            files = [p for p in Path(self.tier_image_folder).iterdir() if p.suffix.lower() in IMAGE_EXTS]
+            key = lambda p: [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", p.name)]
+            return [str(p) for p in sorted(files, key=key)][: self.tiers]
+        return list(self.tier_images)
+
+    def tier_value(self, attr: str, t: int) -> str:
+        lst = getattr(self, attr)
+        return lst[t] if t < len(lst) and lst[t] else ""
 
     def tier_radius(self, tier: int) -> float:
         return self.base_radius * (self.growth ** tier)

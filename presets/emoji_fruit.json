@@ -1,0 +1,31 @@
+{
+  "theme_name": "Fruit",
+  "palette": "Mint",
+  "container_shape": "circle",
+  "tiers": 9,
+  "base_radius": 20.0,
+  "show_tier_labels": true,
+  "tier_emojis": [
+    "🍒",
+    "🍓",
+    "🍇",
+    "🍊",
+    "🍎",
+    "🍑",
+    "🍍",
+    "🍈",
+    "🍉"
+  ],
+  "tier_colors": [
+    "#FFE3E3",
+    "#FFD6D6",
+    "#E9DDFB",
+    "#FFE0B8",
+    "#FFD1D1",
+    "#FFE1D0",
+    "#FFF0B3",
+    "#DDF5D0",
+    "#D3F0D8"
+  ],
+  "max_seconds": 28.0
+}

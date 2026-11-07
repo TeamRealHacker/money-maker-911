@@ -36,11 +36,18 @@
 <img src="docs/merge-final.png" width="260" alt="Final Form">
 
 *Real output from the engine: 🍉 Merge Evolution, Candy palette, seed 2 (demo GIF sped up 2.5×)*
+
+<img src="docs/demo-emoji-merge.gif" width="260" alt="Emoji Fruit merge demo">
+&nbsp;&nbsp;
+<img src="docs/thumb-emoji-fruit.jpg" width="260" alt="Auto thumbnail">
+
+*New: 🍒→🍉 emoji tiers with custom colours, 30s preset, and the auto-saved thumbnail (right)*
 </div>
 
 | Area | Status |
 |------|--------|
 | 🍉 Merge Evolution | ✅ **Working** (6 palettes, 6 shapes, spin, particles, Final Form ending) |
+| 🎨 Merge polish | ✅ Tier image folder + circle-crop preview, per-tier names / hex colours / emoji, 5 emoji sets, auto thumbnail `.jpg`, 30/45/60s presets |
 | 🔊 Drop-in sound + auto pitch | ✅ Working (any mp3/wav/ogg, built-in pop) |
 | 🏭 Batch factory + titles.csv | ✅ Working (anti-repeat rotation, "only wins" seed search) |
 | 🖥️ Desktop app | ✅ Splash, onboarding, live preview, inspector |
@@ -266,8 +273,11 @@ After that, Money Maker 911 detects WSL + Colab CLI automatically and shows **�
 Command line works too:
 ```powershell
 MoneyMaker911.exe render --preset presets\fruit_candy.json --out output\merge.mp4
-MoneyMaker911.exe batch --count 20 --out output
+MoneyMaker911.exe batch --count 20 --out output --length 30 --emoji-set Fruit
+MoneyMaker911.exe thumb --preset presets\emoji_fruit.json --out output\thumb.jpg
+MoneyMaker911.exe render --image-folder C:\memes\cats --length 45 --out output\cats.mp4
 ```
+Every video also gets a matching `.jpg` thumbnail (the Final Form moment). Tier image folders are read in name order, so call files `1.png, 2.png, 3.png…`.
 
 ### Option B: Run from source
 ```powershell
@@ -353,6 +363,8 @@ Ideas, bug reports and new mode concepts are welcome. Open an **Issue** or a **P
 ## 📜 License
 
 [MIT](LICENSE) © 2026 TeamRealHacker
+
+Emoji graphics: [Twemoji](https://github.com/jdecked/twemoji) © Twitter, Inc. and contributors, [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/). Font: Poppins (SIL OFL).
 
 <div align="center">
 

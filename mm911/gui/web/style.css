@@ -70,3 +70,16 @@ input[type=text]:focus,select:focus{border-color:#c9c9cf;background:#fff}
 .dots{display:flex;gap:6px;justify-content:center;margin:22px 0 14px}.dots i{width:6px;height:6px;border-radius:50%;background:#D2D2D7}.dots i.on{background:var(--ink);width:18px;border-radius:6px}
 .nav{display:flex;justify-content:space-between}
 @keyframes rise{from{opacity:0;transform:translateY(16px) scale(.98)}to{opacity:1;transform:none}}
+/* tiers editor + pills */
+.pills{display:flex;gap:4px;background:#F0F0F3;border-radius:9px;padding:3px}
+.pills button{background:none;padding:4px 10px;font-size:12.5px;border-radius:7px;color:#3a3a3c}
+.pills button.on{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.1);font-weight:600}
+.tierlist{display:flex;flex-direction:column;gap:6px;margin:4px 0 6px}
+.tier{display:grid;grid-template-columns:30px 1fr 44px 28px;gap:6px;align-items:center}
+.tier img{width:30px;height:30px}
+.tier input[type=text]{padding:5px 7px;font-size:12.5px;min-width:0}
+.tier input.emo{text-align:center;padding:5px 2px}
+.tier input[type=color]{width:28px;height:28px;border:0;padding:0;background:none;cursor:pointer;border-radius:50%}
+.tier input[type=color]::-webkit-color-swatch-wrapper{padding:0}
+.tier input[type=color]::-webkit-color-swatch{border-radius:50%;border:1px solid var(--line)}
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:12px;font-size:13px;z-index:20;animation:rise .3s}

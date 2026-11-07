@@ -16,6 +16,7 @@
     <div class="title"><span>Merge Evolution</span><em id="status">Live preview</em></div>
     <div class="seg">
       <button class="ghost" onclick="mm.restart()">↻ New run</button>
+      <button class="ghost" onclick="mm.thumb()">Save thumbnail</button>
       <button class="ghost" onclick="pywebview.api.open_output()">Open folder</button>
     </div>
   </div>
@@ -55,11 +56,17 @@
     <div class="row"><span>Gravity</span><input type="range" data-k="gravity" min="600" max="3000" step="50"></div>
     <div class="row"><span>Bounce</span><input type="range" data-k="bounce" min="0" max="0.8" step="0.01"></div>
     <div class="row"><span>Speed</span><input type="range" data-k="speed" min="0.5" max="2" step="0.05"></div>
+    <div class="row"><span>Length</span><div class="pills" id="lengths"></div></div>
     <div class="row"><span>Max length s</span><input type="range" data-k="max_seconds" min="15" max="60"></div>
   </details>
-  <details open><summary>Images & Sound</summary>
-    <div class="row"><span>Tier images</span><button class="ghost sm" onclick="mm.pickImages()">Choose…</button><button class="link" onclick="mm.set({tier_images:[]})">clear</button></div>
+  <details open><summary>Tiers</summary>
+    <div class="row"><span>Emoji set</span><select id="emojiset"><option value="">None (numbers)</option></select></div>
+    <div class="row"><span>Images</span><span><button class="ghost sm" onclick="mm.pickImageFolder()">Folder…</button> <button class="ghost sm" onclick="mm.pickImages()">Files…</button></span></div>
     <div class="hint" id="imgcount">Pick one image per tier, smallest first.</div>
+    <div id="tierlist" class="tierlist"></div>
+    <button class="link" onclick="mm.clearTiers()">Clear tier names, colours, emoji and images</button>
+  </details>
+  <details open><summary>Sound</summary>
     <div class="row"><span>Sound</span><button class="ghost sm" onclick="mm.pick('sound_path','sound')">Drop sound…</button><button class="link" onclick="mm.set({sound_path:''})">built-in</button></div>
     <div class="hint" id="soundname">Built-in pop. Any Myinstants mp3 works.</div>
     <div class="row"><span>Volume</span><input type="range" data-k="sound_volume" min="0" max="1.5" step="0.05"></div>

@@ -14,9 +14,10 @@ from pathlib import Path
 
 import webview
 
-from ..config import MergeConfig, PALETTES, SHAPES, HOOKS, APP_NAME, CREDIT, VERSION
+from ..config import (MergeConfig, PALETTES, SHAPES, HOOKS, APP_NAME, CREDIT, VERSION, LENGTH_PRESETS,
+                      EMOJI_SETS, hex_to_rgb)
 from ..modes.merge import MergeSim
-from ..render import Renderer, render_video, render_preview_frame
+from ..render import Renderer, render_video, render_preview_frame, make_thumbnail
 from ..batch import run_batch, make_title
 
 
@@ -57,6 +58,7 @@ class Api:
     def bootstrap(self) -> dict:
         return {"app": APP_NAME, "credit": CREDIT, "version": VERSION, "config": self.cfg.to_dict(),
                 "palettes": {k: v for k, v in PALETTES.items()}, "shapes": SHAPES, "hooks": HOOKS,
+                "lengths": LENGTH_PRESETS, "emoji_sets": EMOJI_SETS,
                 "onboarded": self.settings.get("onboarded", False),
                 "output_dir": self.settings.get("output_dir")}
 
@@ -103,9 +105,79 @@ class Api:
                                              file_types=("Images (*.png;*.jpg;*.jpeg;*.webp)",))
         files = sorted(res or [])
         self.cfg.tier_images = files[: self.cfg.tiers]
+        self.cfg.tier_image_folder = ""
         self._preview_dirty = True
         self._save()
         return self.cfg.tier_images
+
+    def pick_image_folder(self) -> list[dict]:
+        res = self.window.create_file_dialog(webview.FOLDER_DIALOG)
+        if res:
+            self.cfg.tier_image_folder = res[0]
+            self._preview_dirty = True
+            self._save()
+        return self.tier_previews()
+
+    # ---------- per-tier editor ----------
+    def tier_previews(self) -> list[dict]:
+        """One row per tier: circle-cropped preview (exactly how it renders), name, colour, emoji, image."""
+        import io
+        import pygame
+        rend = Renderer(self.cfg, scale=0.5)
+        imgs = self.cfg.resolved_tier_images()
+        rows = []
+        for t in range(self.cfg.tiers):
+            spr = pygame.transform.smoothscale(rend.sprites[t], (56, 56))
+            buf = io.BytesIO()
+            pygame.image.save(spr, buf, "p.png")
+            col = rend._tier_color(t)
+            rows.append({"i": t, "png": base64.b64encode(buf.getvalue()).decode(),
+                         "name": self.cfg.tier_value("tier_names", t),
+                         "color": "#%02X%02X%02X" % col, "custom_color": bool(self.cfg.tier_value("tier_colors", t)),
+                         "emoji": self.cfg.tier_value("tier_emojis", t),
+                         "image": Path(imgs[t]).name if t < len(imgs) else ""})
+        return rows
+
+    def set_tier(self, i: int, key: str, value: str) -> list[dict]:
+        attr = {"name": "tier_names", "color": "tier_colors", "emoji": "tier_emojis"}.get(key)
+        if attr is None:
+            return self.tier_previews()
+        lst = list(getattr(self.cfg, attr))
+        while len(lst) <= int(i):
+            lst.append("")
+        value = (value or "").strip()
+        if key == "color" and value:
+            try:
+                hex_to_rgb(value)
+            except ValueError:
+                value = ""
+        lst[int(i)] = value
+        while lst and not lst[-1]:
+            lst.pop()
+        setattr(self.cfg, attr, lst)
+        self._preview_dirty = True
+        self._save()
+        return self.tier_previews()
+
+    def apply_emoji_set(self, name: str) -> list[dict]:
+        self.cfg.tier_emojis = list(EMOJI_SETS.get(name, []))[: self.cfg.tiers] if name else []
+        if name:
+            self.cfg.theme_name = name
+        self._preview_dirty = True
+        self._save()
+        return self.tier_previews()
+
+    def clear_tiers(self) -> list[dict]:
+        self.cfg.tier_names, self.cfg.tier_colors, self.cfg.tier_emojis = [], [], []
+        self.cfg.tier_images, self.cfg.tier_image_folder = [], ""
+        self._preview_dirty = True
+        self._save()
+        return self.tier_previews()
+
+    def save_thumbnail(self) -> str:
+        out = Path(self.settings["output_dir"]) / f"thumb_{int(time.time())}.jpg"
+        make_thumbnail(self.cfg, str(out))
+        return str(out)
 
     def pick_folder(self) -> str:
         res = self.window.create_file_dialog(webview.FOLDER_DIALOG)
