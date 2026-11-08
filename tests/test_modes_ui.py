@@ -17,7 +17,7 @@ def test_mode_picker_switches_sections():
         pg.goto(WEB.as_uri())
         pg.wait_for_timeout(600)
         assert pg.evaluate("document.querySelector('details[data-modes=escape]').hidden")
-        for mode, title in (("escape", "Escape"), ("breaker", "Breaker"), ("merge", "Merge Evolution")):
+        for mode, title in (("escape", "Escape"), ("breaker", "Breaker"), ("glass", "Glass Rush"), ("merge", "Merge Evolution")):
             pg.click(f"#modes a[data-mode={mode}]")
             pg.wait_for_timeout(300)
             assert pg.evaluate("window.__calls.some(c => c[0]==='set_config' && c[1][0].mode==='%s')" % mode)
@@ -26,4 +26,12 @@ def test_mode_picker_switches_sections():
             assert shown == ([] if mode == "merge" else [mode])
             hidden = pg.evaluate("document.querySelector('[data-k=container_shape]').closest('.row').hidden")
             assert hidden == (mode != "merge")
+        # switching mode swaps the default hook, but never a hook the user wrote
+        pg.click("#modes a[data-mode=glass]")
+        pg.wait_for_timeout(200)
+        assert pg.evaluate("document.querySelector('[data-k=hook]').value") == "Will the glass hold?"
+        pg.fill("[data-k=hook]", "my own hook"); pg.dispatch_event("[data-k=hook]", "change")
+        pg.click("#modes a[data-mode=breaker]")
+        pg.wait_for_timeout(200)
+        assert pg.evaluate("document.querySelector('[data-k=hook]').value") == "my own hook"
         b.close()

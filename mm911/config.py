@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_NAME = "Money Maker 911"
 CREDIT = "made by TeamRealHackers"
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 
 # Soft, non-neon palettes. Each: background top, background bottom, container, text, tier colors
 PALETTES: dict[str, dict] = {
@@ -101,14 +101,14 @@ RANDOM_KNOBS = {
 DEFAULT_RANDOM_KNOBS = ["palette", "shape", "hook", "spin", "drop_interval"]
 
 
-MODES = ["merge", "escape", "breaker"]
+MODES = ["merge", "escape", "breaker", "glass"]
 BREAKER_PATTERNS = ["full", "pyramid", "diamond", "heart", "checker", "stripes"]
 
 
 @dataclass
 class MergeConfig:
     """Settings for every mode (the name stays for old presets / imports). mode picks the game."""
-    mode: str = "merge"                # merge | escape | breaker
+    mode: str = "merge"                # merge | escape | breaker | glass
     # video
     width: int = 1080
     height: int = 1920
@@ -316,6 +316,15 @@ class MergeConfig:
     breaker_final_text: str = "CLEARED!"
     breaker_pitch_low: float = -5.0    # first brick
     breaker_pitch_high: float = 14.0   # last brick
+    # Glass Rush (also uses the escape_* rings / ball / trail / glow settings)
+    glass_hp: int = 6                  # hits the innermost glass ring takes
+    glass_hp_growth: float = 1.5       # extra hits per ring further out
+    glass_spin: float = 25.0           # degrees per second (rings alternate direction)
+    glass_cracks: bool = True          # draw crack lines on hit rings
+    glass_crack_color: str = "#FFFFFF"
+    glass_counter_text: str = "{broken}/{rings}"
+    glass_final_text: str = "SHATTERED!"
+    glass_speed_gain: float = 0.04     # ball speeds up by this fraction with every ring broken
     # batch
     random_knobs: list[str] = field(default_factory=lambda: list(DEFAULT_RANDOM_KNOBS))
     batch_sound_keywords: list[str] = field(default_factory=list)  # one picked per video when "sound_keyword" is on
@@ -330,13 +339,47 @@ class MergeConfig:
 
     @classmethod
     def from_dict(cls, d: dict) -> "MergeConfig":
-        known = {k: v for k, v in (d or {}).items() if k in cls.__dataclass_fields__}
+        """Build a config from saved / hand-edited data. A value of the wrong type (or a whole file of
+        junk) falls back to that setting's default instead of crashing the app on startup."""
+        if not isinstance(d, dict):
+            d = {}
+        base = cls()
+        known = {}
+        for k, v in d.items():
+            if k not in cls.__dataclass_fields__:
+                continue
+            cur = getattr(base, k)
+            try:
+                if isinstance(cur, bool):
+                    v = v if isinstance(v, bool) else str(v).lower() in ("1", "true", "on", "yes")
+                elif isinstance(cur, int):
+                    if isinstance(v, bool) or v is None:
+                        continue
+                    v = int(round(float(v)))
+                elif isinstance(cur, float):
+                    if isinstance(v, bool) or v is None:
+                        continue
+                    v = float(v)
+                elif isinstance(cur, str):
+                    if not isinstance(v, (str, int, float)):
+                        continue
+                    v = str(v)
+                elif isinstance(cur, list):
+                    if not isinstance(v, list):
+                        continue
+            except (TypeError, ValueError, OverflowError):
+                continue
+            known[k] = v
         try:
             cfg = cls(**known)
         except TypeError:
             cfg = cls()
         cfg.tiers = max(MIN_TIERS, min(MAX_TIERS, int(cfg.tiers)))
         cfg.sanitize_export()
+        try:
+            cfg.clamp()
+        except (TypeError, ValueError):
+            pass
         return cfg
 
     def sanitize_export(self) -> None:
@@ -443,6 +486,10 @@ class MergeConfig:
         self.breaker_hp = max(1, min(5, int(self.breaker_hp)))
         self.breaker_balls = max(1, min(12, int(self.breaker_balls)))
         self.breaker_max_balls = max(self.breaker_balls, min(30, int(self.breaker_max_balls)))
+        self.glass_hp = max(1, min(12, int(self.glass_hp)))
+        self.glass_hp_growth = max(0.0, min(4.0, float(self.glass_hp_growth)))
+        self.glass_spin = max(0.0, min(360.0, float(self.glass_spin)))
+        self.glass_speed_gain = max(0.0, min(0.3, float(self.glass_speed_gain)))
         if self.breaker_pattern not in BREAKER_PATTERNS: self.breaker_pattern = "full"
         if self.dedupe_action not in ("skip", "flag"): self.dedupe_action = "skip"
         self.dedupe_threshold = max(0.5, min(1.0, float(self.dedupe_threshold)))

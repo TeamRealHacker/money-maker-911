@@ -68,7 +68,8 @@
 | 🔁 Duplicate checker | ✅ Perceptual hash of sampled frames, skips or flags look-alikes in a batch (and vs. the whole output folder) |
 | 🌀 Escape | ✅ **Working** (spinning rings with gaps, rising pitch per escape, ball wears / evolves through your pictures, shatter, ESCAPED! ending) |
 | 🧱 Breaker | ✅ **Working** (6 brick patterns, tough bricks, rising pitch per brick, balls multiply, CLEARED! ending) |
-| 🥛 Other 2D modes | 🔜 One by one (Glass Rush next) |
+| 🥛 Glass Rush (v0.7.0) | ✅ Rings of glass crack with every hit and shatter one by one, pitch rising |
+| 🥛 Other 2D modes | 🔜 One by one (Ghost Escape next) |
 | ☁️ Colab rendering | 🔜 Planned |
 | 🔵 3D modes | 🔜 Planned |
 
@@ -111,7 +112,7 @@ Everything it can do in one place:
 | 8 | 🏢 **Glass Tower** | Balls crash down a tower of glass floors | *"How many floors survive?"* |
 | 9 | 🚩 **Flag Battle** | Country/team balls fight for territory | *"Which country wins?"* |
 | 10 | ⚔️ **Weapon Ball Battle** | Balls with swords, shields and HP bars fight to the last one | *"Who survives?"* |
-| 11 | 🥛 **Glass Rush** | Rings of glass crack layer by layer | *"Will the glass hold?"* |
+| 11 | 🥛 **Glass Rush** ✅ | Rings of glass crack layer by layer | *"Will the glass hold?"* |
 | 12 | 🏁 **Race** *(new)* | Balls race down a randomized obstacle course | *"Pick your winner!"* |
 | 13 | 🎯 **Plinko** *(new)* | Balls drop through pegs into prize slots | *"Where will it land?"* |
 | 14 | 🧲 **Gravity Flip** *(new)* | Gravity rotates every few seconds | *"Can it stay inside?"* |
@@ -403,7 +404,7 @@ money-maker-911/
 - [x] **Phase 2: 🍉 Merge Evolution** (first full mode + studio UI)
 - [x] **Phase 3: Batch factory** + title/hashtag CSV + anti-repeat rotation
 - [x] **Phase 4: AI cut-outs** + image/meme import
-- [ ] **Phase 5: Escape ✅, Breaker ✅, Glass Rush, Ghost Escape, Rhythmic**
+- [ ] **Phase 5: Escape ✅, Breaker ✅, Glass Rush ✅, Ghost Escape, Rhythmic**
 - [ ] **Phase 6: Battle modes** (Flag, Weapon) + remaining 2D modes
 - [ ] **Phase 7: ☁️ Colab GPU rendering** (WSL2 bridge)
 - [ ] **Phase 8: 3D modes** (Wave, Marble Run, Ball Crush, Jelly, Cut Count, Magnet)

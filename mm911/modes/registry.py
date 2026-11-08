@@ -1,5 +1,5 @@
 """Game modes: one place that maps cfg.mode to its simulation and renderer.
-Every mode shares MergeConfig (mode-specific settings are prefixed: escape_*, breaker_*), the export
+Every mode shares MergeConfig (mode-specific settings are prefixed: escape_*, breaker_*, glass_*), the export
 pipeline, sounds, batch, thumbnails and the GUI preview."""
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ MODES = {
     "merge": "🍉 Merge Evolution",
     "escape": "🌀 Escape",
     "breaker": "🧱 Breaker",
+    "glass": "🥛 Glass Rush",
 }
 
 
@@ -18,6 +19,9 @@ def sim_for(cfg):
     if m == "breaker":
         from .breaker import BreakerSim
         return BreakerSim(cfg)
+    if m == "glass":
+        from .glass import GlassSim
+        return GlassSim(cfg)
     from .merge import MergeSim
     return MergeSim(cfg)
 
@@ -30,5 +34,8 @@ def renderer_for(cfg, scale: float = 1.0):
     if m == "breaker":
         from ..render_modes import BreakerRenderer
         return BreakerRenderer(cfg, scale)
+    if m == "glass":
+        from ..render_modes import GlassRenderer
+        return GlassRenderer(cfg, scale)
     from ..render import Renderer
     return Renderer(cfg, scale)

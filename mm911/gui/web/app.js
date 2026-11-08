@@ -1,8 +1,10 @@
 const MODES = [
-  ["🍉 Merge Evolution", "merge"], ["🌀 Escape", "escape"], ["🧱 Breaker", "breaker"], ["🎵 Rhythmic"], ["✏️ Drawer"],
+  ["🍉 Merge Evolution", "merge"], ["🌀 Escape", "escape"], ["🧱 Breaker", "breaker"], ["🥛 Glass Rush", "glass"], ["🎵 Rhythmic"], ["✏️ Drawer"],
   ["➕ Accumulate"], ["👻 Ghost Escape"], ["🏢 Glass Tower"], ["🚩 Flag Battle"], ["⚔️ Weapon Battle"],
-  ["🥛 Glass Rush"], ["🏁 Race"], ["🎯 Plinko"], ["🌊 Wave 3D"], ["🎢 Marble Run 3D"], ["🧲 Magnet 3D"],
+  ["🏁 Race"], ["🎯 Plinko"], ["🌊 Wave 3D"], ["🎢 Marble Run 3D"], ["🧲 Magnet 3D"],
 ];
+const MODE_HOOKS = { merge: "Will it reach the Final Form?", escape: "Can it escape all 8 rings?",
+  breaker: "Can it break every brick?", glass: "Will the glass hold?" };
 const $ = (s) => document.querySelector(s);
 let state = {};
 let booted = false;
@@ -121,6 +123,13 @@ const mm = {
     $("#bar").style.width = (overall * 100).toFixed(1) + "%";
     $("#ptext").textContent = `Video ${m.i + 1} of ${m.n} · ${(m.p * 100).toFixed(0)}%`;
     $("#status").textContent = "Rendering…";
+  },
+  // switching mode also swaps the hook, unless the user wrote their own
+  async setMode(key) {
+    const h = (state.config && state.config.hook) || "";
+    const patch = { mode: key };
+    if (!h || Object.values(MODE_HOOKS).includes(h) || (state.hooks || []).includes(h)) patch.hook = MODE_HOOKS[key] || h;
+    return mm.set(patch);
   },
   async set(patch) {
     state.config = await call("set_config", patch); fill();
@@ -350,7 +359,7 @@ function lengths() {
 function modeNav() {
   const cur = (state.config && state.config.mode) || "merge";
   $("#modes").innerHTML = MODES.map(([n, key]) => key
-    ? `<a class="${key === cur ? "on" : "ready"}" data-mode="${key}" onclick="mm.set({mode:'${key}'})">${n}</a>`
+    ? `<a class="${key === cur ? "on" : "ready"}" data-mode="${key}" onclick="mm.setMode('${key}')">${n}</a>`
     : `<a class="off">${n}<em>Soon</em></a>`).join("");
 }
 function fill() {
@@ -360,7 +369,7 @@ function fill() {
   document.querySelectorAll("#modes a[data-mode]").forEach((a) => a.classList.toggle("on", a.dataset.mode === mode));
   const mt = MODES.find((m) => m[1] === mode);
   if ($("#modetitle") && mt) $("#modetitle").textContent = mt[0].replace(/^\S+\s/, "");
-  if ($("#winslabel")) $("#winslabel").textContent = { merge: "Only Final Form wins", escape: "Only full escapes", breaker: "Only cleared walls" }[mode] || "Only wins";
+  if ($("#winslabel")) $("#winslabel").textContent = { merge: "Only Final Form wins", escape: "Only full escapes", breaker: "Only cleared walls", glass: "Only fully shattered" }[mode] || "Only wins";
   document.querySelectorAll("[data-k]").forEach((el) => {
     if (el === document.activeElement && el.type === "text") return;   // don't fight the user's typing
     const v = c[el.dataset.k];

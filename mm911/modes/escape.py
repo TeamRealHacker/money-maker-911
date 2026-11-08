@@ -59,6 +59,21 @@ def pitch_ladder(cfg, i: int) -> float:
 
 
 class EscapeSim:
+    ASSIST = True           # a stuck ring slowly opens its gap (Glass Rush has no gaps)
+
+    def _ball_radius(self, escaped: int) -> float:
+        return ball_radius(self.cfg, escaped)
+
+    def _progress(self, body) -> None:
+        """Which rings did the ball get through? (its centre is past the ring = it went through the gap)"""
+        c = self.cfg
+        d = math.hypot(body.position.x - self.cx, body.position.y - self.cy)
+        for ring in list(self.alive_rings()):
+            if d > ring.radius + c.escape_ring_thickness * 0.5:
+                self._escape(ring)
+            else:
+                break
+
     def __init__(self, cfg, seed: int | None = None):
         cfg.clamp()
         self.cfg = cfg
@@ -131,7 +146,7 @@ class EscapeSim:
 
     def _build_ball(self) -> None:
         c = self.cfg
-        r = ball_radius(c, 0)
+        r = self._ball_radius(0)
         body = pymunk.Body(1.0, pymunk.moment_for_circle(1.0, 0, r))
         body.position = (self.cx + self.rng.uniform(-r, r), self.cy + self.rng.uniform(-r, r))
         a = self.rng.uniform(0, 2 * math.pi)
@@ -223,7 +238,7 @@ class EscapeSim:
                 self.banners = [Banner(self.best_tier, self.vt)]
         # the ball grows with every escape (escape_ball_growth > 1)
         if c.escape_ball_growth != 1.0:
-            r = ball_radius(c, self.escaped)
+            r = self._ball_radius(self.escaped)
             if abs(r - self.ball.radius) > 0.01:
                 self.ball.unsafe_set_radius(r)
 
@@ -246,7 +261,7 @@ class EscapeSim:
         dt *= c.speed * self.time_scale()
         alive = self.alive_rings()
         # assist: a ring nobody gets through for a while slowly opens its gap (keeps videos winnable)
-        if c.escape_assist and alive and self.vt - self._last_escape_vt > c.escape_assist_after:
+        if self.ASSIST and c.escape_assist and alive and self.vt - self._last_escape_vt > c.escape_assist_after:
             ring = alive[0]
             grow = math.radians(c.escape_assist_speed) * dt
             if ring.gap < math.radians(150):
@@ -268,12 +283,7 @@ class EscapeSim:
         elif v <= 1e-3:
             body.velocity = (0, -c.escape_min_speed)
         # escapes: the ball's centre is past the innermost ring = it went through the gap
-        d = math.hypot(body.position.x - self.cx, body.position.y - self.cy)
-        for ring in list(alive):
-            if d > ring.radius + c.escape_ring_thickness * 0.5:
-                self._escape(ring)
-            else:
-                break
+        self._progress(body)
         # free ball after the last ring: keep it on screen (bounce off the frame edges)
         if self.finished_at is not None:
             x, y = body.position

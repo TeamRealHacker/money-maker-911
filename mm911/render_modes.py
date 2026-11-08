@@ -109,6 +109,8 @@ class _RingSet:
             for ring in sim.rings:
                 rg = self.rings[ring.index]
                 g, h = ring.gap0 + ring.angle, ring.gap / 2
+                if ring.escaped_vt is None and ring.gap <= 0:
+                    continue          # a closed ring (Glass Rush) is fully on the cached layer
                 if ring.escaped_vt is None:
                     idx = self._window(rg, g, h)
                     a = self._gap_alpha(rg, idx, g, h)
@@ -213,8 +215,8 @@ class EscapeRenderer(Renderer):
         for line in self._wrap(self.f_hook, cfg.hook, self.W * 0.86):
             y += self._text_center(self.f_hook, line, y, hook_col)
         # counter "3/8"
-        if cfg.escape_counter_text:
-            txt = (cfg.escape_counter_text.replace("{escaped}", str(sim.escaped))
+        if self._counter_tpl():
+            txt = (self._counter_tpl().replace("{escaped}", str(sim.escaped)).replace("{broken}", str(sim.escaped))
                    .replace("{rings}", str(len(sim.rings))).replace("{left}", str(len(sim.rings) - sim.escaped))
                    .replace("{time}", f"{sim.vt:.1f}"))
             pulse = max(0.0, 1 - (sim.vt - sim._last_escape_vt) / 0.35) if sim.escaped else 0.0
@@ -225,6 +227,7 @@ class EscapeRenderer(Renderer):
             S.blit(s, ((self.W - s.get_width()) // 2, cy_ - s.get_height() // 2))
         # rings
         self.rings.draw(S, sim, bg_arr, int(round(sx)), int(round(sy)))
+        self._after_rings(S, sim, sx, sy)
         # trail + ball
         body = sim.ball.body
         tier = sim.best_tier
@@ -278,7 +281,7 @@ class EscapeRenderer(Renderer):
         if sim.finished_at is not None:
             kk = min(1.0, (sim.vt - sim.finished_at) / 0.4)
             scale = 0.5 + 0.5 * (1 - (1 - kk) ** 3) + 0.08 * math.sin(kk * math.pi)
-            s = self.f_big.render(cfg.escape_final_text, True, final_col)
+            s = self.f_big.render(self._final_txt(), True, final_col)
             if s.get_width() * scale > self.W * 0.94:
                 scale *= self.W * 0.94 / (s.get_width() * scale)
             s = pygame.transform.rotozoom(s, 0, scale)
@@ -294,9 +297,73 @@ class EscapeRenderer(Renderer):
             S.blit(s, ((self.W - s.get_width()) // 2, int(self.H * (cfg.final_text_y + 0.01))))
         return S
 
+    def _counter_tpl(self) -> str:
+        return self.cfg.escape_counter_text
+
+    def _final_txt(self) -> str:
+        return self.cfg.escape_final_text
+
+    def _after_rings(self, S, sim, sx: float, sy: float) -> None:
+        pass
+
     def _blit_info(self, info: dict, px: float, py: float, k: float = 1.0) -> None:
         spr = info["sprite"] if k == 1.0 else pygame.transform.rotozoom(info["sprite"], 0, k)
         self.surface.blit(spr, (round(px - spr.get_width() / 2), round(py - spr.get_height() / 2)))
+
+
+class GlassRenderer(EscapeRenderer):
+    """Glass Rush: Escape's closed rings + crack lines that spin with the ring + a flash on every hit."""
+
+    def build_tier(self, t: int, r_px: float | None = None) -> dict:
+        if r_px is None:
+            from .modes.glass import glass_ball_radius
+            r_px = glass_ball_radius(self.cfg, 0) * self.scale
+        return Renderer.build_tier(self, t, r_px)
+
+    def _counter_tpl(self) -> str:
+        return self.cfg.glass_counter_text
+
+    def _final_txt(self) -> str:
+        return self.cfg.glass_final_text
+
+    def _after_rings(self, S, sim, sx: float, sy: float) -> None:
+        cfg, sc = self.cfg, self.scale
+        cx, cy = sim.cx * sc + sx, sim.cy * sc + sy
+        col = color_or(cfg.glass_crack_color, (255, 255, 255))
+        w = max(1, int(round(1.6 * sc)))
+        # hit flash: a bright arc where the ball just touched the glass
+        for ring in sim.rings:
+            i = ring.index
+            if ring.escaped_vt is not None:
+                continue
+            age = sim.vt - sim.hit_vt.get(i, -9.0)
+            if age < 0.12:
+                self._flash(S, cx, cy, ring.radius * sc, cfg.escape_ring_thickness * sc,
+                            sim.hit_angle[i], 1 - age / 0.12)
+            if cfg.glass_cracks and sim.cracks[i]:
+                R = ring.radius
+                for line in sim.cracks[i]:
+                    pts = []
+                    for da, dr in line:
+                        a = da + ring.angle
+                        r = (R + dr) * sc
+                        pts.append((cx + r * math.cos(a), cy + r * math.sin(a)))
+                    pygame.draw.lines(S, col, False, pts, w)
+
+    def _flash(self, S, cx, cy, R, th, ang, k) -> None:
+        span = 0.5 * 160.0 * self.scale / max(1.0, R) + 0.12
+        pts = []
+        for j in range(9):
+            a = ang - span + 2 * span * j / 8
+            pts.append((cx + (R + th * 0.7) * math.cos(a), cy + (R + th * 0.7) * math.sin(a)))
+        for j in range(8, -1, -1):
+            a = ang - span + 2 * span * j / 8
+            pts.append((cx + (R - th * 0.7) * math.cos(a), cy + (R - th * 0.7) * math.sin(a)))
+        x0, y0 = int(min(p[0] for p in pts)) - 1, int(min(p[1] for p in pts)) - 1
+        x1, y1 = int(max(p[0] for p in pts)) + 2, int(max(p[1] for p in pts)) + 2
+        tmp = pygame.Surface((max(1, x1 - x0), max(1, y1 - y0)), pygame.SRCALPHA)
+        pygame.draw.polygon(tmp, (255, 255, 255, int(150 * k)), [(x - x0, y - y0) for x, y in pts])
+        S.blit(tmp, (x0, y0))
 
 
 class BreakerRenderer(Renderer):

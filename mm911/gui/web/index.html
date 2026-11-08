@@ -150,6 +150,34 @@
     <div class="row"><span>Last escape pitch</span><input type="range" data-k="escape_pitch_high" min="-6" max="24" step="0.5"></div>
     <div class="hint">The ball uses your Tiers pictures / emoji: picture 1 first, the next one after every escape.</div>
   </details>
+  <details open data-modes="glass"><summary>🥛 Glass Rush</summary>
+    <div class="row"><span>Rings</span><input type="range" data-k="escape_rings" min="2" max="30"></div>
+    <div class="row"><span>Hits for the inner ring</span><input type="range" data-k="glass_hp" min="1" max="12"></div>
+    <div class="row"><span>Tougher per ring (hits)</span><input type="range" data-k="glass_hp_growth" min="0" max="4" step="0.25"></div>
+    <div class="row"><span>Speed-up per ring</span><input type="range" data-k="glass_speed_gain" min="0" max="0.3" step="0.01"></div>
+    <div class="row"><span>Cracks</span><input type="checkbox" data-k="glass_cracks"></div>
+    <div class="row"><span>Crack colour</span><input type="color" data-k="glass_crack_color" data-def="#ffffff"></div>
+    <div class="row"><span>Spin °/s</span><input type="range" data-k="glass_spin" min="0" max="240"></div>
+    <div class="row"><span>Alternate spin</span><input type="checkbox" data-k="escape_alternate"></div>
+    <div class="row"><span>Inner ring px</span><input type="range" data-k="escape_inner_radius" min="60" max="300" step="5"></div>
+    <div class="row"><span>Outer ring px</span><input type="range" data-k="escape_outer_radius" min="200" max="520" step="5"></div>
+    <div class="row"><span>Ring width</span><input type="range" data-k="escape_ring_thickness" min="3" max="30"></div>
+    <div class="row"><span>Ring glow</span><input type="range" data-k="escape_ring_glow" min="0" max="1" step="0.05"></div>
+    <div class="row"><span>Ball size</span><input type="range" data-k="escape_ball_radius" min="8" max="80"></div>
+    <div class="row"><span>Ball grows ×</span><input type="range" data-k="escape_ball_growth" min="1" max="1.2" step="0.01"></div>
+    <div class="row"><span>Ball evolves</span><input type="checkbox" data-k="escape_evolve"></div>
+    <div class="row"><span>Speed min</span><input type="range" data-k="escape_min_speed" min="200" max="1500" step="25"></div>
+    <div class="row"><span>Speed max</span><input type="range" data-k="escape_max_speed" min="600" max="3000" step="25"></div>
+    <div class="row"><span>Gravity</span><input type="range" data-k="escape_gravity" min="0" max="4000" step="50"></div>
+    <div class="row"><span>Trail</span><input type="range" data-k="escape_trail" min="0" max="24"></div>
+    <div class="row"><span>Shatter glass</span><input type="checkbox" data-k="escape_shatter"></div>
+    <div class="row"><span>Final zoom ×</span><input type="range" data-k="escape_final_zoom" min="1" max="8" step="0.25"></div>
+    <div class="row col"><span>Counter <em class="hint">{broken} {rings} {left} {time}</em></span><input type="text" data-k="glass_counter_text"></div>
+    <div class="row col"><span>Ending text</span><input type="text" data-k="glass_final_text"></div>
+    <div class="row"><span>First ring pitch</span><input type="range" data-k="escape_pitch_low" min="-12" max="12" step="0.5"></div>
+    <div class="row"><span>Last ring pitch</span><input type="range" data-k="escape_pitch_high" min="-6" max="24" step="0.5"></div>
+    <div class="hint">The ball uses your Tiers pictures / emoji: picture 1 first, the next one after every broken ring.</div>
+  </details>
   <details open data-modes="breaker"><summary>🧱 Breaker</summary>
     <div class="row"><span>Pattern</span><select data-k="breaker_pattern"><option>full</option><option>pyramid</option><option>diamond</option><option>heart</option><option>checker</option><option>stripes</option></select></div>
     <div class="row"><span>Rows</span><input type="range" data-k="breaker_rows" min="1" max="20"></div>

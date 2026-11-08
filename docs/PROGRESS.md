@@ -31,18 +31,18 @@
   - 🌀 Escape (`modes/escape.py`): ball in N spinning rings with gaps (alternating, faster outward), shatter + pitch ladder low → high per escape, pitched bounces, counter, tension on the last ring, slow-mo + ESCAPED! with the ball gliding to the centre and growing; the ball wears / evolves through your Tiers pictures; assist opens a stuck gap so 20/20 seeds win in 9-33 s. Rings: one cached anti-aliased layer + per-frame recompute of only the gap pixels.
   - 🧱 Breaker (`modes/breaker.py`): balls smash a brick wall (full, pyramid, diamond, heart, checker, stripes), tough top rows, pitch ladder per brick, +1 ball every N bricks, steering after quiet spells (30/30 runs clear in 18-39 s), CLEARED! ending.
   - Modes share one config (`mode` + `escape_*` / `breaker_*`), `modes/registry.py`, the export pipeline, sounds (Myinstants per-tier sounds map onto escapes / brick rows), batch knobs, thumbnails, dedupe and the app (mode picker, per-mode sections, Merge-only rows hide). CLI `--mode escape|breaker --rings --gap --ring-spin --bricks`. Presets: `escape_rings`, `escape_selfie_grow`, `breaker_heart`. Tests: `test_quality.py`, `test_dedupe.py`, `test_escape.py`, `test_breaker.py`, `test_modes_ui.py`.
+- **2026-11-08** · 🥛 v0.7.0 Glass Rush + bigger test suite: new mode **Glass Rush** (`mode: glass`, `--mode glass`): nested rings of glass; every hit cracks the ring it touched (jagged crack lines that turn with the ring, bright flash on impact), when a ring has taken all its hits it shatters into shards, the ball rushes on a little faster and a note higher, SHATTERED! at the end. Settings: hits for the inner ring, tougher per ring, speed-up per ring, crack colour / on-off, spin, plus the shared ring size / ball / trail / glow / pitch settings; the ball wears your Tiers pictures. Every seed wins in about 13-17 s (each bounce is a hit). Batch varies rings / spin / toughness per video, title + hashtags, preset `glass_rush`, mode picker entry; switching mode now also swaps the default hook (never one you wrote). **Bug fixed**: a settings file with a wrong-typed value (e.g. `"tiers": "abc"`) crashed the app at startup; every field is now coerced or falls back to its default. **Tests**: `test_glass.py`, `test_api_headless.py` (corrupted settings recovery, onboarding persistence, previews in every mode, concurrent set_config / tier_previews / apply_emoji_set / clear_tier_image from threads, broken pictures), `test_ui_controls.py` (pokes EVERY control in every mode + clicks every button in headless Chromium: no JS errors, every control reaches Python).
 
 ## 🔜 TODO (in order)
-1. 🥛 Glass Rush
-2. 👻 Ghost Escape
-3. 🎵 Rhythmic (MIDI)
-4. ➕ Accumulate
-5. ✏️ Drawer
-6. 🏢 Glass Tower
-7. 🚩 Flag Battle
-8. ⚔️ Weapon Ball Battle
-9. New 2D: Race, Plinko, Gravity Flip, Snake Grow, Chain Reaction, Countdown Survival, Color Sort, Voting
-10. ☁️ Colab rendering (google-colab-cli via WSL2)
-11. 3D modes: Wave, Marble Run, Ball Crush, Jelly, Cut Count, Magnet, then Hydraulic Press, Liquid Pour, Shatter, Coin Pusher
-12. YouTube upload queue
-13. Polish ideas: Escape "rhythm" mode (bounces play a melody), Breaker power-ups, live preview for the dedupe score
+1. 👻 Ghost Escape
+2. 🎵 Rhythmic (MIDI)
+3. ➕ Accumulate
+4. ✏️ Drawer
+5. 🏢 Glass Tower
+6. 🚩 Flag Battle
+7. ⚔️ Weapon Ball Battle
+8. New 2D: Race, Plinko, Gravity Flip, Snake Grow, Chain Reaction, Countdown Survival, Color Sort, Voting
+9. ☁️ Colab rendering (google-colab-cli via WSL2)
+10. 3D modes: Wave, Marble Run, Ball Crush, Jelly, Cut Count, Magnet, then Hydraulic Press, Liquid Pour, Shatter, Coin Pusher
+11. YouTube upload queue
+12. Polish ideas: Escape "rhythm" mode (bounces play a melody), Breaker power-ups, live preview for the dedupe score
