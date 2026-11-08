@@ -45,6 +45,7 @@ jobs:
           python main.py render --mode breaker --seconds 4 --fps 30 --out output/breaker.mp4
           python main.py render --preset presets/glass_rush.json --seconds 4 --fps 30 --out output/glass.mp4
           python main.py render --preset presets/ghost_escape.json --seconds 4 --fps 30 --out output/ghost.mp4
+          python main.py render --preset presets/rhythm_ode.json --seconds 4 --fps 30 --out output/rhythm.mp4
           python main.py dedupe --in output
 
       - name: Smoke test (AI add-on imports, app still imports without models)

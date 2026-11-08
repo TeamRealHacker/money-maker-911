@@ -150,6 +150,22 @@
     <div class="row"><span>Last escape pitch</span><input type="range" data-k="escape_pitch_high" min="-6" max="24" step="0.5"></div>
     <div class="hint">The ball uses your Tiers pictures / emoji: picture 1 first, the next one after every escape.</div>
   </details>
+  <details open data-modes="rhythm"><summary>🎵 Rhythmic</summary>
+    <div class="row"><span>Song</span><select data-k="rhythm_song"><option value="ode_to_joy">Ode to Joy</option><option value="twinkle">Twinkle Twinkle</option><option value="fur_elise">Für Elise</option><option value="jingle_bells">Jingle Bells</option><option value="scale_up">Scale up and down</option></select></div>
+    <div class="row"><span>Your own MIDI</span><span><button class="ghost sm" onclick="mm.pick('rhythm_midi','midi')">Add .mid…</button> <button class="link" onclick="mm.set({rhythm_midi:''})">remove</button></span></div>
+    <div class="hint" id="midiname">Using the built-in song. Add a .mid file to play your own (the highest note of each beat becomes a hop).</div>
+    <div class="row"><span>Tempo</span><input type="range" data-k="rhythm_tempo" min="0.5" max="2" step="0.05"></div>
+    <div class="row"><span>Keys</span><input type="range" data-k="rhythm_lanes" min="3" max="16"></div>
+    <div class="row"><span>Hop height</span><input type="range" data-k="rhythm_hop" min="0.3" max="2.5" step="0.1"></div>
+    <div class="row"><span>Keys height</span><input type="range" data-k="rhythm_floor_y" min="0.55" max="0.9" step="0.01"></div>
+    <div class="row"><span>Ball size</span><input type="range" data-k="rhythm_ball_radius" min="20" max="120"></div>
+    <div class="row"><span>Trail</span><input type="range" data-k="rhythm_trail" min="0" max="24"></div>
+    <div class="row"><span>Sound pitch (semitones)</span><input type="range" data-k="rhythm_pitch_shift" min="-12" max="12" step="1"></div>
+    <div class="row"><span>Ball evolves through Tiers</span><input type="checkbox" data-k="rhythm_evolve"></div>
+    <div class="row"><span>Falling note guides</span><input type="checkbox" data-k="rhythm_guides"></div>
+    <div class="row col"><span>Counter <em class="hint">{notes} {total} {left} {time}</em></span><input type="text" data-k="rhythm_counter_text"></div>
+    <div class="row col"><span>Ending text</span><input type="text" data-k="rhythm_final_text"></div>
+  </details>
   <details open data-modes="ghost"><summary>👻 Ghost Escape</summary>
     <div class="row"><span>Rings</span><input type="range" data-k="escape_rings" min="2" max="30"></div>
     <div class="row"><span>Darkness</span><input type="range" data-k="ghost_dark" min="0" max="1" step="0.05"></div>

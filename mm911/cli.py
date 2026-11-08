@@ -9,6 +9,7 @@ from .config import (LENGTH_PRESETS, EMOJI_SETS, SHAPES, BG_MODES, PARTICLE_STYL
                      MAX_TIERS, RESOLUTIONS, QUALITIES, CODECS, ENCODERS, FORMATS)
 from .render import render_video, make_thumbnail
 from .batch import run_batch
+from .midi import SONG_NAMES
 from . import imageprep
 
 CUT_CHOICES = list(imageprep.MODELS) + [imageprep.QUICK]
@@ -21,6 +22,8 @@ def _add_look_args(sp) -> None:
     sp.add_argument("--gap", type=float, help="Escape: ring gap in degrees")
     sp.add_argument("--ring-spin", type=float, help="Escape: ring spin in degrees/second")
     sp.add_argument("--bricks", type=int, help="Breaker: brick rows")
+    sp.add_argument("--song", choices=SONG_NAMES, help="Rhythmic: built-in melody")
+    sp.add_argument("--midi", help="Rhythmic: path of a .mid file to play")
     sp.add_argument("--length", choices=["15", "30", "45", "60"], help="Shorts length preset")
     sp.add_argument("--seconds", type=float, help="custom max length in seconds")
     sp.add_argument("--until-finished", action="store_true", help="run until the Final Form (cap 180 s)")
@@ -100,7 +103,7 @@ def apply_args(cfg: MergeConfig, a) -> MergeConfig:
               "sound": "sound_path", "sound_strategy": "auto_sound_strategy", "sound_count": "auto_sound_count",
               "drop_keyword": "auto_drop_keyword", "final_keyword": "auto_final_keyword",
               "res": "export_resolution", "quality": "export_quality", "codec": "export_codec",
-              "encoder": "export_encoder", "format": "export_format", "music": "music_path"}
+              "encoder": "export_encoder", "format": "export_format", "music": "music_path", "song": "rhythm_song", "midi": "rhythm_midi"}
     for arg, field_ in simple.items():
         v = getattr(a, arg, None)
         if v is not None:

@@ -621,3 +621,172 @@ class BreakerRenderer(Renderer):
             s.set_alpha(int(150 + 105 * pulse))
             S.blit(s, ((self.W - s.get_width()) // 2, int(self.H * 0.905)))
         return S
+
+
+class RhythmRenderer(Renderer):
+    """Rhythmic: a row of keys (one colour per lane) at the bottom, falling note guides, the ball hopping
+    from key to key with a trail, a light ripple and sparks on every note, a song progress bar."""
+
+    PAD_H = 54.0
+
+    def __init__(self, cfg, scale: float = 1.0):
+        self._labels = False
+        super().__init__(cfg, scale)
+        self.f_count = _font(cfg, int(cfg.counter_size * scale), path=cfg.counter_font_path)
+        self._pad_cache: dict = {}
+        self._trail_cache: dict = {}
+
+    def _make_container(self) -> None:
+        pass
+
+    def build_tier(self, t: int, r_px: float | None = None) -> dict:
+        if r_px is None:
+            r_px = self.cfg.rhythm_ball_radius * self.scale
+        return super().build_tier(t, r_px)
+
+    def _lane_color(self, lane: int) -> tuple:
+        return self._tier_color(lane)
+
+    def _pad(self, sim, lane: int, lit: float) -> pygame.Surface:
+        """A rounded key, supersampled for smooth corners; lit 0..1 brightens it (6 cached steps)."""
+        step = int(round(max(0.0, min(1.0, lit)) * 5))
+        key = (lane, step)
+        s = self._pad_cache.get(key)
+        if s is None:
+            sc = self.scale
+            w, h = max(4, int(sim.lane_w * 0.9 * sc)), max(4, int(self.PAD_H * sc))
+            k = 3
+            big = pygame.Surface((w * k, h * k), pygame.SRCALPHA)
+            col = _shade(self._lane_color(lane), 0.88)
+            mix = step / 5.0
+            col = tuple(int(c + (255 - c) * mix * 0.7) for c in col)
+            pygame.draw.rect(big, (*col, 255), big.get_rect(), border_radius=int(h * k * 0.3))
+            shine = pygame.Surface((w * k, h * k // 2), pygame.SRCALPHA)
+            pygame.draw.rect(shine, (255, 255, 255, 60), shine.get_rect(), border_radius=int(h * k * 0.3))
+            big.blit(shine, (0, 0))
+            s = pygame.transform.smoothscale(big, (w, h))
+            self._pad_cache[key] = s
+        return s
+
+    def _trail_sprites(self, info: dict, n: int) -> list:
+        key = (id(info), n)
+        out = self._trail_cache.get(key)
+        if out is None:
+            L = info["layers"]
+            R = L["radius"]
+            col = info["look"].color
+            out = []
+            for k in range(n):
+                f = (k + 1) / (n + 1)
+                pm = sprites.solid(sprites.disc(sprites._grid(int(2 * R) + 4, R + 2, R + 2), R * (0.3 + 0.6 * f)),
+                                   col, 0.5 * f)
+                out.append(sprites.to_surface(pm))
+            if len(self._trail_cache) > 40:
+                self._trail_cache.clear()
+            self._trail_cache[key] = out
+        return out
+
+    def draw(self, sim) -> pygame.Surface:
+        cfg, sc, S = self.cfg, self.scale, self.surface
+        if self.video_bg is not None:
+            fr = self.video_bg.frame()
+            S.blit(fr if fr is not None else self.bg, (0, 0))
+            if fr is not None and cfg.bg_dim > 0:
+                dim = pygame.Surface((self.W, self.H), pygame.SRCALPHA)
+                dim.fill((0, 0, 0, min(255, cfg.bg_dim)))
+                S.blit(dim, (0, 0))
+        else:
+            S.blit(self.bg, (0, 0))
+        sx, sy = (v * sc for v in sim.shake_offset())
+        # hook
+        y = int(cfg.hook_y * self.H)
+        for line in self._wrap(self.f_hook, cfg.hook, self.W * 0.86):
+            y += self._text_center(self.f_hook, line, y, self._tc(cfg.hook_color))
+        # counter + song progress bar
+        tpl = cfg.rhythm_counter_text
+        if tpl and cfg.show_counter:
+            txt = (tpl.replace("{notes}", str(sim.played)).replace("{total}", str(sim.total))
+                   .replace("{left}", str(sim.total - sim.played)).replace("{time}", f"{sim.vt:.1f}"))
+            s = self.f_count.render(txt, True, self._tc(cfg.counter_color))
+            S.blit(s, ((self.W - s.get_width()) // 2, y + int(10 * sc)))
+            y += s.get_height() + int(10 * sc)
+        if cfg.show_progress:
+            bw, bh = int(self.W * 0.6), max(4, int(10 * sc))
+            bx, by = (self.W - bw) // 2, y + int(14 * sc)
+            pygame.draw.rect(S, (255, 255, 255), (bx, by, bw, bh), border_radius=bh // 2)
+            dim = pygame.Surface((bw, bh), pygame.SRCALPHA)
+            dim.fill((0, 0, 0, 110))
+            S.blit(dim, (bx, by))
+            prog = sim.played / max(1, sim.total)
+            if prog > 0:
+                pygame.draw.rect(S, self._tier_color(sim.best_tier), (bx, by, max(bh, int(bw * prog)), bh), border_radius=bh // 2)
+        floor = sim.floor * sc + sy
+        # falling note guides: where the next notes will land
+        if cfg.rhythm_guides and sim.finished_at is None:
+            look = 1.6
+            speed = (sim.floor - self.H / sc * 0.3) / look * sc
+            for k in range(sim.played, min(sim.total, sim.played + 24)):
+                dt = sim.times[k] - sim.t
+                if dt > look:
+                    break
+                lane = sim.note_lane[k]
+                gx = sim.lane_x[lane] * sc + sx
+                gy = floor - dt * speed
+                a = int(150 * min(1.0, (look - dt) / 0.4))
+                r = max(3, int(9 * sc))
+                tmp = pygame.Surface((r * 2 + 2, r * 2 + 2), pygame.SRCALPHA)
+                pygame.draw.circle(tmp, (*self._lane_color(lane), a), (r + 1, r + 1), r)
+                S.blit(tmp, (gx - r - 1, gy - r - 1))
+        # ripples
+        for vt0, lane in sim.ripples:
+            age = sim.vt - vt0
+            if age > 0.55:
+                continue
+            e = age / 0.55
+            R = int((sim.lane_w * 0.5 + e * sim.lane_w * 1.3) * sc)
+            w = max(1, int(5 * sc * (1 - e)))
+            tmp = pygame.Surface((R * 2 + 4, R * 2 + 4), pygame.SRCALPHA)
+            pygame.draw.circle(tmp, (*self._lane_color(lane), int(190 * (1 - e))), (R + 2, R + 2), R, w)
+            S.blit(tmp, (sim.lane_x[lane] * sc + sx - R - 2, floor - R - 2))
+        # keys (dip when hit)
+        for lane in range(sim.lanes):
+            age = sim.vt - sim.pad_hit.get(lane, -9.0)
+            lit = max(0.0, 1 - age / 0.4)
+            pad = self._pad(sim, lane, lit)
+            dip = int(14 * sc * max(0.0, 1 - age / 0.18))
+            S.blit(pad, (sim.lane_x[lane] * sc + sx - pad.get_width() / 2, floor + dip))
+        # trail + ball
+        tier = sim.best_tier
+        info = self.tiers_info[tier]
+        n = min(24, int(cfg.rhythm_trail))
+        if n > 0 and len(sim.trail) > 1:
+            tr = self._trail_sprites(info, n)
+            pts = sim.trail[:-1][-len(tr):]
+            off = len(tr) - len(pts)
+            for k, (x, y_) in enumerate(pts):
+                spr = tr[k + off]
+                S.blit(spr, (round(x * sc + sx - spr.get_width() / 2), round(y_ * sc + sy - spr.get_height() / 2)))
+        bx, by = sim.pos[0] * sc + sx, sim.pos[1] * sc + sy
+        age = sim.vt - max(sim.pad_hit.values(), default=-9.0)
+        if age < 0.14:          # squash on landing
+            e = 1 - age / 0.14
+            spr = info["sprite"]
+            w, h = spr.get_size()
+            spr = pygame.transform.smoothscale(spr, (max(1, int(w * (1 + 0.22 * e))), max(1, int(h * (1 - 0.2 * e)))))
+            S.blit(spr, (round(bx - spr.get_width() / 2), round(by + h / 2 - spr.get_height())))
+        else:
+            self.blit_ball(tier, bx, by, sim.angle)
+        for p in sim.particles:
+            self._draw_particle(p, sx, sy)
+        if cfg.watermark:
+            self._text_at(self.f_small, cfg.watermark, cfg.watermark_y, self._tc(cfg.watermark_color),
+                          max(0, min(255, cfg.watermark_opacity)))
+        if sim.finished_at is not None:
+            kk = min(1.0, (sim.vt - sim.finished_at) / 0.4)
+            scale = 0.5 + 0.5 * (1 - (1 - kk) ** 3) + 0.08 * math.sin(kk * math.pi)
+            s = self.f_big.render(cfg.rhythm_final_text, True, self._tc(cfg.final_text_color))
+            if s.get_width() * scale > self.W * 0.94:
+                scale *= self.W * 0.94 / (s.get_width() * scale)
+            s = pygame.transform.rotozoom(s, 0, scale)
+            S.blit(s, ((self.W - s.get_width()) // 2, int(self.H * 0.42)))
+        return S

@@ -1,10 +1,10 @@
 const MODES = [
-  ["🍉 Merge Evolution", "merge"], ["🌀 Escape", "escape"], ["🧱 Breaker", "breaker"], ["🥛 Glass Rush", "glass"], ["👻 Ghost Escape", "ghost"], ["🎵 Rhythmic"], ["✏️ Drawer"],
-  ["➕ Accumulate"], ["👻 Ghost Escape"], ["🏢 Glass Tower"], ["🚩 Flag Battle"], ["⚔️ Weapon Battle"],
+  ["🍉 Merge Evolution", "merge"], ["🌀 Escape", "escape"], ["🧱 Breaker", "breaker"], ["🥛 Glass Rush", "glass"], ["👻 Ghost Escape", "ghost"], ["🎵 Rhythmic", "rhythm"], ["✏️ Drawer"],
+  ["➕ Accumulate"], ["🏢 Glass Tower"], ["🚩 Flag Battle"], ["⚔️ Weapon Battle"],
   ["🏁 Race"], ["🎯 Plinko"], ["🌊 Wave 3D"], ["🎢 Marble Run 3D"], ["🧲 Magnet 3D"],
 ];
 const MODE_HOOKS = { merge: "Will it reach the Final Form?", escape: "Can it escape all 8 rings?",
-  breaker: "Can it break every brick?", glass: "Will the glass hold?", ghost: "Can the ghost escape the dark?" };
+  breaker: "Can it break every brick?", glass: "Will the glass hold?", ghost: "Can the ghost escape the dark?", rhythm: "Can you guess the song?" };
 const $ = (s) => document.querySelector(s);
 let state = {};
 let booted = false;
@@ -369,7 +369,7 @@ function fill() {
   document.querySelectorAll("#modes a[data-mode]").forEach((a) => a.classList.toggle("on", a.dataset.mode === mode));
   const mt = MODES.find((m) => m[1] === mode);
   if ($("#modetitle") && mt) $("#modetitle").textContent = mt[0].replace(/^\S+\s/, "");
-  if ($("#winslabel")) $("#winslabel").textContent = { merge: "Only Final Form wins", escape: "Only full escapes", breaker: "Only cleared walls", glass: "Only fully shattered", ghost: "Only full escapes" }[mode] || "Only wins";
+  if ($("#winslabel")) $("#winslabel").textContent = { merge: "Only Final Form wins", escape: "Only full escapes", breaker: "Only cleared walls", glass: "Only fully shattered", ghost: "Only full escapes", rhythm: "Only whole songs" }[mode] || "Only wins";
   document.querySelectorAll("[data-k]").forEach((el) => {
     if (el === document.activeElement && el.type === "text") return;   // don't fight the user's typing
     const v = c[el.dataset.k];
@@ -398,6 +398,7 @@ function fill() {
     : c.tier_sounds.length ? `${new Set(c.tier_sounds.filter(Boolean)).size} different sounds across the tiers`
     : c.sound_path ? c.sound_path.split(/[\\/]/).pop() : "Built-in pop. Search Myinstants above or drop any file.";
   $("#outdir").textContent = state.output_dir || "";
+  if ($("#midiname")) $("#midiname").textContent = c.rhythm_midi ? c.rhythm_midi.split(/[\\/]/).pop() : "Using the built-in song. Add a .mid file to play your own (the highest note of each beat becomes a hop).";
   $("#musicname").textContent = c.music_path ? c.music_path.split(/[\\/]/).pop() : "No background music.";
   const res = { "720p": "720×1280", "1080p": "1080×1920", "1440p": "1440×2560", "4k": "2160×3840" }[c.export_resolution] || "";
   $("#exportsum").textContent = `${res} · ${c.fps} fps · ${c.export_codec.toUpperCase()} · ${c.export_format.toUpperCase()}${c.export_audio ? "" : " · no audio"}`;

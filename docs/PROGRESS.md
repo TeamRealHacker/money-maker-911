@@ -33,16 +33,16 @@
   - Modes share one config (`mode` + `escape_*` / `breaker_*`), `modes/registry.py`, the export pipeline, sounds (Myinstants per-tier sounds map onto escapes / brick rows), batch knobs, thumbnails, dedupe and the app (mode picker, per-mode sections, Merge-only rows hide). CLI `--mode escape|breaker --rings --gap --ring-spin --bricks`. Presets: `escape_rings`, `escape_selfie_grow`, `breaker_heart`. Tests: `test_quality.py`, `test_dedupe.py`, `test_escape.py`, `test_breaker.py`, `test_modes_ui.py`.
 - **2026-11-08** · 🥛 v0.7.0 Glass Rush + bigger test suite: new mode **Glass Rush** (`mode: glass`, `--mode glass`): nested rings of glass; every hit cracks the ring it touched (jagged crack lines that turn with the ring, bright flash on impact), when a ring has taken all its hits it shatters into shards, the ball rushes on a little faster and a note higher, SHATTERED! at the end. Settings: hits for the inner ring, tougher per ring, speed-up per ring, crack colour / on-off, spin, plus the shared ring size / ball / trail / glow / pitch settings; the ball wears your Tiers pictures. Every seed wins in about 13-17 s (each bounce is a hit). Batch varies rings / spin / toughness per video, title + hashtags, preset `glass_rush`, mode picker entry; switching mode now also swaps the default hook (never one you wrote). **Bug fixed**: a settings file with a wrong-typed value (e.g. `"tiers": "abc"`) crashed the app at startup; every field is now coerced or falls back to its default. **Tests**: `test_glass.py`, `test_api_headless.py` (corrupted settings recovery, onboarding persistence, previews in every mode, concurrent set_config / tier_previews / apply_emoji_set / clear_tier_image from threads, broken pictures), `test_ui_controls.py` (pokes EVERY control in every mode + clicks every button in headless Chromium: no JS errors, every control reaches Python).
 - **2026-11-08** · 👻 Ghost Escape (v0.8.0): dark room + ghost light, ghost-phase rings, batch/GUI/preset/CI smoke
+- **2026-11-08** · 🎵 v0.9.0 Rhythmic (MIDI): new mode `rhythm` (`--mode rhythm`). The ball hops over a row of keys and lands on a new key exactly when each note of a song plays (exact parabolas, no physics drift): low notes left, high notes right, the key dips + lights up with a ripple and sparks, falling note guides show what is coming, a song progress bar, the ball evolves through your Tiers pictures, SONG COMPLETE! ending. Songs: 5 built-in public-domain melodies (Ode to Joy, Twinkle, Für Elise, Jingle Bells, scale) or your own `.mid` file (`mm911/midi.py`: dependency-free MIDI reader with tempo map, drums skipped, chords reduced to their top note, broken files fall back to the built-in song); a long song is sped up (max 1.8x) or cut to fit the video length, `until finished` plays all of it. Sound: every note plays your sound pitched to the note. Settings: song / MIDI, tempo, keys, hop height, key height, ball size, trail, pitch shift, evolve, guides, counter / ending text. CLI `--song --midi`; batch rotates songs / keys / hop height per video; preset `rhythm_ode`. Tests: `test_rhythm.py` (MIDI reader incl. junk files, notes land on time to the frame, long songs, clamping, frames, render / thumb / CLI / batch); UI + headless-Api tests now also cover Ghost Escape and Rhythmic.
 
 ## 🔜 TODO (in order)
-1. 🎵 Rhythmic (MIDI)
-2. ➕ Accumulate
-3. ✏️ Drawer
-4. 🏢 Glass Tower
-5. 🚩 Flag Battle
-6. ⚔️ Weapon Ball Battle
-7. New 2D: Race, Plinko, Gravity Flip, Snake Grow, Chain Reaction, Countdown Survival, Color Sort, Voting
-8. ☁️ Colab rendering (google-colab-cli via WSL2)
-9. 3D modes: Wave, Marble Run, Ball Crush, Jelly, Cut Count, Magnet, then Hydraulic Press, Liquid Pour, Shatter, Coin Pusher
-10. YouTube upload queue
-11. Polish ideas: Escape "rhythm" mode (bounces play a melody), Breaker power-ups, live preview for the dedupe score
+1. ➕ Accumulate
+2. ✏️ Drawer
+3. 🏢 Glass Tower
+4. 🚩 Flag Battle
+5. ⚔️ Weapon Ball Battle
+6. New 2D: Race, Plinko, Gravity Flip, Snake Grow, Chain Reaction, Countdown Survival, Color Sort, Voting
+7. ☁️ Colab rendering (google-colab-cli via WSL2)
+8. 3D modes: Wave, Marble Run, Ball Crush, Jelly, Cut Count, Magnet, then Hydraulic Press, Liquid Pour, Shatter, Coin Pusher
+9. YouTube upload queue
+10. Polish ideas: Escape "rhythm" mode (bounces play a melody), Breaker power-ups, live preview for the dedupe score

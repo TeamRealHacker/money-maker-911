@@ -1,0 +1,20 @@
+{
+  "mode": "rhythm",
+  "theme_name": "Rhythmic Ode",
+  "hook": "Can you guess the song?",
+  "palette": "Ocean",
+  "bg_mode": "gradient",
+  "bg_colors": ["#1B0B3B", "#3A1B7A", "#0B0620"],
+  "bg_angle": 90,
+  "rhythm_song": "ode_to_joy",
+  "rhythm_lanes": 8,
+  "rhythm_trail": 16,
+  "tier_emojis": ["😀", "😎", "🤩", "🥳", "😈", "👽", "🤖", "👑", "💎"],
+  "particle_style": "stars",
+  "particle_amount": 1.2,
+  "shake_strength": 4,
+  "show_counter": true,
+  "watermark": "@yourchannel",
+  "max_seconds": 45,
+  "seed": 3
+}

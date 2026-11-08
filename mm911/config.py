@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_NAME = "Money Maker 911"
 CREDIT = "made by TeamRealHackers"
-VERSION = "0.8.0"
+VERSION = "0.9.0"
 
 # Soft, non-neon palettes. Each: background top, background bottom, container, text, tier colors
 PALETTES: dict[str, dict] = {
@@ -101,14 +101,14 @@ RANDOM_KNOBS = {
 DEFAULT_RANDOM_KNOBS = ["palette", "shape", "hook", "spin", "drop_interval"]
 
 
-MODES = ["merge", "escape", "breaker", "glass", "ghost"]
+MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythm"]
 BREAKER_PATTERNS = ["full", "pyramid", "diamond", "heart", "checker", "stripes"]
 
 
 @dataclass
 class MergeConfig:
     """Settings for every mode (the name stays for old presets / imports). mode picks the game."""
-    mode: str = "merge"                # merge | escape | breaker | glass | ghost
+    mode: str = "merge"                # merge | escape | breaker | glass | ghost | rhythm
     # video
     width: int = 1080
     height: int = 1920
@@ -330,6 +330,20 @@ class MergeConfig:
     ghost_phase_len: float = 1.3       # how long the ring stays a ghost
     ghost_counter_text: str = "{escaped}/{rings}"
     ghost_final_text: str = "ESCAPED!"
+    rhythm_song: str = "ode_to_joy"    # built-in melody (ode_to_joy, twinkle, fur_elise, jingle_bells, scale_up)
+    rhythm_midi: str = ""              # path of a .mid file (overrides the built-in song)
+    rhythm_tempo: float = 1.0          # tempo multiplier (the song is also sped up to fit the length)
+    rhythm_lanes: int = 8              # keys the notes are spread over (low pitch left, high right)
+    rhythm_hop: float = 1.0            # how high the ball hops
+    rhythm_floor_y: float = 0.80       # height of the keys (fraction of the video)
+    rhythm_ball_radius: float = 56.0
+    rhythm_trail: int = 14
+    rhythm_evolve: bool = True         # the ball wears your Tiers pictures as the song goes on
+    rhythm_guides: bool = True         # falling note markers show what is coming
+    rhythm_lead: float = 0.9           # seconds before the first note
+    rhythm_pitch_shift: float = 0.0    # semitones added to every note's sound
+    rhythm_counter_text: str = "{notes}/{total}"
+    rhythm_final_text: str = "SONG COMPLETE!"
     glass_speed_gain: float = 0.04     # ball speeds up by this fraction with every ring broken
     # batch
     random_knobs: list[str] = field(default_factory=lambda: list(DEFAULT_RANDOM_KNOBS))
@@ -496,6 +510,14 @@ class MergeConfig:
         self.ghost_light = max(60.0, min(600.0, float(self.ghost_light)))
         self.ghost_phase_every = max(0.0, min(20.0, float(self.ghost_phase_every)))
         self.ghost_phase_len = max(0.2, min(6.0, float(self.ghost_phase_len)))
+        self.rhythm_tempo = max(0.25, min(4.0, float(self.rhythm_tempo)))
+        self.rhythm_lanes = max(2, min(16, int(self.rhythm_lanes)))
+        self.rhythm_hop = max(0.2, min(3.0, float(self.rhythm_hop)))
+        self.rhythm_floor_y = max(0.45, min(0.92, float(self.rhythm_floor_y)))
+        self.rhythm_ball_radius = max(10.0, min(160.0, float(self.rhythm_ball_radius)))
+        self.rhythm_trail = max(0, min(30, int(self.rhythm_trail)))
+        self.rhythm_lead = max(0.2, min(5.0, float(self.rhythm_lead)))
+        self.rhythm_pitch_shift = max(-24.0, min(24.0, float(self.rhythm_pitch_shift)))
         self.glass_hp = max(1, min(12, int(self.glass_hp)))
         self.glass_hp_growth = max(0.0, min(4.0, float(self.glass_hp_growth)))
         self.glass_spin = max(0.0, min(360.0, float(self.glass_spin)))

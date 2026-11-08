@@ -183,7 +183,8 @@ class Api:
                  "image": ("Images (*.png;*.jpg;*.jpeg;*.webp)",),
                  "video": ("Videos (*.mp4;*.mov;*.webm;*.mkv;*.gif)",),
                  "font": ("Fonts (*.ttf;*.otf)",),
-                 "theme": ("Theme / preset (*.json)",)}.get(kind, ("All files (*.*)",))
+                 "theme": ("Theme / preset (*.json)",),
+                 "midi": ("MIDI songs (*.mid;*.midi)",)}.get(kind, ("All files (*.*)",))
         try:
             res = self._window.create_file_dialog(webview.FileDialog.OPEN, file_types=types)
         except Exception as e:
