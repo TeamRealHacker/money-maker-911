@@ -366,6 +366,67 @@ class GlassRenderer(EscapeRenderer):
         S.blit(tmp, (x0, y0))
 
 
+class GhostRenderer(EscapeRenderer):
+    """Ghost Escape: Escape in the dark. A soft ghost light follows the ball; a ring in ghost phase gets a pale halo."""
+
+    _mask = None
+
+    def _counter_tpl(self) -> str:
+        return self.cfg.ghost_counter_text
+
+    def _final_txt(self) -> str:
+        return self.cfg.ghost_final_text
+
+    def _light_mask(self, R: int):
+        """Black layer with a soft round hole of radius R (alpha 0 in the middle, 255*dark outside)."""
+        key = (R, round(self.cfg.ghost_dark, 3))
+        if self._mask is None or self._mask[0] != key:
+            n = R * 2
+            ys, xs = np.mgrid[0:n, 0:n].astype(np.float32)
+            d = np.hypot(xs + 0.5 - R, ys + 0.5 - R) / R
+            a = np.clip((d - 0.25) / 0.75, 0, 1) ** 1.6
+            surf = pygame.Surface((n, n), pygame.SRCALPHA)
+            rgb = pygame.surfarray.pixels3d(surf)
+            rgb[:] = 0
+            del rgb
+            al = pygame.surfarray.pixels_alpha(surf)
+            al[:] = (a.T * 255 * self.cfg.ghost_dark).astype(np.uint8)
+            del al
+            self._mask = (key, surf)
+        return self._mask[1]
+
+    def _after_rings(self, S, sim, sx: float, sy: float) -> None:
+        cfg, sc = self.cfg, self.scale
+        cx, cy = sim.cx * sc + sx, sim.cy * sc + sy
+        for ring in sim.rings:
+            if sim.is_ghost(ring):
+                k = 0.5 + 0.5 * math.sin(sim.vt * 14)
+                w = max(2, int(cfg.escape_ring_thickness * sc * 1.6))
+                r = int(ring.radius * sc)
+                tmp = pygame.Surface((r * 2 + w * 2, r * 2 + w * 2), pygame.SRCALPHA)
+                pygame.draw.circle(tmp, (235, 245, 255, int(60 + 60 * k)), (r + w, r + w), r, w)
+                S.blit(tmp, (cx - r - w, cy - r - w))
+        if cfg.ghost_dark <= 0:
+            return
+        W, H = S.get_size()
+        p = sim.ball.body.position
+        bx, by = p.x * sc + sx, p.y * sc + sy
+        R = int(cfg.ghost_light * sc * (1.0 + 0.04 * math.sin(sim.vt * 5)))
+        dark = pygame.Surface((W, H), pygame.SRCALPHA)
+        dark.fill((0, 0, 0, int(255 * cfg.ghost_dark)))
+        # punch the light hole: subtract the mask alpha
+        hole = self._light_mask(R)
+        full = pygame.Surface(hole.get_size(), pygame.SRCALPHA)
+        full.fill((0, 0, 0, int(255 * cfg.ghost_dark)))
+        full.blit(hole, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+        x0, y0 = int(bx - R), int(by - R)
+        dark.blit(full, (x0, y0), special_flags=pygame.BLEND_RGBA_MIN) if False else None
+        rect = pygame.Rect(x0, y0, 2 * R, 2 * R)
+        dark.fill((0, 0, 0, 0), rect)
+        dark.blit(full, (x0, y0), special_flags=pygame.BLEND_RGBA_ADD)
+        S.blit(dark, (0, 0))
+
+
 class BreakerRenderer(Renderer):
     """Arena + brick wall + balls. Bricks live on one cached layer; only a brick that was hit or broken
     is redrawn, so a frame costs about the same as Merge."""

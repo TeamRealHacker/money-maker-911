@@ -1,0 +1,20 @@
+{
+  "mode": "ghost",
+  "theme_name": "Ghost Escape",
+  "hook": "Can the ghost escape the dark?",
+  "palette": "Ocean",
+  "bg_mode": "gradient",
+  "bg_colors": ["#1B1040", "#3A1D6E", "#0A0618"],
+  "bg_angle": 90,
+  "escape_rings": 8,
+  "escape_ring_glow": 0.8,
+  "escape_trail": 14,
+  "tier_emojis": ["👻", "😱", "💀", "🎃", "😈", "👽", "🧛", "🧟", "👑"],
+  "particle_style": "sparks",
+  "shake_strength": 7,
+  "show_counter": false,
+  "watermark": "@yourchannel",
+  "max_seconds": 40,
+  "auto_sound_strategy": "pitch_up",
+  "seed": 3
+}

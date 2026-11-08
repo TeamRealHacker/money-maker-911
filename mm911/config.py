@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_NAME = "Money Maker 911"
 CREDIT = "made by TeamRealHackers"
-VERSION = "0.7.0"
+VERSION = "0.8.0"
 
 # Soft, non-neon palettes. Each: background top, background bottom, container, text, tier colors
 PALETTES: dict[str, dict] = {
@@ -101,14 +101,14 @@ RANDOM_KNOBS = {
 DEFAULT_RANDOM_KNOBS = ["palette", "shape", "hook", "spin", "drop_interval"]
 
 
-MODES = ["merge", "escape", "breaker", "glass"]
+MODES = ["merge", "escape", "breaker", "glass", "ghost"]
 BREAKER_PATTERNS = ["full", "pyramid", "diamond", "heart", "checker", "stripes"]
 
 
 @dataclass
 class MergeConfig:
     """Settings for every mode (the name stays for old presets / imports). mode picks the game."""
-    mode: str = "merge"                # merge | escape | breaker | glass
+    mode: str = "merge"                # merge | escape | breaker | glass | ghost
     # video
     width: int = 1080
     height: int = 1920
@@ -324,6 +324,12 @@ class MergeConfig:
     glass_crack_color: str = "#FFFFFF"
     glass_counter_text: str = "{broken}/{rings}"
     glass_final_text: str = "SHATTERED!"
+    ghost_dark: float = 0.82           # how dark the room is (0 = lights on, 1 = pitch black)
+    ghost_light: float = 230.0         # radius (px) of the ghost light that follows the ball
+    ghost_phase_every: float = 3.0     # seconds between ghost phases of the front ring (0 = never)
+    ghost_phase_len: float = 1.3       # how long the ring stays a ghost
+    ghost_counter_text: str = "{escaped}/{rings}"
+    ghost_final_text: str = "ESCAPED!"
     glass_speed_gain: float = 0.04     # ball speeds up by this fraction with every ring broken
     # batch
     random_knobs: list[str] = field(default_factory=lambda: list(DEFAULT_RANDOM_KNOBS))
@@ -486,6 +492,10 @@ class MergeConfig:
         self.breaker_hp = max(1, min(5, int(self.breaker_hp)))
         self.breaker_balls = max(1, min(12, int(self.breaker_balls)))
         self.breaker_max_balls = max(self.breaker_balls, min(30, int(self.breaker_max_balls)))
+        self.ghost_dark = max(0.0, min(1.0, float(self.ghost_dark)))
+        self.ghost_light = max(60.0, min(600.0, float(self.ghost_light)))
+        self.ghost_phase_every = max(0.0, min(20.0, float(self.ghost_phase_every)))
+        self.ghost_phase_len = max(0.2, min(6.0, float(self.ghost_phase_len)))
         self.glass_hp = max(1, min(12, int(self.glass_hp)))
         self.glass_hp_growth = max(0.0, min(4.0, float(self.glass_hp_growth)))
         self.glass_spin = max(0.0, min(360.0, float(self.glass_spin)))

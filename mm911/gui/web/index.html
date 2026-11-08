@@ -150,6 +150,16 @@
     <div class="row"><span>Last escape pitch</span><input type="range" data-k="escape_pitch_high" min="-6" max="24" step="0.5"></div>
     <div class="hint">The ball uses your Tiers pictures / emoji: picture 1 first, the next one after every escape.</div>
   </details>
+  <details open data-modes="ghost"><summary>👻 Ghost Escape</summary>
+    <div class="row"><span>Rings</span><input type="range" data-k="escape_rings" min="2" max="30"></div>
+    <div class="row"><span>Darkness</span><input type="range" data-k="ghost_dark" min="0" max="1" step="0.05"></div>
+    <div class="row"><span>Ghost light size</span><input type="range" data-k="ghost_light" min="80" max="500" step="10"></div>
+    <div class="row"><span>Ghost phase every (s, 0 = off)</span><input type="range" data-k="ghost_phase_every" min="0" max="12" step="0.5"></div>
+    <div class="row"><span>Phase length (s)</span><input type="range" data-k="ghost_phase_len" min="0.3" max="4" step="0.1"></div>
+    <div class="row"><span>Spin °/s</span><input type="range" data-k="escape_spin" min="0" max="240"></div>
+    <div class="row col"><span>Counter <em class="hint">{escaped} {rings} {left} {time}</em></span><input type="text" data-k="ghost_counter_text"></div>
+    <div class="row col"><span>Ending text</span><input type="text" data-k="ghost_final_text"></div>
+  </details>
   <details open data-modes="glass"><summary>🥛 Glass Rush</summary>
     <div class="row"><span>Rings</span><input type="range" data-k="escape_rings" min="2" max="30"></div>
     <div class="row"><span>Hits for the inner ring</span><input type="range" data-k="glass_hp" min="1" max="12"></div>

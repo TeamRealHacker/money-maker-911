@@ -69,7 +69,8 @@
 | 🌀 Escape | ✅ **Working** (spinning rings with gaps, rising pitch per escape, ball wears / evolves through your pictures, shatter, ESCAPED! ending) |
 | 🧱 Breaker | ✅ **Working** (6 brick patterns, tough bricks, rising pitch per brick, balls multiply, CLEARED! ending) |
 | 🥛 Glass Rush (v0.7.0) | ✅ Rings of glass crack with every hit and shatter one by one, pitch rising |
-| 🥛 Other 2D modes | 🔜 One by one (Ghost Escape next) |
+| 👻 Ghost Escape (v0.8.0) | ✅ Escape in the dark: a ghost light follows the ball, the front ring turns ghost every few seconds<br><img src="docs/demo-ghost.gif" width="180"> |
+| 🎵 Other 2D modes | 🔜 One by one (Rhythmic next) |
 | ☁️ Colab rendering | 🔜 Planned |
 | 🔵 3D modes | 🔜 Planned |
 
@@ -107,7 +108,7 @@ Everything it can do in one place:
 | 3 | 🎵 **Rhythmic** | Every bounce plays the next note of a melody | *"Recognize this melody?"* |
 | 4 | ✏️ **Drawer** | The ball leaves a trail that draws a hidden picture | *"You know this one?"* |
 | 5 | ➕ **Accumulate** | Every bounce spawns a new ball until the screen fills | *"How many until it overflows?"* |
-| 6 | 👻 **Ghost Escape** | Dodge a ring of spikes that closes in | *"Can it dodge the trap?"* |
+| 6 | 👻 **Ghost Escape** ✅ | Dodge a ring of spikes that closes in | *"Can it dodge the trap?"* |
 | 7 | 🧱 **Breaker** ✅ | Balls smash through layered walls | *"Will the wall break?"* |
 | 8 | 🏢 **Glass Tower** | Balls crash down a tower of glass floors | *"How many floors survive?"* |
 | 9 | 🚩 **Flag Battle** | Country/team balls fight for territory | *"Which country wins?"* |
@@ -404,7 +405,7 @@ money-maker-911/
 - [x] **Phase 2: 🍉 Merge Evolution** (first full mode + studio UI)
 - [x] **Phase 3: Batch factory** + title/hashtag CSV + anti-repeat rotation
 - [x] **Phase 4: AI cut-outs** + image/meme import
-- [ ] **Phase 5: Escape ✅, Breaker ✅, Glass Rush ✅, Ghost Escape, Rhythmic**
+- [ ] **Phase 5: Escape ✅, Breaker ✅, Glass Rush ✅, Ghost Escape ✅, Rhythmic**
 - [ ] **Phase 6: Battle modes** (Flag, Weapon) + remaining 2D modes
 - [ ] **Phase 7: ☁️ Colab GPU rendering** (WSL2 bridge)
 - [ ] **Phase 8: 3D modes** (Wave, Marble Run, Ball Crush, Jelly, Cut Count, Magnet)

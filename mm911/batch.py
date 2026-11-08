@@ -18,13 +18,15 @@ EMOJI = {"Fruit": "🍉", "Animal": "🐾", "Planet": "🪐", "Food": "🍔", "G
 
 
 MODE_WORD = {"merge": ("Merge", "#merge"), "escape": ("Escape", "#escape #rings"),
-             "breaker": ("Breaker", "#breaker #bricks"), "glass": ("Glass Rush", "#glass #asmr")}
+             "breaker": ("Breaker", "#breaker #bricks"), "glass": ("Glass Rush", "#glass #asmr"), "ghost": ("Ghost Escape", "#ghost #spooky")}
 
 
 def make_title(cfg: MergeConfig) -> str:
     word = MODE_WORD.get(cfg.mode, MODE_WORD["merge"])[0]
     if cfg.mode == "escape":
         return f"Can it escape? 🌀 {cfg.hook} #shorts"
+    if cfg.mode == "ghost":
+        return f"Can the ghost escape the dark? 👻 {cfg.hook} #shorts"
     if cfg.mode == "glass":
         return f"Will the glass hold? 🥛 {cfg.hook} #shorts"
     if cfg.mode == "breaker":
@@ -98,6 +100,13 @@ def vary(base: MergeConfig, i: int, rng: random.Random, randomize: bool) -> Merg
             ch["escape_gap_deg"] = round(base.escape_gap_deg * rng.uniform(0.9, 1.12), 1)
         ch.pop("container_spin", None)
         ch.pop("spawn_interval", None)
+    elif base.mode == "ghost":
+        for k in ("container_shape", "container_spin", "spawn_interval"):
+            ch.pop(k, None)
+        if "spin" in knobs:
+            ch["escape_spin"] = round(base.escape_spin * rng.uniform(0.8, 1.3), 1)
+        if "drop_interval" in knobs:
+            ch["ghost_phase_every"] = round(base.ghost_phase_every * rng.uniform(0.8, 1.3), 1)
     elif base.mode == "glass":
         for k in ("container_shape", "container_spin", "spawn_interval"):
             ch.pop(k, None)
