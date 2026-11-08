@@ -1,0 +1,19 @@
+{
+  "mode": "rhythmic",
+  "theme_name": "Rhythmic",
+  "hook": "Can the ball play the whole song?",
+  "palette": "Ocean",
+  "bg_mode": "gradient",
+  "bg_angle": 90,
+  "escape_rings": 8,
+  "escape_ring_glow": 0.8,
+  "escape_trail": 14,
+  "tier_emojis": ["👻", "😱", "💀", "🎃", "😈", "👽", "🧛", "🧟", "👑"],
+  "particle_style": "sparks",
+  "shake_strength": 7,
+  "show_counter": true,
+  "watermark": "@yourchannel",
+  "max_seconds": 40,
+  "auto_sound_strategy": "pitch_up",
+  "seed": 3
+}

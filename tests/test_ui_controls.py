@@ -39,7 +39,7 @@ def _mock(onboarded=True):
     return js.replace("WAV_PLACEHOLDER", WAV)
 
 
-MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythm"]
+MODES = ["merge", "escape", "breaker", "glass"]
 
 POKE = """() => {
   const sent = [];

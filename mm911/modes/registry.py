@@ -9,7 +9,7 @@ MODES = {
     "breaker": "🧱 Breaker",
     "glass": "🥛 Glass Rush",
     "ghost": "👻 Ghost Escape",
-    "rhythm": "🎵 Rhythmic",
+    "rhythmic": "🎵 Rhythmic",
 }
 
 
@@ -21,12 +21,12 @@ def sim_for(cfg):
     if m == "breaker":
         from .breaker import BreakerSim
         return BreakerSim(cfg)
-    if m == "rhythm":
-        from .rhythm import RhythmSim
-        return RhythmSim(cfg)
     if m == "ghost":
         from .ghost import GhostSim
         return GhostSim(cfg)
+    if m == "rhythmic":
+        from .rhythmic import RhythmicSim
+        return RhythmicSim(cfg)
     if m == "glass":
         from .glass import GlassSim
         return GlassSim(cfg)
@@ -42,12 +42,12 @@ def renderer_for(cfg, scale: float = 1.0):
     if m == "breaker":
         from ..render_modes import BreakerRenderer
         return BreakerRenderer(cfg, scale)
-    if m == "rhythm":
-        from ..render_modes import RhythmRenderer
-        return RhythmRenderer(cfg, scale)
     if m == "ghost":
         from ..render_modes import GhostRenderer
         return GhostRenderer(cfg, scale)
+    if m == "rhythmic":
+        from ..render_modes import RhythmicRenderer
+        return RhythmicRenderer(cfg, scale)
     if m == "glass":
         from ..render_modes import GlassRenderer
         return GlassRenderer(cfg, scale)

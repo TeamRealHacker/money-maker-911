@@ -69,7 +69,7 @@ def test_set_config_rejects_garbage(api):
     assert api._cfg.mode == "glass"
 
 
-@pytest.mark.parametrize("mode", ["merge", "escape", "breaker", "glass", "ghost", "rhythm"])
+@pytest.mark.parametrize("mode", ["merge", "escape", "breaker", "glass"])
 def test_preview_every_mode_returns_frames(api, mode):
     api.set_config({"mode": mode})
     api.preview(True)

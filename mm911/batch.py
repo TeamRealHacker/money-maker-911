@@ -9,7 +9,6 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Callable
 
-from .midi import SONG_NAMES
 from .config import BREAKER_PATTERNS
 from .config import MergeConfig, PALETTES, SHAPES, HOOKS, PARTICLE_STYLES, SATISFYING_KEYWORDS, MIN_TIERS, MAX_TIERS
 from .render import render_video, simulate
@@ -19,16 +18,15 @@ EMOJI = {"Fruit": "🍉", "Animal": "🐾", "Planet": "🪐", "Food": "🍔", "G
 
 
 MODE_WORD = {"merge": ("Merge", "#merge"), "escape": ("Escape", "#escape #rings"),
-             "breaker": ("Breaker", "#breaker #bricks"), "glass": ("Glass Rush", "#glass #asmr"), "ghost": ("Ghost Escape", "#ghost #spooky"),
-             "rhythm": ("Rhythmic", "#music #satisfying #asmr")}
+             "breaker": ("Breaker", "#breaker #bricks"), "glass": ("Glass Rush", "#glass #asmr"), "ghost": ("Ghost Escape", "#ghost #spooky"), "rhythmic": ("Rhythmic", "#music #satisfying")}
 
 
 def make_title(cfg: MergeConfig) -> str:
     word = MODE_WORD.get(cfg.mode, MODE_WORD["merge"])[0]
     if cfg.mode == "escape":
         return f"Can it escape? 🌀 {cfg.hook} #shorts"
-    if cfg.mode == "rhythm":
-        return f"{cfg.hook} 🎵 #shorts"
+    if cfg.mode == "rhythmic":
+        return f"The ball plays the song 🎵 {cfg.hook} #shorts"
     if cfg.mode == "ghost":
         return f"Can the ghost escape the dark? 👻 {cfg.hook} #shorts"
     if cfg.mode == "glass":
@@ -104,17 +102,13 @@ def vary(base: MergeConfig, i: int, rng: random.Random, randomize: bool) -> Merg
             ch["escape_gap_deg"] = round(base.escape_gap_deg * rng.uniform(0.9, 1.12), 1)
         ch.pop("container_spin", None)
         ch.pop("spawn_interval", None)
-    elif base.mode == "rhythm":
+    elif base.mode == "rhythmic":
         for k in ("container_shape", "container_spin", "spawn_interval"):
             ch.pop(k, None)
-        if "shape" in knobs and not base.rhythm_midi:      # a new song per video (your own MIDI stays)
-            names = SONG_NAMES
-            j = names.index(base.rhythm_song) if base.rhythm_song in names else 0
-            ch["rhythm_song"] = names[(j + i) % len(names)]
         if "spin" in knobs:
-            ch["rhythm_lanes"] = max(4, min(12, base.rhythm_lanes + rng.choice([-2, 0, 0, 2])))
-        if "drop_interval" in knobs:
-            ch["rhythm_hop"] = round(base.rhythm_hop * rng.uniform(0.85, 1.2), 2)
+            ch["escape_spin"] = round(base.escape_spin * rng.uniform(0.8, 1.3), 1)
+        if "shape" in knobs:
+            ch["rhythm_transpose"] = base.rhythm_transpose + (i % 5) - 2
     elif base.mode == "ghost":
         for k in ("container_shape", "container_spin", "spawn_interval"):
             ch.pop(k, None)
