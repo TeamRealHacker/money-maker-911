@@ -39,6 +39,12 @@ jobs:
           python main.py render --preset presets/minimal_mono_15s.json --seconds 4 --fps 30 --set slowmo_final=true --out output/custom.mp4
           python main.py sounds cache
 
+      - name: Smoke test (Escape + Breaker modes, duplicate checker CLI)
+        run: |
+          python main.py render --preset presets/escape_rings.json --seconds 4 --fps 30 --out output/escape.mp4
+          python main.py render --mode breaker --seconds 4 --fps 30 --out output/breaker.mp4
+          python main.py dedupe --in output
+
       - name: Smoke test (AI add-on imports, app still imports without models)
         run: python -c "import onnxruntime, mm911.imageprep as ip, mm911.gui.app; print(onnxruntime.__version__, ip.status()['onnx'])"
 

@@ -1,6 +1,6 @@
 const MODES = [
-  ["🍉 Merge Evolution", true], ["🌀 Escape"], ["🎵 Rhythmic"], ["✏️ Drawer"], ["➕ Accumulate"],
-  ["👻 Ghost Escape"], ["🧱 Breaker"], ["🏢 Glass Tower"], ["🚩 Flag Battle"], ["⚔️ Weapon Battle"],
+  ["🍉 Merge Evolution", "merge"], ["🌀 Escape", "escape"], ["🧱 Breaker", "breaker"], ["🎵 Rhythmic"], ["✏️ Drawer"],
+  ["➕ Accumulate"], ["👻 Ghost Escape"], ["🏢 Glass Tower"], ["🚩 Flag Battle"], ["⚔️ Weapon Battle"],
   ["🥛 Glass Rush"], ["🏁 Race"], ["🎯 Plinko"], ["🌊 Wave 3D"], ["🎢 Marble Run 3D"], ["🧲 Magnet 3D"],
 ];
 const $ = (s) => document.querySelector(s);
@@ -28,9 +28,20 @@ async function pullFrame() {
   }
   setTimeout(() => requestAnimationFrame(pullFrame), 33);
 }
+// Tell Python how many real screen pixels the preview has (HiDPI aware), so it renders the
+// preview at that size instead of a small frame the browser has to stretch (that looked blurry).
+let lastPx = 0;
+function previewSize() {
+  const ph = document.querySelector(".phone");
+  if (!ph || !window.pywebview) return;
+  const px = Math.round(ph.clientHeight * (window.devicePixelRatio || 1));
+  if (px > 0 && Math.abs(px - lastPx) > 8) { lastPx = px; try { pywebview.api.preview_size(px); } catch (e) { /* closing */ } }
+}
+window.addEventListener("resize", () => { clearTimeout(window.__pvT); window.__pvT = setTimeout(previewSize, 250); });
 function setPreview(on) {
   if (on === previewOn) return;
   previewOn = on;
+  if (on) previewSize();
   pywebview.api.preview(on);
   if (on) requestAnimationFrame(pullFrame);
 }
@@ -115,7 +126,8 @@ const mm = {
     state.config = await call("set_config", patch); fill();
     if (PREP_KEYS.some((k) => k in patch)) mm.prep();
     else if (["tiers", "palette", "tier_images", "show_tier_labels", "cutout_outline", "ball_scale", "base_radius", "growth",
-              "size_curve", "tier_sizes", "ball_outline", "ball_outline_color", "auto_fit"].some((k) => k in patch)) tiers();
+              "size_curve", "tier_sizes", "ball_outline", "ball_outline_color", "auto_fit", "ball_highlight", "ball_inner_shadow",
+              "ball_rim", "image_fit", "image_zoom", "cutout_style", "mode"].some((k) => k in patch)) tiers();
     if (["tiers", "pitch_step", "sound_path", "auto_sounds"].some((k) => k in patch)) soundRows();
   },
   // AI cut-outs / text check run in Python on their own thread; we poll a status line meanwhile.
@@ -335,8 +347,20 @@ function lengths() {
     `<button class="${Math.abs(cur - v) < 0.5 ? "on" : ""}" onclick="mm.set({max_seconds:${v}})">${k}</button>`).join("");
 }
 
+function modeNav() {
+  const cur = (state.config && state.config.mode) || "merge";
+  $("#modes").innerHTML = MODES.map(([n, key]) => key
+    ? `<a class="${key === cur ? "on" : "ready"}" data-mode="${key}" onclick="mm.set({mode:'${key}'})">${n}</a>`
+    : `<a class="off">${n}<em>Soon</em></a>`).join("");
+}
 function fill() {
   const c = state.config;
+  const mode = c.mode || "merge";
+  document.querySelectorAll("[data-modes]").forEach((el) => { el.hidden = !el.dataset.modes.split(" ").includes(mode); });
+  document.querySelectorAll("#modes a[data-mode]").forEach((a) => a.classList.toggle("on", a.dataset.mode === mode));
+  const mt = MODES.find((m) => m[1] === mode);
+  if ($("#modetitle") && mt) $("#modetitle").textContent = mt[0].replace(/^\S+\s/, "");
+  if ($("#winslabel")) $("#winslabel").textContent = { merge: "Only Final Form wins", escape: "Only full escapes", breaker: "Only cleared walls" }[mode] || "Only wins";
   document.querySelectorAll("[data-k]").forEach((el) => {
     if (el === document.activeElement && el.type === "text") return;   // don't fight the user's typing
     const v = c[el.dataset.k];
@@ -465,7 +489,7 @@ async function boot() {
     booted = false; setTimeout(boot, 300); return;   // API not wired yet, retry
   }
   $("#ver").textContent = "v" + state.version;
-  $("#modes").innerHTML = MODES.map(([n, on]) => `<a class="${on ? "on" : "off"}">${n}${on ? "" : "<em>Soon</em>"}</a>`).join("");
+  modeNav();
   $("#shapes").innerHTML = state.shapes.map((s) => `<option>${s}</option>`).join("");
   $("#hooks").innerHTML = state.hooks.map((h) => `<option value="${esc(h)}">`).join("");
   $("#emojiset").innerHTML += Object.entries(state.emoji_sets).map(([k, v]) => `<option value="${k}">${v.slice(0, 3).join("")} ${k}</option>`).join("");

@@ -42,6 +42,14 @@
 <img src="docs/thumb-emoji-fruit.jpg" width="260" alt="Auto thumbnail">
 
 *New: 🍒→🍉 emoji tiers with custom colours, 30s preset, and the auto-saved thumbnail (right)*
+
+<img src="docs/escape-mid.jpg" width="260" alt="Escape mode">
+&nbsp;&nbsp;
+<img src="docs/escape-final.jpg" width="260" alt="Escape ending">
+&nbsp;&nbsp;
+<img src="docs/breaker-heart.jpg" width="260" alt="Breaker mode">
+
+*v0.6.0: 🌀 Escape (left, ending in the middle) and 🧱 Breaker (right), real frames from the exported MP4s*
 </div>
 
 | Area | Status |
@@ -56,8 +64,11 @@
 | 🖥️ Desktop app | ✅ Splash, onboarding, live preview, inspector |
 | 📦 Portable .exe | ✅ Built by GitHub Actions → [Nightly release](https://github.com/TeamRealHacker/money-maker-911/releases/tag/nightly) |
 | ✂️ AI cut-outs + text filter | ✅ BiRefNet / ISNet / U²-Net offline (onnxruntime), sticker outline, skips images with text |
-| 🔁 Duplicate checker | 🔜 Next |
-| 🌀 Other 2D modes | 🔜 One by one |
+| 🔍 Picture quality (v0.6.0) | ✅ Full-resolution pictures, Lanczos in premultiplied alpha, sprites built at their exact on-screen size, crisp anti-aliased round balls / rims / containers, sharp HiDPI preview, BT.709 high-quality export |
+| 🔁 Duplicate checker | ✅ Perceptual hash of sampled frames, skips or flags look-alikes in a batch (and vs. the whole output folder) |
+| 🌀 Escape | ✅ **Working** (spinning rings with gaps, rising pitch per escape, ball wears / evolves through your pictures, shatter, ESCAPED! ending) |
+| 🧱 Breaker | ✅ **Working** (6 brick patterns, tough bricks, rising pitch per brick, balls multiply, CLEARED! ending) |
+| 🥛 Other 2D modes | 🔜 One by one (Glass Rush next) |
 | ☁️ Colab rendering | 🔜 Planned |
 | 🔵 3D modes | 🔜 Planned |
 
@@ -80,7 +91,7 @@ Everything it can do in one place:
 - 🖼️ **Clean meme cut-outs**: built-in AI background removal, no captions
 - 🧠 **Anti-repeat engine**: every video comes out different, so channels stay fresh
 
-> 🚧 **Status:** active development. 🍉 Merge mode works today; the other modes land one by one. See [Progress](#-progress).
+> 🚧 **Status:** active development. 🍉 Merge, 🌀 Escape and 🧱 Breaker work today; the other modes land one by one. See [Progress](#-progress).
 
 ---
 
@@ -90,13 +101,13 @@ Everything it can do in one place:
 
 | # | Mode | What happens | Hook example |
 |---|------|--------------|--------------|
-| 1 | 🍉 **Merge Evolution** | Items drop into a ring and merge up tiers until the Final Form | *"Will it reach the Final Form?"* |
-| 2 | 🌀 **Escape** | A ball bounces inside spinning rings with gaps and tries to escape | *"How fast can it escape?"* |
+| 1 | 🍉 **Merge Evolution** ✅ | Items drop into a ring and merge up tiers until the Final Form | *"Will it reach the Final Form?"* |
+| 2 | 🌀 **Escape** ✅ | A ball bounces inside spinning rings with gaps and tries to escape | *"How fast can it escape?"* |
 | 3 | 🎵 **Rhythmic** | Every bounce plays the next note of a melody | *"Recognize this melody?"* |
 | 4 | ✏️ **Drawer** | The ball leaves a trail that draws a hidden picture | *"You know this one?"* |
 | 5 | ➕ **Accumulate** | Every bounce spawns a new ball until the screen fills | *"How many until it overflows?"* |
 | 6 | 👻 **Ghost Escape** | Dodge a ring of spikes that closes in | *"Can it dodge the trap?"* |
-| 7 | 🧱 **Breaker** | Balls smash through layered walls | *"Will the wall break?"* |
+| 7 | 🧱 **Breaker** ✅ | Balls smash through layered walls | *"Will the wall break?"* |
 | 8 | 🏢 **Glass Tower** | Balls crash down a tower of glass floors | *"How many floors survive?"* |
 | 9 | 🚩 **Flag Battle** | Country/team balls fight for territory | *"Which country wins?"* |
 | 10 | ⚔️ **Weapon Ball Battle** | Balls with swords, shields and HP bars fight to the last one | *"Who survives?"* |
@@ -146,6 +157,14 @@ Everything it can do in one place:
 - Drag in any images or a whole folder for tiers and balls
 - **Built-in AI background removal** (BiRefNet / ISNet / U²-Net via ONNX, runs offline)
 - Auto crop, auto circle-mask, outline and drop-shadow
+- **Sharp pictures** (v0.6.0): photos are loaded at full resolution (phone EXIF rotation respected), cropped
+  around the subject (Smart / Centre / Top / Whole picture + zoom) and resized once with Lanczos in premultiplied
+  alpha at the exact size they are shown, so there is no blur, no pixelation and no dark halo
+- **Premium round balls**: exact anti-aliased circle masks with the rim drawn from the same circle (no jaggies,
+  no seams), glossy highlight + 3D shading sliders, picture rim width; the picture rolls with the physics while
+  the rim and light stay put
+- Cut-out style: **sticker on a disc**, **sticker only** (no circle, smooth round white outline) or **fill the circle**;
+  cut-out edges are colour-cleaned so no white/green fringe from the old background
 - Caption remover: rejects or crops out images that contain text
 
 ```bash
@@ -171,7 +190,10 @@ pip install -r requirements-ai.txt   # only needed when running from source
 - Queue **10 / 50 / 100+ videos** in one go
 - Randomize per video: theme, shape, colors, background, hook, speed, seed
 - Seed control: re-render any video exactly the same
-- Auto-skip boring runs (e.g. Merge that never reaches the final tier)
+- Auto-skip boring runs (e.g. Merge that never reaches the final tier, Escape that never gets out)
+- **Duplicate checker**: every new video is compared (perceptual hash of 8 sampled frames) with the videos
+  already in the output folder; look-alikes are re-rendered with a new seed or flagged in `titles.csv`.
+  `python main.py dedupe --in output [--delete]` checks any folder
 - Auto file names, plus a CSV of titles, descriptions and hashtags for every video
 - Title templates like `[Theme] Merge [emoji] Will it reach the Final Form? #shorts`
 
@@ -181,6 +203,9 @@ pip install -r requirements-ai.txt   # only needed when running from source
 - Warns when you use real people, logos or copyrighted clips
 
 ### 🎞️ Export
+- High quality by default (v0.6.0): x264 `medium`/`slow` at CRF 17 (High) / 14 (Max), NVENC `p6 hq` constant
+  quality with a high bitrate ceiling, BT.709 colour conversion with full-precision chroma, correctly tagged so
+  YouTube and phones show the colours you picked; frames are drawn at the export size (no rescaling)
 - 9:16 vertical at 720p, 1080p, 2K or 4K; 24, 25, 30, 48, 50, 60, 90 or 120 fps; H.264 or H.265; MP4 or MOV; GPU encoding (NVIDIA / Intel / AMD) with CPU fallback
 - H.264 / H.265 / AV1 via FFmpeg
 - Hardware encoding: **NVIDIA NVENC**, AMD AMF, Intel QSV
@@ -317,6 +342,10 @@ cd money-maker-911
 pip install -r requirements.txt
 python main.py            # desktop app
 python main.py batch --count 10 --out output
+python main.py render --preset presets/escape_rings.json --out output/escape.mp4    # 🌀 Escape
+python main.py render --mode breaker --set breaker_pattern=heart --out output/breaker.mp4   # 🧱 Breaker
+python main.py batch --mode escape --count 20 --dedupe-action flag --out output     # any mode in a batch
+python main.py dedupe --in output                                                   # find look-alikes
 ```
 
 ### Using your PC for 3D
@@ -347,11 +376,17 @@ money-maker-911/
 ├─ main.py              # app + CLI entry
 ├─ mm911/
 │  ├─ config.py         # every editable setting, palettes, hooks
-│  ├─ render.py         # renderer + FFmpeg export
+│  ├─ render.py         # Merge renderer + FFmpeg export (shared by every mode)
+│  ├─ render_modes.py   # Escape + Breaker renderers
+│  ├─ sprites.py        # high-quality ball sprites (full-res, Lanczos, anti-aliased, premultiplied)
+│  ├─ dedupe.py         # duplicate checker (perceptual hashes)
 │  ├─ audio.py          # sound loading, pitch, mixing (SoundBank: per-tier sounds)
 │  ├─ sounds.py         # Myinstants search / cache / pitch analysis / auto low->high
 │  ├─ batch.py          # batch factory + titles.csv
 │  ├─ modes/merge.py    # 🍉 Merge Evolution physics
+│  ├─ modes/escape.py   # 🌀 Escape physics
+│  ├─ modes/breaker.py  # 🧱 Breaker physics
+│  ├─ modes/registry.py # mode -> simulation + renderer
 │  ├─ gui/              # desktop app (splash, onboarding, studio)
 │  └─ assets/           # logo, fonts (Poppins, OFL)
 ├─ presets/             # ready-made looks
@@ -367,8 +402,8 @@ money-maker-911/
 - [x] **Phase 1: Core engine** (physics, renderer, audio pitch, FFmpeg export)
 - [x] **Phase 2: 🍉 Merge Evolution** (first full mode + studio UI)
 - [x] **Phase 3: Batch factory** + title/hashtag CSV + anti-repeat rotation
-- [ ] **Phase 4: AI cut-outs** + image/meme import
-- [ ] **Phase 5: Escape, Breaker, Glass Rush, Ghost Escape, Rhythmic**
+- [x] **Phase 4: AI cut-outs** + image/meme import
+- [ ] **Phase 5: Escape ✅, Breaker ✅, Glass Rush, Ghost Escape, Rhythmic**
 - [ ] **Phase 6: Battle modes** (Flag, Weapon) + remaining 2D modes
 - [ ] **Phase 7: ☁️ Colab GPU rendering** (WSL2 bridge)
 - [ ] **Phase 8: 3D modes** (Wave, Marble Run, Ball Crush, Jelly, Cut Count, Magnet)

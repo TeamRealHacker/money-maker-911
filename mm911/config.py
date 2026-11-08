@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_NAME = "Money Maker 911"
 CREDIT = "made by TeamRealHackers"
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 
 # Soft, non-neon palettes. Each: background top, background bottom, container, text, tier colors
 PALETTES: dict[str, dict] = {
@@ -51,6 +51,8 @@ PARTICLE_STYLES = ["dots", "squares", "stars", "sparks", "rings", "confetti"]
 SOUND_MODES = ["single", "per_tier"]
 SOUND_STRATEGIES = ["pitch_up", "sorted"]
 TEXT_ALIGNS = ["center", "left", "right"]
+IMAGE_FITS = ["smart", "center", "top", "fit"]          # how a picture is cropped into a round ball
+CUTOUT_STYLES = ["disc", "sticker", "circle"]           # cut-out on a tier disc | free sticker | fills the ball
 
 # Length presets (button label -> max seconds before the run stops; +end hold = final length)
 LENGTH_PRESETS = {"15s": 13.0, "30s": 28.0, "45s": 43.0, "60s": 58.0}
@@ -67,7 +69,7 @@ EMOJI_SETS = {
 MIN_TIERS, MAX_TIERS = 3, 15
 FPS_CHOICES = [24, 25, 30, 48, 50, 60, 90, 120]
 RESOLUTIONS = {"720p": (720, 1280), "1080p": (1080, 1920), "1440p": (1440, 2560), "4k": (2160, 3840)}
-QUALITIES = {"max": 15, "high": 18, "balanced": 21, "small": 25}   # x264-style CRF
+QUALITIES = {"max": 14, "high": 17, "balanced": 20, "small": 24}   # x264-style CRF (v0.6: one step sharper)
 CODECS = ["h264", "h265"]
 ENCODERS = ["auto", "cpu", "nvidia", "intel", "amd"]
 FORMATS = ["mp4", "mov"]
@@ -99,8 +101,14 @@ RANDOM_KNOBS = {
 DEFAULT_RANDOM_KNOBS = ["palette", "shape", "hook", "spin", "drop_interval"]
 
 
+MODES = ["merge", "escape", "breaker"]
+BREAKER_PATTERNS = ["full", "pyramid", "diamond", "heart", "checker", "stripes"]
+
+
 @dataclass
 class MergeConfig:
+    """Settings for every mode (the name stays for old presets / imports). mode picks the game."""
+    mode: str = "merge"                # merge | escape | breaker
     # video
     width: int = 1080
     height: int = 1920
@@ -139,6 +147,12 @@ class MergeConfig:
     ball_outline_color: str = ""       # "" = darker tier colour
     ball_shadow: float = 0.0           # 0..1 drop shadow under balls
     ball_glow: float = 0.0             # 0..1 soft glow around balls
+    ball_highlight: float = 0.5        # 0..1 glossy highlight (top-left light)
+    ball_inner_shadow: float = 0.25    # 0..1 3D shading toward the lower-right rim
+    ball_rim: float = 0.06             # rim around picture balls, fraction of the radius (0 = no rim)
+    image_fit: str = "smart"           # smart (centre on the subject) | center | top | fit (whole picture)
+    image_zoom: float = 1.0            # 1 = picture fills the ball, 2 = zoom in 2x on the subject
+    cutout_style: str = "disc"         # cut-outs: disc (sticker on a tier disc) | sticker (no circle) | circle
     # particles + juice
     particle_amount: float = 1.0       # 0 = off, 1 = normal, 3 = a lot
     particle_style: str = "dots"
@@ -244,9 +258,70 @@ class MergeConfig:
     export_audio: bool = True          # False = silent video
     audio_bitrate: int = 192           # kbps
     open_folder_after: bool = False
+    # 🌀 Escape mode (balls / pictures, sounds, particles, texts, export: shared with Merge)
+    escape_rings: int = 8              # how many rings to escape (2-30)
+    escape_inner_radius: float = 140.0 # px, innermost ring
+    escape_outer_radius: float = 480.0 # px, outermost ring
+    escape_ring_thickness: float = 12.0
+    escape_center_y: float = 0.52      # ring centre, fraction of the height
+    escape_gap_deg: float = 56.0       # gap width in degrees
+    escape_gap_jitter: float = 12.0    # +/- random degrees per ring
+    escape_spin: float = 70.0          # degrees per second (innermost ring)
+    escape_spin_step: float = 0.12     # each ring spins this much faster than the one inside it
+    escape_alternate: bool = True      # neighbouring rings spin in opposite directions
+    escape_ball_radius: float = 34.0
+    escape_ball_growth: float = 1.0    # ball size x this per escape (1.08 = grows)
+    escape_ball_speed: float = 900.0   # start speed px/s
+    escape_min_speed: float = 650.0    # never slower than this
+    escape_max_speed: float = 1700.0   # never faster than this
+    escape_gravity: float = 1400.0
+    escape_bounce: float = 1.0         # elasticity of ball + rings
+    escape_assist: bool = True         # a ring nobody escapes for a while slowly opens its gap
+    escape_assist_after: float = 3.5   # seconds without an escape before the gap starts opening
+    escape_assist_speed: float = 14.0  # degrees per second the gap opens
+    escape_trail: int = 10             # trail length in frames (0 = off)
+    escape_ring_glow: float = 0.5      # 0..1
+    escape_ring_colors: list = field(default_factory=list)   # "" / empty = palette tier colours
+    escape_ball_color: str = ""        # plain ball colour ("" = first tier colour)
+    escape_evolve: bool = True         # the ball changes to the next tier picture / emoji per escape
+    escape_shatter: bool = True        # rings burst into particles when escaped
+    escape_counter_text: str = "{escaped}/{rings}"
+    escape_counter_size: int = 96
+    escape_counter_y: float = 0.165
+    escape_final_text: str = "ESCAPED!"
+    escape_final_zoom: float = 4.0     # the ball glides to the centre and grows this much at the end (1 = off)
+    escape_pitch_low: float = -5.0     # semitones of the first escape
+    escape_pitch_high: float = 12.0    # semitones of the last escape
+    escape_bounce_pitch: float = -7.0  # bounce sound relative to the current escape pitch
+    # 🧱 Breaker mode: balls bounce around an arena and smash a wall of bricks
+    breaker_rows: int = 8
+    breaker_cols: int = 8
+    breaker_pattern: str = "full"      # full | pyramid | diamond | heart | checker | stripes
+    breaker_hp: int = 2                # toughest bricks take this many hits (top rows are toughest)
+    breaker_balls: int = 1             # balls at the start
+    breaker_split_every: int = 6       # +1 ball every N bricks broken (0 = never)
+    breaker_max_balls: int = 9
+    breaker_ball_radius: float = 22.0
+    breaker_speed: float = 1300.0      # ball speed px/s (kept constant)
+    breaker_gravity: float = 0.0       # 0 = classic straight bounces
+    breaker_arena_top: float = 0.2     # arena, fractions of the height
+    breaker_arena_bottom: float = 0.88
+    breaker_arena_margin: float = 50.0 # px from the left / right edge
+    breaker_brick_height: float = 46.0
+    breaker_brick_gap: float = 8.0
+    breaker_brick_round: float = 0.3   # brick corner roundness 0..0.5
+    breaker_wall_rows_y: float = 0.08  # gap between the arena top and the first brick row (fraction of arena)
+    breaker_trail: int = 6
+    breaker_counter_text: str = "{left} left"
+    breaker_final_text: str = "CLEARED!"
+    breaker_pitch_low: float = -5.0    # first brick
+    breaker_pitch_high: float = 14.0   # last brick
     # batch
     random_knobs: list[str] = field(default_factory=lambda: list(DEFAULT_RANDOM_KNOBS))
     batch_sound_keywords: list[str] = field(default_factory=list)  # one picked per video when "sound_keyword" is on
+    batch_dedupe: bool = True          # duplicate checker: compare every new video with the folder's videos
+    dedupe_threshold: float = 0.9      # 0..1 similarity (perceptual hash of sampled frames) = "too similar"
+    dedupe_action: str = "skip"        # skip (delete + re-render with a new seed) | flag (keep, mark in titles.csv)
     # randomness
     seed: int = 1
 
@@ -356,6 +431,25 @@ class MergeConfig:
         self.container_thickness = max(1, int(self.container_thickness))
         self.fill_cap = max(0.2, min(1.2, float(self.fill_cap)))
         self.auto_sound_count = max(1, min(12, int(self.auto_sound_count)))
+        if self.mode not in MODES: self.mode = "merge"
+        self.escape_rings = max(1, min(30, int(self.escape_rings)))
+        self.escape_ring_thickness = max(2.0, float(self.escape_ring_thickness))
+        self.escape_inner_radius = max(40.0, float(self.escape_inner_radius))
+        self.escape_outer_radius = max(self.escape_inner_radius, min(1000.0, float(self.escape_outer_radius)))
+        self.escape_min_speed = max(50.0, float(self.escape_min_speed))
+        self.escape_max_speed = max(self.escape_min_speed, float(self.escape_max_speed))
+        self.breaker_rows = max(1, min(20, int(self.breaker_rows)))
+        self.breaker_cols = max(1, min(16, int(self.breaker_cols)))
+        self.breaker_hp = max(1, min(5, int(self.breaker_hp)))
+        self.breaker_balls = max(1, min(12, int(self.breaker_balls)))
+        self.breaker_max_balls = max(self.breaker_balls, min(30, int(self.breaker_max_balls)))
+        if self.breaker_pattern not in BREAKER_PATTERNS: self.breaker_pattern = "full"
+        if self.dedupe_action not in ("skip", "flag"): self.dedupe_action = "skip"
+        self.dedupe_threshold = max(0.5, min(1.0, float(self.dedupe_threshold)))
+        if self.image_fit not in IMAGE_FITS: self.image_fit = "smart"
+        if self.cutout_style not in CUTOUT_STYLES: self.cutout_style = "disc"
+        self.image_zoom = max(1.0, min(4.0, float(self.image_zoom or 1.0)))
+        self.ball_rim = max(0.0, min(0.3, float(self.ball_rim)))
         return self
 
     def video_seconds(self) -> float:

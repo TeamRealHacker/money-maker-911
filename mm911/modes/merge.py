@@ -40,6 +40,7 @@ class SoundEvent:
     tier: int
     kind: str  # "drop" | "merge" | "final"
     vt: float = -1.0          # VIDEO time in seconds (what the audio track needs; differs with speed / slow-mo)
+    pitch: float | None = None  # absolute semitones (Escape / Breaker ladders); None = the tier's pitch
 
 
 @dataclass

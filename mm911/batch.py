@@ -2,21 +2,39 @@
 from __future__ import annotations
 
 import csv
+import os
 import re
 import random
 from dataclasses import replace
 from pathlib import Path
 from typing import Callable
 
+from .config import BREAKER_PATTERNS
 from .config import MergeConfig, PALETTES, SHAPES, HOOKS, PARTICLE_STYLES, SATISFYING_KEYWORDS, MIN_TIERS, MAX_TIERS
 from .render import render_video, simulate
+from .dedupe import HashBook, check
 
 EMOJI = {"Fruit": "🍉", "Animal": "🐾", "Planet": "🪐", "Food": "🍔", "Gem": "💎", "Sport": "⚽", "Meme": "😂"}
 
 
+MODE_WORD = {"merge": ("Merge", "#merge"), "escape": ("Escape", "#escape #rings"),
+             "breaker": ("Breaker", "#breaker #bricks")}
+
+
 def make_title(cfg: MergeConfig) -> str:
+    word = MODE_WORD.get(cfg.mode, MODE_WORD["merge"])[0]
+    if cfg.mode == "escape":
+        return f"Can it escape? 🌀 {cfg.hook} #shorts"
+    if cfg.mode == "breaker":
+        return f"Brick Breaker 🧱 {cfg.hook} #shorts"
     e = EMOJI.get(cfg.theme_name, "✨")
-    return f"{cfg.theme_name} Merge {e} {cfg.hook} #shorts"
+    return f"{cfg.theme_name} {word} {e} {cfg.hook} #shorts"
+
+
+def make_description(cfg: MergeConfig) -> tuple[str, str]:
+    word, tags = MODE_WORD.get(cfg.mode, MODE_WORD["merge"])
+    hashtags = f"#shorts #satisfying {tags} #simulation"
+    return f"{cfg.theme_name} {word.lower()} simulation. {cfg.hook} {hashtags}", hashtags
 
 
 def _hsv_hex(rng: random.Random, s: float, v: float) -> str:
@@ -67,6 +85,25 @@ def vary(base: MergeConfig, i: int, rng: random.Random, randomize: bool) -> Merg
         pool = [k for k in (base.batch_sound_keywords or []) if k.strip()] or SATISFYING_KEYWORDS
         ch["auto_sounds"] = True
         ch["auto_sound_keywords"] = pool[i % len(pool)] if len(pool) > 1 else pool[0]
+    if base.mode == "escape":      # the Merge-only knobs mean something else here
+        ch.pop("container_shape", None)
+        if "shape" in knobs:
+            ch["escape_rings"] = max(3, min(30, base.escape_rings + (i % 3) - 1))
+        if "spin" in knobs:
+            ch["escape_spin"] = round(base.escape_spin * rng.uniform(0.8, 1.3), 1)
+            ch["escape_alternate"] = rng.random() < 0.7
+        if "drop_interval" in knobs:
+            ch["escape_gap_deg"] = round(base.escape_gap_deg * rng.uniform(0.9, 1.12), 1)
+        ch.pop("container_spin", None)
+        ch.pop("spawn_interval", None)
+    elif base.mode == "breaker":
+        ch.pop("container_shape", None)
+        ch.pop("container_spin", None)
+        ch.pop("spawn_interval", None)
+        if "shape" in knobs:
+            ch["breaker_pattern"] = BREAKER_PATTERNS[i % len(BREAKER_PATTERNS)]
+        if "spin" in knobs:
+            ch["breaker_balls"] = max(1, min(6, base.breaker_balls + rng.choice([0, 0, 1])))
     cfg = replace(base, **ch)
     if "tiers" in knobs and cfg.tier_emojis:
         cfg.tier_emojis = list(cfg.tier_emojis)[: cfg.tiers]
@@ -79,23 +116,41 @@ def run_batch(base: MergeConfig, count: int, out_dir: str, randomize: bool = Tru
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     rng = random.Random(base.seed)
+    book = HashBook(out) if base.batch_dedupe else None
     results = []
     for i in range(count):
         if stop and stop():
             break
         cfg = vary(base, i, rng, randomize)
-        if only_wins:  # fast physics-only check, retry seeds until it reaches the Final Form
-            for _ in range(25):
-                if simulate(cfg).won:
-                    break
+        meta = None
+        for attempt in range(3 if (book and base.dedupe_action == "skip") else 1):
+            if only_wins:  # fast physics-only check, retry seeds until it wins
+                for _ in range(25):
+                    if simulate(cfg).won:
+                        break
+                    cfg = replace(cfg, seed=rng.randint(1, 10_000_000))
+            safe = re.sub(r"[^\w\-]+", "_", cfg.theme_name.lower()).strip("_") or "video"   # Windows-safe file name
+            name = f"{safe}_{cfg.mode}_{i + 1:03d}_{cfg.seed}.mp4"
+            meta = render_video(cfg, str(out / name),
+                                progress=(lambda p, i=i: progress(i, count, p)) if progress else None, lock=lock)
+            if not book:
+                break
+            chk = check(meta["file"], book, base.dedupe_threshold)
+            meta["similarity"] = chk["score"]
+            meta["similar_to"] = chk["match"] if chk["duplicate"] else ""
+            if chk["duplicate"] and base.dedupe_action == "skip" and attempt < 2:
+                for f in (meta["file"], meta.get("thumbnail")):     # too close to an earlier video: redo it
+                    if f:
+                        try:
+                            os.remove(f)
+                        except OSError:
+                            pass
                 cfg = replace(cfg, seed=rng.randint(1, 10_000_000))
-        safe = re.sub(r"[^\w\-]+", "_", cfg.theme_name.lower()).strip("_") or "video"   # Windows-safe file name
-        name = f"{safe}_merge_{i + 1:03d}_{cfg.seed}.mp4"
-        meta = render_video(cfg, str(out / name),
-                            progress=(lambda p, i=i: progress(i, count, p)) if progress else None, lock=lock)
+                continue
+            book.add(Path(meta["file"]).name, chk["sig"])
+            break
         meta["title"] = make_title(cfg)
-        meta["description"] = f"{cfg.theme_name} merge simulation. {cfg.hook} #shorts #satisfying #merge"
-        meta["hashtags"] = "#shorts #satisfying #merge #simulation"
+        meta["description"], meta["hashtags"] = make_description(cfg)
         meta["palette"], meta["shape"] = cfg.palette, cfg.container_shape
         meta["sounds"] = ", ".join(meta.get("sounds") or []) or "built-in"
         if cfg.auto_sounds:

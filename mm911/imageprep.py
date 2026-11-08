@@ -50,8 +50,8 @@ DEFAULT_MODEL = "isnet-general-use"
 MODEL_URL = "https://github.com/danielgatis/rembg/releases/download/v0.0.0/{}"
 TEXT_DET = {"file": "ch_PP-OCRv4_det_infer.onnx", "mb": 5,
             "url": "https://huggingface.co/SWHL/RapidOCR/resolve/main/PP-OCRv4/ch_PP-OCRv4_det_infer.onnx"}
-MAX_SIDE = 1200          # cut-outs are stored at most this big (sprites never need more)
-CUTOUT_VERSION = 1       # bump when the cut-out look changes so caches rebuild
+MAX_SIDE = 2048          # cut-outs are stored at most this big (a 4K Final Form is ~1400 px wide)
+CUTOUT_VERSION = 2       # bump when the cut-out look changes so caches rebuild (v2: 2048 px, EXIF-rotated)
 
 _sessions: dict[str, object] = {}
 _session_lock = threading.Lock()
@@ -214,7 +214,18 @@ def _get_session(name: str, note=None):
 
 # ---------------------------------------------------------------- pixels (pygame under lock)
 def _load_rgba(path: str, lock) -> np.ndarray:
-    """H x W x 4 uint8, downscaled so the long side <= MAX_SIDE."""
+    """H x W x 4 uint8, downscaled so the long side <= MAX_SIDE (Pillow: full-quality Lanczos and
+    the phone's EXIF rotation; pygame fallback)."""
+    try:
+        from . import sprites
+        im = sprites.load_source(path)
+        if im is not None:
+            k = min(1.0, MAX_SIDE / max(im.size))
+            if k < 1.0:
+                im = sprites.resize_hq(im, (max(1, int(im.width * k)), max(1, int(im.height * k))))
+            return np.asarray(im.convert("RGBA"), dtype=np.uint8).copy()
+    except Exception:
+        pass
     import pygame
     with lock:
         src = pygame.image.load(path)

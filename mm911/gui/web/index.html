@@ -13,7 +13,7 @@
 
 <main class="stage">
   <div class="topbar">
-    <div class="title"><span>Merge Evolution</span><em id="status">Live preview</em></div>
+    <div class="title"><span id="modetitle">Merge Evolution</span><em id="status">Live preview</em></div>
     <div class="seg">
       <button class="ghost" onclick="mm.restart()">↻ New run</button>
       <button class="ghost" onclick="mm.thumb()">Save thumbnail</button>
@@ -26,7 +26,7 @@
     <div class="batch">
       <input id="count" type="number" min="1" max="500" value="10">
       <label class="chk"><input id="rand" type="checkbox" checked> Vary each video</label>
-      <label class="chk"><input id="wins" type="checkbox" checked> Only Final Form wins</label>
+      <label class="chk"><input id="wins" type="checkbox" checked> <span id="winslabel">Only Final Form wins</span></label>
       <button class="dark" onclick="mm.renderBatch()">Render batch</button>
     </div>
     <div class="prog" id="prog" hidden><div class="track"><i id="bar"></i></div><span id="ptext"></span><button class="ghost sm" onclick="pywebview.api.stop()">Stop</button></div>
@@ -41,19 +41,19 @@
   </details>
   <details open><summary>Look</summary>
     <div class="row"><span>Palette</span><div id="palettes" class="swatches"></div></div>
-    <div class="row"><span>Container</span><select data-k="container_shape" id="shapes"></select></div>
+    <div class="row" data-modes="merge"><span>Container</span><select data-k="container_shape" id="shapes"></select></div>
     <div class="row col" id="custompts" hidden><span>Custom points <em class="hint">[[x,y],…] from -1 to 1, y down</em></span><textarea id="ptsbox" rows="3" spellcheck="false"></textarea><button class="ghost sm" onclick="mm.setPoints()">Apply shape</button></div>
-    <div class="row"><span>Size</span><input type="range" data-k="container_radius" min="240" max="530" step="5"></div>
-    <div class="row"><span>Wall</span><input type="range" data-k="container_thickness" min="2" max="48"></div>
-    <div class="row"><span>Height</span><input type="range" data-k="container_y" min="0.4" max="0.65" step="0.005"></div>
-    <div class="row"><span>Wall colour</span><span><input type="color" data-k="container_color" data-def="#5B5F97"><button class="link" onclick="mm.set({container_color:''})">palette</button></span></div>
-    <div class="row"><span>Glow</span><input type="range" data-k="container_glow" min="0" max="1" step="0.05"></div>
-    <div class="row"><span>Glow colour</span><span><input type="color" data-k="container_glow_color" data-def="#FFFFFF"><button class="link" onclick="mm.set({container_glow_color:''})">wall</button></span></div>
-    <div class="row"><span>Spin °/s</span><input type="range" data-k="container_spin" min="-90" max="90"></div>
-    <div class="row"><span>Wobble °/s</span><input type="range" data-k="spin_wobble" min="0" max="60"></div>
-    <div class="row"><span>Wobble period</span><input type="range" data-k="spin_wobble_period" min="1" max="12" step="0.5"></div>
+    <div class="row" data-modes="merge"><span>Size</span><input type="range" data-k="container_radius" min="240" max="530" step="5"></div>
+    <div class="row" data-modes="merge"><span>Wall</span><input type="range" data-k="container_thickness" min="2" max="48"></div>
+    <div class="row" data-modes="merge"><span>Height</span><input type="range" data-k="container_y" min="0.4" max="0.65" step="0.005"></div>
+    <div class="row" data-modes="merge"><span>Wall colour</span><span><input type="color" data-k="container_color" data-def="#5B5F97"><button class="link" onclick="mm.set({container_color:''})">palette</button></span></div>
+    <div class="row" data-modes="merge"><span>Glow</span><input type="range" data-k="container_glow" min="0" max="1" step="0.05"></div>
+    <div class="row" data-modes="merge"><span>Glow colour</span><span><input type="color" data-k="container_glow_color" data-def="#FFFFFF"><button class="link" onclick="mm.set({container_glow_color:''})">wall</button></span></div>
+    <div class="row" data-modes="merge"><span>Spin °/s</span><input type="range" data-k="container_spin" min="-90" max="90"></div>
+    <div class="row" data-modes="merge"><span>Wobble °/s</span><input type="range" data-k="spin_wobble" min="0" max="60"></div>
+    <div class="row" data-modes="merge"><span>Wobble period</span><input type="range" data-k="spin_wobble_period" min="1" max="12" step="0.5"></div>
     <div class="row"><span>Tier numbers</span><input type="checkbox" data-k="show_tier_labels"></div>
-    <div class="row"><span>Tier strip</span><input type="checkbox" data-k="show_progress"></div>
+    <div class="row" data-modes="merge"><span>Tier strip</span><input type="checkbox" data-k="show_progress"></div>
   </details>
   <details><summary>Background</summary>
     <div class="row"><span>Type</span><select data-k="bg_mode" id="bgmodes"></select></div>
@@ -65,16 +65,21 @@
     <div class="hint" id="bgname"></div>
   </details>
   <details><summary>Balls</summary>
-    <div class="row"><span>Size</span><input type="range" data-k="ball_scale" min="0.4" max="1.8" step="0.02"></div>
-    <div class="row"><span>Smallest px</span><input type="range" data-k="base_radius" min="8" max="50"></div>
-    <div class="row"><span>Growth / tier</span><input type="range" data-k="growth" min="1.1" max="1.7" step="0.01"></div>
-    <div class="row"><span>Size curve</span><select data-k="size_curve" id="curves"></select></div>
+    <div class="row" data-modes="merge"><span>Size</span><input type="range" data-k="ball_scale" min="0.4" max="1.8" step="0.02"></div>
+    <div class="row" data-modes="merge"><span>Smallest px</span><input type="range" data-k="base_radius" min="8" max="50"></div>
+    <div class="row" data-modes="merge"><span>Growth / tier</span><input type="range" data-k="growth" min="1.1" max="1.7" step="0.01"></div>
+    <div class="row" data-modes="merge"><span>Size curve</span><select data-k="size_curve" id="curves"></select></div>
     <div class="row col" id="customsizes" hidden><span>Radius per tier (px, comma separated)</span><input type="text" data-csv="tier_sizes" placeholder="20, 28, 40, 57, 80…"></div>
-    <div class="row"><span>Fit container</span><input type="checkbox" data-k="auto_fit"></div>
+    <div class="row" data-modes="merge"><span>Fit container</span><input type="checkbox" data-k="auto_fit"></div>
     <div class="row"><span>Outline px</span><input type="range" data-k="ball_outline" min="0" max="12"></div>
     <div class="row"><span>Outline colour</span><span><input type="color" data-k="ball_outline_color" data-def="#333333"><button class="link" onclick="mm.set({ball_outline_color:''})">auto</button></span></div>
     <div class="row"><span>Shadow</span><input type="range" data-k="ball_shadow" min="0" max="1" step="0.05"></div>
     <div class="row"><span>Glow</span><input type="range" data-k="ball_glow" min="0" max="1" step="0.05"></div>
+    <div class="row"><span>Highlight</span><input type="range" data-k="ball_highlight" min="0" max="1" step="0.05"></div>
+    <div class="row"><span>3D shading</span><input type="range" data-k="ball_inner_shadow" min="0" max="1" step="0.05"></div>
+    <div class="row"><span>Picture rim</span><input type="range" data-k="ball_rim" min="0" max="0.2" step="0.01"></div>
+    <div class="row"><span>Picture crop</span><select data-k="image_fit"><option value="smart">Smart (on the subject)</option><option value="center">Centre</option><option value="top">Top (faces)</option><option value="fit">Whole picture</option></select></div>
+    <div class="row"><span>Picture zoom</span><input type="range" data-k="image_zoom" min="1" max="2.5" step="0.05"></div>
   </details>
   <details><summary>Effects</summary>
     <div class="row"><span>Particles</span><select data-k="particle_style" id="pstyles"></select></div>
@@ -84,15 +89,15 @@
     <div class="row col"><span>Particle colours <em class="hint">hex, comma separated, empty = tier colour</em></span><input type="text" data-csv="particle_colors" placeholder="#FFFFFF, #FFD166"></div>
     <div class="row"><span>Screen shake px</span><input type="range" data-k="shake_strength" min="0" max="30"></div>
     <div class="row"><span>Shake from tier</span><input type="range" data-k="shake_min_tier" min="1" max="20"></div>
-    <div class="row"><span>Combo popups</span><input type="checkbox" data-k="combo_popups"></div>
-    <div class="row"><span>Combo from x</span><input type="range" data-k="combo_min" min="2" max="6"></div>
+    <div class="row" data-modes="merge"><span>Combo popups</span><input type="checkbox" data-k="combo_popups"></div>
+    <div class="row" data-modes="merge"><span>Combo from x</span><input type="range" data-k="combo_min" min="2" max="6"></div>
     <div class="row"><span>Tier banners</span><input type="checkbox" data-k="tier_banners"></div>
     <div class="row"><span>Banner from tier</span><input type="range" data-k="banner_min_tier" min="2" max="20"></div>
     <div class="row"><span>Slow-mo finale</span><input type="checkbox" data-k="slowmo_final"></div>
     <div class="row"><span>Slow-mo speed</span><input type="range" data-k="slowmo_factor" min="0.1" max="0.9" step="0.05"></div>
     <div class="row"><span>Slow-mo seconds</span><input type="range" data-k="slowmo_seconds" min="0.3" max="3" step="0.1"></div>
     <div class="row"><span>Near-miss tension</span><input type="checkbox" data-k="near_miss"></div>
-    <div class="row"><span>Pause chance</span><input type="range" data-k="near_miss_chance" min="0" max="1" step="0.05"></div>
+    <div class="row" data-modes="merge"><span>Pause chance</span><input type="range" data-k="near_miss_chance" min="0" max="1" step="0.05"></div>
     <div class="row"><span>Progress bar</span><input type="checkbox" data-k="show_progress_bar"></div>
     <div class="row"><span>Bar height</span><input type="range" data-k="progress_bar_y" min="0.05" max="0.97" step="0.005"></div>
     <div class="row"><span>Bar colour</span><span><input type="color" data-k="progress_bar_color" data-def="#FFFFFF"><button class="link" onclick="mm.set({progress_bar_color:''})">text</button></span></div>
@@ -118,16 +123,64 @@
     <div class="row col"><span>Banner text <em class="hint">{name} {tier}</em></span><input type="text" data-k="banner_text"></div>
     <div class="row"><span>Font (all)</span><span><button class="ghost sm" onclick="mm.pick('font_path','font')">Choose .ttf…</button><button class="link" onclick="mm.set({font_path:''})">default</button></span></div>
   </details>
+  <details open data-modes="escape"><summary>🌀 Escape</summary>
+    <div class="row"><span>Rings</span><input type="range" data-k="escape_rings" min="2" max="30"></div>
+    <div class="row"><span>Gap °</span><input type="range" data-k="escape_gap_deg" min="20" max="120"></div>
+    <div class="row"><span>Gap random ±°</span><input type="range" data-k="escape_gap_jitter" min="0" max="40"></div>
+    <div class="row"><span>Spin °/s</span><input type="range" data-k="escape_spin" min="0" max="240"></div>
+    <div class="row"><span>Faster per ring</span><input type="range" data-k="escape_spin_step" min="0" max="0.5" step="0.01"></div>
+    <div class="row"><span>Alternate spin</span><input type="checkbox" data-k="escape_alternate"></div>
+    <div class="row"><span>Inner ring px</span><input type="range" data-k="escape_inner_radius" min="60" max="300" step="5"></div>
+    <div class="row"><span>Outer ring px</span><input type="range" data-k="escape_outer_radius" min="200" max="520" step="5"></div>
+    <div class="row"><span>Ring width</span><input type="range" data-k="escape_ring_thickness" min="3" max="30"></div>
+    <div class="row"><span>Ring glow</span><input type="range" data-k="escape_ring_glow" min="0" max="1" step="0.05"></div>
+    <div class="row"><span>Ball size</span><input type="range" data-k="escape_ball_radius" min="8" max="80"></div>
+    <div class="row"><span>Ball grows ×</span><input type="range" data-k="escape_ball_growth" min="1" max="1.2" step="0.01"></div>
+    <div class="row"><span>Ball evolves</span><input type="checkbox" data-k="escape_evolve"></div>
+    <div class="row"><span>Speed min</span><input type="range" data-k="escape_min_speed" min="200" max="1500" step="25"></div>
+    <div class="row"><span>Speed max</span><input type="range" data-k="escape_max_speed" min="600" max="3000" step="25"></div>
+    <div class="row"><span>Gravity</span><input type="range" data-k="escape_gravity" min="0" max="4000" step="50"></div>
+    <div class="row"><span>Trail</span><input type="range" data-k="escape_trail" min="0" max="24"></div>
+    <div class="row"><span>Shatter rings</span><input type="checkbox" data-k="escape_shatter"></div>
+    <div class="row"><span>Help stuck balls</span><input type="checkbox" data-k="escape_assist"></div>
+    <div class="row"><span>Final zoom ×</span><input type="range" data-k="escape_final_zoom" min="1" max="8" step="0.25"></div>
+    <div class="row col"><span>Counter <em class="hint">{escaped} {rings} {left} {time}</em></span><input type="text" data-k="escape_counter_text"></div>
+    <div class="row col"><span>Ending text</span><input type="text" data-k="escape_final_text"></div>
+    <div class="row"><span>First escape pitch</span><input type="range" data-k="escape_pitch_low" min="-12" max="12" step="0.5"></div>
+    <div class="row"><span>Last escape pitch</span><input type="range" data-k="escape_pitch_high" min="-6" max="24" step="0.5"></div>
+    <div class="hint">The ball uses your Tiers pictures / emoji: picture 1 first, the next one after every escape.</div>
+  </details>
+  <details open data-modes="breaker"><summary>🧱 Breaker</summary>
+    <div class="row"><span>Pattern</span><select data-k="breaker_pattern"><option>full</option><option>pyramid</option><option>diamond</option><option>heart</option><option>checker</option><option>stripes</option></select></div>
+    <div class="row"><span>Rows</span><input type="range" data-k="breaker_rows" min="1" max="20"></div>
+    <div class="row"><span>Columns</span><input type="range" data-k="breaker_cols" min="1" max="16"></div>
+    <div class="row"><span>Toughest bricks (hits)</span><input type="range" data-k="breaker_hp" min="1" max="5"></div>
+    <div class="row"><span>Balls</span><input type="range" data-k="breaker_balls" min="1" max="12"></div>
+    <div class="row"><span>+1 ball every</span><input type="range" data-k="breaker_split_every" min="0" max="40"></div>
+    <div class="row"><span>Max balls</span><input type="range" data-k="breaker_max_balls" min="1" max="30"></div>
+    <div class="row"><span>Ball size</span><input type="range" data-k="breaker_ball_radius" min="8" max="60"></div>
+    <div class="row"><span>Speed</span><input type="range" data-k="breaker_speed" min="300" max="2500" step="25"></div>
+    <div class="row"><span>Gravity</span><input type="range" data-k="breaker_gravity" min="0" max="3000" step="50"></div>
+    <div class="row"><span>Brick height</span><input type="range" data-k="breaker_brick_height" min="16" max="90"></div>
+    <div class="row"><span>Brick gap</span><input type="range" data-k="breaker_brick_gap" min="0" max="24"></div>
+    <div class="row"><span>Rounded</span><input type="range" data-k="breaker_brick_round" min="0" max="0.5" step="0.02"></div>
+    <div class="row"><span>Trail</span><input type="range" data-k="breaker_trail" min="0" max="16"></div>
+    <div class="row col"><span>Counter <em class="hint">{left} {broken} {total} {balls}</em></span><input type="text" data-k="breaker_counter_text"></div>
+    <div class="row col"><span>Ending text</span><input type="text" data-k="breaker_final_text"></div>
+    <div class="row"><span>First brick pitch</span><input type="range" data-k="breaker_pitch_low" min="-12" max="12" step="0.5"></div>
+    <div class="row"><span>Last brick pitch</span><input type="range" data-k="breaker_pitch_high" min="-6" max="24" step="0.5"></div>
+    <div class="hint">Balls wear your Tiers pictures / emoji (ball 1 = picture 1…).</div>
+  </details>
   <details open><summary>Gameplay</summary>
     <div class="row"><span>Forms</span><span><input type="range" data-k="tiers" min="3" max="15" style="width:110px"> <input class="num" type="number" data-k="tiers" min="3" max="15"></span></div>
-    <div class="row"><span>Drop every</span><input type="range" data-k="spawn_interval" min="0.05" max="0.8" step="0.01"></div>
-    <div class="row"><span>Drop randomness</span><input type="range" data-k="spawn_jitter" min="0" max="0.8" step="0.05"></div>
-    <div class="row"><span>Drop speed</span><input type="range" data-k="drop_speed" min="0" max="1500" step="10"></div>
-    <div class="row"><span>Biggest drop tier</span><input type="range" data-k="spawn_max_tier" min="1" max="10"></div>
-    <div class="row"><span>Fill limit</span><input type="range" data-k="fill_cap" min="0.4" max="1.1" step="0.02"></div>
-    <div class="row"><span>Gravity</span><input type="range" data-k="gravity" min="200" max="4000" step="50"></div>
-    <div class="row"><span>Bounce</span><input type="range" data-k="bounce" min="0" max="0.95" step="0.01"></div>
-    <div class="row"><span>Friction</span><input type="range" data-k="friction" min="0" max="1.5" step="0.02"></div>
+    <div class="row" data-modes="merge"><span>Drop every</span><input type="range" data-k="spawn_interval" min="0.05" max="0.8" step="0.01"></div>
+    <div class="row" data-modes="merge"><span>Drop randomness</span><input type="range" data-k="spawn_jitter" min="0" max="0.8" step="0.05"></div>
+    <div class="row" data-modes="merge"><span>Drop speed</span><input type="range" data-k="drop_speed" min="0" max="1500" step="10"></div>
+    <div class="row" data-modes="merge"><span>Biggest drop tier</span><input type="range" data-k="spawn_max_tier" min="1" max="10"></div>
+    <div class="row" data-modes="merge"><span>Fill limit</span><input type="range" data-k="fill_cap" min="0.4" max="1.1" step="0.02"></div>
+    <div class="row" data-modes="merge"><span>Gravity</span><input type="range" data-k="gravity" min="200" max="4000" step="50"></div>
+    <div class="row" data-modes="merge"><span>Bounce</span><input type="range" data-k="bounce" min="0" max="0.95" step="0.01"></div>
+    <div class="row" data-modes="merge"><span>Friction</span><input type="range" data-k="friction" min="0" max="1.5" step="0.02"></div>
     <div class="row"><span>Speed</span><input type="range" data-k="speed" min="0.3" max="2.5" step="0.05"></div>
     <div class="row"><span>Length</span><div class="pills" id="lengths"></div></div>
     <div class="row"><span>Custom seconds</span><input type="number" data-k="max_seconds" min="5" max="180" step="1"></div>
@@ -140,6 +193,7 @@
     <div class="row"><span>✂️ AI cut-out</span><input type="checkbox" data-k="ai_cutout"></div>
     <div class="row"><span>Model</span><select data-k="cutout_model" id="cutmodel"></select></div>
     <div class="row"><span>Sticker outline</span><input type="checkbox" data-k="cutout_outline"></div>
+    <div class="row"><span>Cut-out style</span><select data-k="cutout_style"><option value="disc">Sticker on a disc</option><option value="sticker">Sticker only (no circle)</option><option value="circle">Fill the circle</option></select></div>
     <div class="row"><span>Skip images with text</span><input type="checkbox" data-k="reject_text"></div>
     <div class="hint ai" id="aistatus"></div>
     <div class="hint">Tip: click any circle below to put your own picture (a selfie, a meme, anything) on that form.</div>
@@ -180,6 +234,11 @@
     <div class="label sub">Vary per video</div>
     <div id="knobs" class="knobs"></div>
     <div class="row col"><span>Sound keywords <em class="hint">one per video, comma separated</em></span><input type="text" data-csv="batch_sound_keywords" placeholder="pop, bubble, boing, water drop"></div>
+    <div class="label sub">Duplicate checker</div>
+    <div class="row"><span>Check for look-alikes</span><input type="checkbox" data-k="batch_dedupe"></div>
+    <div class="row"><span>Too similar at</span><input type="range" data-k="dedupe_threshold" min="0.8" max="0.99" step="0.01"></div>
+    <div class="row"><span>Look-alike</span><select data-k="dedupe_action"><option value="skip">Re-render with a new seed</option><option value="flag">Keep, mark in titles.csv</option></select></div>
+    <div class="hint">Compares sampled frames (perceptual hash) with every video already in the output folder.</div>
   </details>
   <details open><summary>Export</summary>
     <div class="row"><span>FPS</span><select data-k="fps"><option value="24">24 (film)</option><option value="25">25</option><option value="30">30</option><option value="48">48</option><option value="50">50</option><option value="60">60 (smooth)</option><option value="90">90</option><option value="120">120</option></select></div>

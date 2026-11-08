@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 
-from .config import MergeConfig
+from .config import MergeConfig, MODES
 from .config import (LENGTH_PRESETS, EMOJI_SETS, SHAPES, BG_MODES, PARTICLE_STYLES, RANDOM_KNOBS, MIN_TIERS,
                      MAX_TIERS, RESOLUTIONS, QUALITIES, CODECS, ENCODERS, FORMATS)
 from .render import render_video, make_thumbnail
@@ -16,6 +16,11 @@ CUT_CHOICES = list(imageprep.MODELS) + [imageprep.QUICK]
 
 def _add_look_args(sp) -> None:
     """Common overrides for render / thumb / batch (anything else: put it in a preset .json)."""
+    sp.add_argument("--mode", choices=MODES, help="game mode: merge (default), escape, breaker")
+    sp.add_argument("--rings", type=int, help="Escape: number of rings (1-30)")
+    sp.add_argument("--gap", type=float, help="Escape: ring gap in degrees")
+    sp.add_argument("--ring-spin", type=float, help="Escape: ring spin in degrees/second")
+    sp.add_argument("--bricks", type=int, help="Breaker: brick rows")
     sp.add_argument("--length", choices=["15", "30", "45", "60"], help="Shorts length preset")
     sp.add_argument("--seconds", type=float, help="custom max length in seconds")
     sp.add_argument("--until-finished", action="store_true", help="run until the Final Form (cap 180 s)")
@@ -86,7 +91,8 @@ def _parse_value(cur, raw: str):
 def apply_args(cfg: MergeConfig, a) -> MergeConfig:
     if a.length:
         cfg.max_seconds = LENGTH_PRESETS[a.length + "s"]
-    simple = {"seconds": "max_seconds", "fps": "fps", "tiers": "tiers", "shape": "container_shape",
+    simple = {"mode": "mode", "rings": "escape_rings", "gap": "escape_gap_deg", "ring_spin": "escape_spin",
+              "bricks": "breaker_rows", "seconds": "max_seconds", "fps": "fps", "tiers": "tiers", "shape": "container_shape",
               "gravity": "gravity", "bounce": "bounce", "friction": "friction", "spin": "container_spin",
               "ball_scale": "ball_scale", "drop_interval": "spawn_interval", "bg": "bg_mode", "bg_angle": "bg_angle",
               "bg_image": "background_image", "bg_video": "background_video", "particles": "particle_style",
@@ -156,7 +162,7 @@ def sounds_cmd(a) -> None:
 def main(argv=None) -> None:
     p = argparse.ArgumentParser(prog="mm911", description="Money Maker 911 renderer")
     sub = p.add_subparsers(dest="cmd", required=True)
-    r = sub.add_parser("render", help="render one Merge video")
+    r = sub.add_parser("render", help="render one video (any mode)")
     r.add_argument("--preset", help="preset .json")
     r.add_argument("--seed", type=int)
     r.add_argument("--out", default="output/merge.mp4")
@@ -172,6 +178,13 @@ def main(argv=None) -> None:
     b.add_argument("--allow-fails", action="store_true", help="keep runs that miss the Final Form")
     b.add_argument("--randomize", help="comma separated knobs to vary per video: " + ",".join(RANDOM_KNOBS))
     b.add_argument("--sound-keywords", help="comma separated Myinstants keywords, one picked per video")
+    b.add_argument("--no-dedupe", action="store_true", help="don't check new videos for look-alikes")
+    b.add_argument("--dedupe-threshold", type=float, help="0.5-1.0 similarity that counts as a duplicate (default 0.9)")
+    b.add_argument("--dedupe-action", choices=["skip", "flag"], help="skip = re-render with a new seed, flag = keep + mark")
+    d = sub.add_parser("dedupe", help="find look-alike videos in a folder (perceptual hash of sampled frames)")
+    d.add_argument("--in", dest="src", required=True, help="folder of videos")
+    d.add_argument("--threshold", type=float, default=0.9)
+    d.add_argument("--delete", action="store_true", help="delete the newer video of every look-alike pair")
     for sp in (r, t, b):
         _add_look_args(sp)
     c = sub.add_parser("cutout", help="cut out every image in a folder (AI background removal)")
@@ -190,6 +203,23 @@ def main(argv=None) -> None:
     a = p.parse_args(argv)
     if a.cmd == "sounds":
         return sounds_cmd(a)
+    if a.cmd == "dedupe":
+        from .dedupe import scan_folder
+        pairs = scan_folder(a.src, a.threshold)
+        print(json.dumps(pairs, indent=2))
+        if a.delete:
+            from pathlib import Path
+            gone = set()
+            for pr in pairs:
+                if pr["a"] in gone or pr["b"] in gone:
+                    continue
+                pa, pb = Path(a.src) / pr["a"], Path(a.src) / pr["b"]
+                newer = pb if pb.stat().st_mtime >= pa.stat().st_mtime else pa
+                newer.unlink(missing_ok=True)
+                newer.with_suffix(".jpg").unlink(missing_ok=True)
+                gone.add(newer.name)
+                print(f"deleted {newer.name}")
+        return
     if a.cmd == "cutout":
         res = imageprep.cutout_folder(a.src, a.out, a.model, a.reject_text, note=lambda m: print(f"\r{m[:70]:70}", end=""))
         print()
@@ -206,6 +236,12 @@ def main(argv=None) -> None:
     else:
         if a.randomize:
             cfg.random_knobs = [k.strip() for k in a.randomize.split(",") if k.strip() in RANDOM_KNOBS]
+        if a.no_dedupe:
+            cfg.batch_dedupe = False
+        if a.dedupe_threshold is not None:
+            cfg.dedupe_threshold = a.dedupe_threshold
+        if a.dedupe_action:
+            cfg.dedupe_action = a.dedupe_action
         if a.sound_keywords:
             cfg.batch_sound_keywords = [k.strip() for k in a.sound_keywords.split(",") if k.strip()]
             if "sound_keyword" not in cfg.random_knobs:

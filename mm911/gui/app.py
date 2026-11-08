@@ -24,7 +24,8 @@ from ..config import (MergeConfig, PALETTES, SHAPES, HOOKS, APP_NAME, CREDIT, VE
 from .. import audio as _audio
 from .. import sounds as myinstants
 from ..modes.merge import MergeSim
-from ..render import Renderer, render_video, render_preview_frame, make_thumbnail, prepare_images
+from ..render import (Renderer, render_video, render_preview_frame, make_thumbnail, prepare_images, make_sim,
+                      make_renderer)
 from .. import imageprep
 from ..batch import run_batch, make_title
 
@@ -258,7 +259,7 @@ class Api:
 
     def _tier_rows(self, cfg, io, pygame) -> list[dict]:
         try:
-            rend = Renderer(cfg, scale=0.5)
+            rend = Renderer(cfg, scale=0.25)
         except Exception as e:
             LOG.exception("tier preview failed: %s", e)
             return []
@@ -266,7 +267,7 @@ class Api:
         imgs, cut = prep["sources"], prep["images"]
         rows = []
         for t in range(cfg.tiers):
-            spr = pygame.transform.smoothscale(rend.sprites[t], (56, 56))
+            spr = rend.icon(t, 96)   # built at the shown size (crisp on HiDPI), not shrunk from a sprite
             buf = io.BytesIO()
             pygame.image.save(spr, buf, "p.png")
             col = rend._tier_color(t)
@@ -584,6 +585,20 @@ class Api:
             self._pthread = threading.Thread(target=self._preview_loop, daemon=True, name="preview")
             self._pthread.start()
 
+    def preview_size(self, px_height: int) -> None:
+        """The page reports the preview's real pixel height (HiDPI aware); frames render at that size."""
+        try:
+            px = int(px_height)
+        except (TypeError, ValueError):
+            return
+        if px > 0 and abs(px - getattr(self, "_preview_px", 0)) > 8:
+            self._preview_px = px
+            self._preview_dirty = True
+
+    def _preview_scale(self) -> float:
+        px = getattr(self, "_preview_px", 0) or 690
+        return max(0.3, min(0.75, px / self._cfg.height))
+
     def restart_preview(self) -> None:
         self._cfg.seed += 1
         self._preview_dirty = True
@@ -638,7 +653,7 @@ class Api:
                     # never see half-applied changes (e.g. tiers going 9 -> 11 crashed the old loop).
                     cfg = copy.deepcopy(self._cfg)
                     with GFX_LOCK:
-                        sim, rend = MergeSim(cfg), Renderer(cfg, scale=0.36)
+                        sim, rend = make_sim(cfg), make_renderer(cfg, scale=self._preview_scale())
                     ev_seen, last_drop = 0, -1.0
                     self._sounds.clear()
                 sim.step(1 / fps)
@@ -680,7 +695,7 @@ class Api:
 
         def work():
             try:
-                out = Path(self._settings["output_dir"]) / f"merge_{time.strftime('%Y%m%d_%H%M%S')}.mp4"
+                out = Path(self._settings["output_dir"]) / f"{self._cfg.mode}_{time.strftime('%Y%m%d_%H%M%S')}.mp4"
                 cfg = copy.deepcopy(self._cfg)
                 meta = render_video(cfg, str(out), progress=lambda p: self._emit({"i": 0, "n": 1, "p": p}),
                                     lock=GFX_LOCK)

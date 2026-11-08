@@ -19,10 +19,13 @@ import pygame  # noqa: E402
 from .audio import AudioTrack, SoundBank, load_sound, load_music  # noqa: E402
 from .emoji import render_emoji  # noqa: E402
 from .config import MergeConfig, PALETTES, CREDIT, hex_to_rgb, color_or  # noqa: E402
-from .ffmpeg import ffmpeg_exe, best_encoder, encoder_args  # noqa: E402
+from .ffmpeg import ffmpeg_exe, best_encoder, encoder_args, COLOR_FILTER, COLOR_TAGS  # noqa: E402
 from .config import QUALITIES  # noqa: E402
 from .modes.merge import MergeSim  # noqa: E402
 from . import imageprep  # noqa: E402
+from . import sprites  # noqa: E402
+from .emoji import emoji_svg  # noqa: E402
+from .modes.merge import container_points  # noqa: E402
 
 if not pygame.get_init():
     pygame.init()
@@ -109,34 +112,20 @@ def _luma(c) -> float:
     return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]
 
 
-_IMG_CACHE: dict = {}
-
-
 def _load_image(path: str, size: int = 0):
-    """Load a user picture once, shrunk to max 1024 px (12 MP phone photos made every settings
-    change slow). Returns None for missing / broken files instead of crashing the renderer."""
-    try:
-        st = os.stat(path)
-    except OSError:
+    """Kept for old callers: the picture as a pygame surface (full resolution, EXIF-rotated),
+    or None for missing / broken files."""
+    im = sprites.load_source(path)
+    if im is None:
         return None
-    key = (path, st.st_mtime, st.st_size)
-    hit = _IMG_CACHE.get(key)
-    if hit is not None:
-        return hit
-    try:
-        img = pygame.image.load(path)
-    except Exception:
+    return pygame.image.frombuffer(im.tobytes(), im.size, "RGBA").copy()
+
+
+def _surf(pm):
+    """Premultiplied numpy layer -> pygame surface, None when it is fully transparent."""
+    if pm is None or float(pm[..., 3].max()) <= 0.0:
         return None
-    iw, ih = img.get_size()
-    if iw < 1 or ih < 1:
-        return None
-    if max(iw, ih) > 1024:
-        k = 1024 / max(iw, ih)
-        img = pygame.transform.smoothscale(img, (max(1, int(iw * k)), max(1, int(ih * k))))
-    if len(_IMG_CACHE) > 64:
-        _IMG_CACHE.clear()
-    _IMG_CACHE[key] = img
-    return img
+    return sprites.to_surface(pm)
 
 
 class Renderer:
@@ -153,9 +142,21 @@ class Renderer:
         self.cont_col = color_or(cfg.container_color, hex_to_rgb(self.pal["container"]))
         self.video_bg: VideoBackground | None = None
         self.bg = self._make_bg()
-        self.sprites = [self._make_sprite(t) for t in range(cfg.tiers)]
-        self.shadows = [self._make_shadow(s) for s in self.sprites] if cfg.ball_shadow > 0 else []
+        # every tier built once at its exact on-screen size (see sprites.py)
+        self.tiers_info = [self.build_tier(t) for t in range(cfg.tiers)]
+        self.sprites = [i["sprite"] for i in self.tiers_info]
+        self.shadows = [self._make_shadow(t) for t in range(cfg.tiers)] if cfg.ball_shadow > 0 else []
         self.glows = [self._make_glow(t) for t in range(cfg.tiers)] if cfg.ball_glow > 0 else []
+        n = cfg.tiers
+        self.strip_dot = int(min(70 * scale, (self.W * 0.8) / n))
+        self.strip_icons = [self.icon(t, max(4, self.strip_dot)) for t in range(n)] if cfg.show_progress else []
+        self.strip_dim = []
+        for ic in self.strip_icons:
+            d = ic.copy()
+            d.fill((255, 255, 255, 60), special_flags=pygame.BLEND_RGBA_MULT)
+            self.strip_dim.append(d)
+        self._make_container()
+        self._pills: dict = {}
         self.f_hook = _font(cfg, int(cfg.hook_size * scale), path=cfg.hook_font_path)
         self.f_small = _font(cfg, int(cfg.watermark_size * scale), bold=False, path=cfg.watermark_font_path)
         self.f_big = _font(cfg, int(cfg.final_text_size * scale))
@@ -214,115 +215,168 @@ class Renderer:
         tiers = self.pal["tiers"]
         return hex_to_rgb(tiers[t % len(tiers)])
 
-    def _make_sprite(self, t: int) -> pygame.Surface:
-        """Supersampled ball sprite: fill, rim, soft highlight, label or image."""
+    def _look(self, t: int, r_px: float) -> "sprites.BallLook":
         cfg = self.cfg
-        r = cfg.tier_radius(t) * self.scale
-        ss = 3 if r < 450 else 2 if r < 900 else 1     # supersample, but keep huge sprites in memory
-        R = max(2, int(r * ss))
-        big = pygame.Surface((R * 2 + 4, R * 2 + 4), pygame.SRCALPHA)
-        c = (R + 2, R + 2)
         col = self._tier_color(t)
-        img_path = self.images[t] if t < len(self.images) else ""
-        img_src = _load_image(img_path, 2 * R) if img_path else None
-        if img_src is None:
-            img_path = ""  # unreadable / missing picture: fall back to a normal ball instead of crashing
+        img = self.images[t] if t < len(self.images) else ""
+        src = sprites.load_source(img) if img else None
+        if src is None:
+            img = ""   # unreadable / missing picture: fall back to a normal ball instead of crashing
         emo = cfg.tier_value("tier_emojis", t)
-        emo_surf = render_emoji(emo, R * 1.3) if emo and not (img_path and Path(img_path).exists()) else None
-        if emo_surf is not None:
-            pygame.draw.circle(big, _shade(col, 0.72), c, R)
-            pygame.draw.circle(big, col, c, int(R * 0.9))
-            sh = emo_surf.copy()
-            sh.fill((0, 0, 0, 60), special_flags=pygame.BLEND_RGBA_MULT)
-            big.blit(sh, (c[0] - sh.get_width() // 2 + R // 30, c[1] - sh.get_height() // 2 + R // 18))
-            big.blit(emo_surf, (c[0] - emo_surf.get_width() // 2, c[1] - emo_surf.get_height() // 2))
-            hl = pygame.Surface(big.get_size(), pygame.SRCALPHA)
-            pygame.draw.ellipse(hl, (255, 255, 255, 45), (c[0] - R * 0.55, c[1] - R * 0.75, R * 0.7, R * 0.4))
-            big.blit(hl, (0, 0))
-        elif img_path and imageprep.is_cutout(img_path) and Path(img_path).exists():
-            self._draw_cutout(big, c, R, col, img_path)
-        elif img_path and img_src is not None:
-            img = img_src
-            iw, ih = img.get_size()
-            k = (2 * R) / max(iw, ih)
-            img = pygame.transform.smoothscale(img, (max(1, int(iw * k)), max(1, int(ih * k))))
-            has_alpha = img.get_flags() & pygame.SRCALPHA or img.get_alpha() is not None
-            if has_alpha:
-                big.blit(img, (c[0] - img.get_width() // 2, c[1] - img.get_height() // 2))
-            else:  # circle-mask photos
-                mask = pygame.Surface(big.get_size(), pygame.SRCALPHA)
-                pygame.draw.circle(mask, (255, 255, 255, 255), c, R)
-                tmp = pygame.Surface(big.get_size(), pygame.SRCALPHA)
-                tmp.blit(img, (c[0] - img.get_width() // 2, c[1] - img.get_height() // 2))
-                tmp.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
-                big.blit(tmp, (0, 0))
-                pygame.draw.circle(big, _shade(col, 0.7), c, R, max(2, R // 14))
+        svg = emoji_svg(emo) if emo and not img else None
+        if img:
+            if imageprep.is_cutout(img) or sprites.has_alpha(src):
+                kind = {"disc": "cutout_disc", "sticker": "sticker", "circle": "cutout_circle"}.get(
+                    cfg.cutout_style, "cutout_disc")
+            else:
+                kind = "photo"
+        elif svg is not None:
+            kind = "emoji"
         else:
-            pygame.draw.circle(big, _shade(col, 0.72), c, R)
-            pygame.draw.circle(big, col, c, int(R * 0.9))
-            hl = pygame.Surface(big.get_size(), pygame.SRCALPHA)
-            pygame.draw.ellipse(hl, (255, 255, 255, 70),
-                                (c[0] - R * 0.55, c[1] - R * 0.7, R * 0.8, R * 0.5))
-            big.blit(hl, (0, 0))
-            if cfg.show_tier_labels:
-                label = cfg.tier_names[t] if t < len(cfg.tier_names) and cfg.tier_names[t] else str(t + 1)
-                f = _font(cfg, max(10, int(R * (0.9 if len(label) <= 2 else 0.5))))
-                txt_col = (30, 30, 40) if _luma(col) > 140 else (250, 250, 250)
-                ts = f.render(label, True, txt_col)
-                big.blit(ts, (c[0] - ts.get_width() // 2, c[1] - ts.get_height() // 2))
-        if cfg.ball_outline > 0:
-            oc = color_or(cfg.ball_outline_color, _shade(col, 0.55))
-            pygame.draw.circle(big, oc, c, R, max(1, int(cfg.ball_outline * ss * self.scale)))
-        size = (max(1, big.get_width() // ss), max(1, big.get_height() // ss))
-        return pygame.transform.smoothscale(big, size)
+            kind = "plain"
+        oc = color_or(cfg.ball_outline_color, None) if cfg.ball_outline_color else None
+        return sprites.BallLook(kind=kind, radius=round(r_px * 8) / 8, color=col, image=img or None,
+                                emoji_svg=str(svg) if svg else None, fit=cfg.image_fit, zoom=cfg.image_zoom,
+                                rim=cfg.ball_rim, outline=cfg.ball_outline * self.scale, outline_color=oc,
+                                highlight=cfg.ball_highlight, inner_shadow=cfg.ball_inner_shadow,
+                                cutout_style=cfg.cutout_style, cutout_outline=bool(cfg.cutout_outline))
 
-    def _draw_cutout(self, big: pygame.Surface, c, R: int, col, path: str) -> None:
-        """Meme cut-out as a sticker: tier disc, soft shadow, white outline, subject on top."""
-        src = pygame.image.load(path)
-        img = pygame.Surface(src.get_size(), pygame.SRCALPHA, 32)
-        img.blit(src, (0, 0))
-        side = int(R * 1.62)
-        img = pygame.transform.smoothscale(img, (side, side))
-        pygame.draw.circle(big, _shade(col, 0.72), c, R)
-        pygame.draw.circle(big, col, c, int(R * 0.9))
-        x, y = c[0] - side // 2, c[1] - side // 2
-        mask = pygame.mask.from_surface(img, 100)
-        sh = mask.to_surface(setcolor=(0, 0, 0, 70), unsetcolor=(0, 0, 0, 0))
-        big.blit(sh, (x + R // 30, y + R // 16))
-        if self.cfg.cutout_outline:
-            w = max(2, R // 22)
-            ol = mask.to_surface(setcolor=(255, 255, 255, 255), unsetcolor=(0, 0, 0, 0))
-            for k in range(16):
-                a = k * math.pi / 8
-                big.blit(ol, (x + round(math.cos(a) * w), y + round(math.sin(a) * w)))
-        big.blit(img, (x, y))
-        hl = pygame.Surface(big.get_size(), pygame.SRCALPHA)
-        pygame.draw.ellipse(hl, (255, 255, 255, 38), (c[0] - R * 0.55, c[1] - R * 0.78, R * 0.7, R * 0.36))
-        big.blit(hl, (0, 0))
+    def build_tier(self, t: int, r_px: float | None = None) -> dict:
+        """One tier's sprite at its exact on-screen size (or r_px): {'sprite', 'parts', 'layers', 'look'}.
+        'parts' = (base, content, overlay) surfaces when the picture should roll with the physics."""
+        r = self.cfg.tier_radius(t) * self.scale if r_px is None else r_px
+        look = self._look(t, r)
+        L = sprites.build_ball(look)
+        spr = sprites.to_surface(sprites.flatten(L))
+        if look.kind == "plain" and getattr(self, "_labels", self.cfg.show_tier_labels):
+            cfg, R = self.cfg, L["radius"]
+            label = cfg.tier_names[t] if t < len(cfg.tier_names) and cfg.tier_names[t] else str(t + 1)
+            f = _font(cfg, max(8, int(R * (0.9 if len(label) <= 2 else 0.5))))
+            col = look.color
+            ts = f.render(label, True, (30, 30, 40) if _luma(col) > 140 else (250, 250, 250))
+            if ts.get_width() > R * 1.7:
+                ts = pygame.transform.smoothscale(ts, (int(R * 1.7), max(1, int(ts.get_height() * R * 1.7 / ts.get_width()))))
+            c = spr.get_width() / 2
+            spr.blit(ts, (round(c - ts.get_width() / 2), round(c - ts.get_height() / 2)))
+        parts = None
+        if L["content"] is not None:
+            parts = (_surf(L["base"]), sprites.to_surface(L["content"]), _surf(L["overlay"]))
+        return {"sprite": spr, "parts": parts, "layers": L, "look": look}
 
-    def _make_shadow(self, spr: pygame.Surface) -> pygame.Surface:
-        sh = spr.copy()
-        sh.fill((0, 0, 0, int(140 * min(1.0, self.cfg.ball_shadow))), special_flags=pygame.BLEND_RGBA_MIN)
-        sh.fill((0, 0, 0, 255), special_flags=pygame.BLEND_RGB_MULT)
-        w, h = sh.get_size()
-        small = pygame.transform.smoothscale(sh, (max(1, w // 4), max(1, h // 4)))  # cheap blur
-        return pygame.transform.smoothscale(small, (w, h))
+    def icon(self, t: int, px: int) -> pygame.Surface:
+        """Tier picture built directly at px x px (GUI previews, tier strip): no rescaling blur."""
+        info = self.build_tier(t, px / 2 - 1)
+        s = info["sprite"]
+        out = pygame.Surface((px, px), pygame.SRCALPHA)
+        out.blit(s, (round((px - s.get_width()) / 2), round((px - s.get_height()) / 2)))
+        return out
+
+    def _make_shadow(self, t: int) -> pygame.Surface:
+        L = self.tiers_info[t]["layers"]
+        R = L["radius"]
+        return sprites.to_surface(sprites.soft_shadow(sprites.flatten(L), max(1.5, R * 0.14),
+                                                      0.6 * min(1.0, self.cfg.ball_shadow)))
 
     def _make_glow(self, t: int) -> pygame.Surface:
         r = self.cfg.tier_radius(t) * self.scale
-        R = int(r * 1.6) + 2
-        g = pygame.Surface((R * 2, R * 2), pygame.SRCALPHA)
-        col = self._tier_color(t)
-        a = int(110 * min(1.0, self.cfg.ball_glow))
-        for i in range(12, 0, -1):
-            k = i / 12
-            pygame.draw.circle(g, (*col, int(a * (1 - k) ** 1.5 + 2)), (R, R), int(r + (R - r) * k))
-        return g
+        return sprites.to_surface(sprites.soft_glow(r, self._tier_color(t), min(1.0, self.cfg.ball_glow)))
+
+    def _make_container(self) -> None:
+        """Container walls as pre-rendered anti-aliased layers (stroke + glow, and a soft shadow).
+        pygame.draw.lines has no anti-aliasing, so the walls used to look jaggy."""
+        cfg, sc = self.cfg, self.scale
+        pts = container_points(cfg.container_shape, 0, 0, cfg.container_radius, custom=cfg.container_points)
+        th = max(2.0, cfg.container_thickness * sc)
+        ext = max(max(abs(x), abs(y)) for x, y in pts) * sc
+        glow_pad = th * 5 if cfg.container_glow > 0 else 0
+        half = int(math.ceil(ext + th + glow_pad)) + 4
+        S = 2 * half
+        loc = [(x * sc + half, y * sc + half) for x, y in pts]
+        ss = 3 if S <= 1600 else 2
+        gc = color_or(cfg.container_glow_color, self.cont_col)
+        layer = sprites.stroke_polygon(loc, th, self.cont_col, (S, S), ss=ss, glow=cfg.container_glow, glow_color=gc)
+        self.cont_layer = sprites.to_surface(layer)
+        # shadow at half resolution (it is soft anyway), zoomed back up when drawn
+        hs = half // 2
+        sloc = [(x * sc / 2 + hs, y * sc / 2 + hs) for x, y in pts]
+        sh = sprites.stroke_polygon(sloc, th / 2, (0, 0, 0), (2 * hs, 2 * hs), ss=2)
+        sh = sprites.soft_shadow(sh, max(1.0, th * 0.25), 0.32)
+        self.cont_shadow = sprites.to_surface(sh)
+        self.cont_round = cfg.container_shape == "circle"
+        self._cont_cache = (None, None, None)
+
+    def _container_surfaces(self, angle: float):
+        deg = round(-math.degrees(angle) % 360, 2)
+        if self.cont_round or deg in (0.0, 360.0):
+            deg = 0.0
+        if self._cont_cache[0] != deg:
+            if deg == 0.0:
+                a, b = self.cont_layer, pygame.transform.rotozoom(self.cont_shadow, 0, 2.0)
+            else:
+                a = pygame.transform.rotozoom(self.cont_layer, deg, 1.0)
+                b = pygame.transform.rotozoom(self.cont_shadow, deg, 2.0)
+            self._cont_cache = (deg, a, b)
+        return self._cont_cache[1], self._cont_cache[2]
 
     def close(self) -> None:
         if self.video_bg:
             self.video_bg.close()
             self.video_bg = None
+
+    def blit_ball(self, tier: int, px: float, py: float, angle: float = 0.0, k: float = 1.0, surf=None) -> None:
+        """Draw one ball centred at (px, py) in pixels. The picture rolls (angle, radians); the disc,
+        rim and highlight stay put, so the rim is never resampled and the light stays top-left."""
+        S = surf or self.surface
+        info = self.tiers_info[tier]
+        ang = -math.degrees(angle) % 360 if angle else 0.0
+        parts = info["parts"]
+        if parts is None or (abs(ang) < 0.05 and k == 1.0):
+            spr = info["sprite"] if k == 1.0 else pygame.transform.rotozoom(info["sprite"], 0, k)
+            S.blit(spr, (round(px - spr.get_width() / 2), round(py - spr.get_height() / 2)))
+            return
+        for layer, a in zip(parts, (0.0, ang, 0.0)):
+            if layer is None:
+                continue
+            if a or k != 1.0:
+                layer = pygame.transform.rotozoom(layer, a, k)
+            S.blit(layer, (round(px - layer.get_width() / 2), round(py - layer.get_height() / 2)))
+
+    def _banner_surface(self, tier: int, h: int) -> pygame.Surface:
+        """'NEW: {name}!' banner. When the form's name is an emoji (the font has no emoji glyphs, it
+        used to show a box), the tier's own picture is drawn in its place."""
+        cache = self.__dict__.setdefault("_banners", {})
+        if tier in cache:
+            return cache[tier]
+        cfg, white = self.cfg, (255, 255, 255)
+        name = cfg.tier_value("tier_names", tier)
+        tpl = cfg.banner_text.replace("{tier}", str(tier + 1))
+        if name or "{name}" not in tpl:
+            surf = self.f_banner.render(tpl.replace("{name}", name or f"Tier {tier + 1}"), True, white)
+        else:
+            left, _, right = tpl.partition("{name}")
+            parts = [self.f_banner.render(left, True, white) if left else None,
+                     self.icon(tier, int(h * 0.78)),
+                     self.f_banner.render(right, True, white) if right else None]
+            parts = [p for p in parts if p is not None]
+            gap = int(h * 0.08)
+            w = sum(p.get_width() for p in parts) + gap * (len(parts) - 1)
+            hh = max(p.get_height() for p in parts)
+            surf = pygame.Surface((w, hh), pygame.SRCALPHA)
+            x = 0
+            for p in parts:
+                surf.blit(p, (x, (hh - p.get_height()) // 2))
+                x += p.get_width() + gap
+        cache[tier] = surf
+        return surf
+
+    def _pill(self, w: int, h: int, col, alpha: float) -> pygame.Surface:
+        key = (w, h, tuple(col), alpha)
+        p = self._pills.get(key)
+        if p is None:
+            if len(self._pills) > 256:
+                self._pills.clear()
+            p = self._pills[key] = sprites.to_surface(sprites.pill(w, h, col, alpha))
+        return p
 
     def _spins(self, t: int) -> bool:
         """Pictures and emoji roll with the physics; plain numbered balls stay upright."""
@@ -421,29 +475,16 @@ class Renderer:
             total = n * dot + (n - 1) * gap
             x0 = (self.W - total) / 2
             yy = y + int(30 * sc)
+            dot = self.strip_dot
             for t in range(n):
-                small = pygame.transform.smoothscale(self.sprites[t], (max(1, dot), max(1, dot)))
-                if t > sim.best_tier:
-                    small.set_alpha(60)
-                S.blit(small, (x0 + t * (dot + gap), yy))
+                icon = self.strip_icons[t] if t <= sim.best_tier else self.strip_dim[t]
+                S.blit(icon, (round(x0 + t * (dot + gap)), yy))
 
-        # container glow + shadow + walls
-        pts = [(x * sc + sx, y_ * sc + sy) for x, y_ in sim.outline_world()]
-        th = max(2, int(cfg.container_thickness * sc))
-        if cfg.container_glow > 0:
-            gc = color_or(cfg.container_glow_color, cont_col)
-            gl = pygame.Surface((self.W, self.H), pygame.SRCALPHA)
-            for i in range(6, 0, -1):
-                a = int(28 * cfg.container_glow * (7 - i) / 6)
-                pygame.draw.lines(gl, (*gc, a), True, pts, th + int(i * 7 * sc))
-            S.blit(gl, (0, 0))
-        shadow = [(x + 6 * sc, y_ + 10 * sc) for x, y_ in pts]
-        sh = pygame.Surface((self.W, self.H), pygame.SRCALPHA)
-        pygame.draw.lines(sh, (0, 0, 0, 55), True, shadow, th)
-        S.blit(sh, (0, 0))
-        pygame.draw.lines(S, cont_col, True, pts, th)
-        for p in pts:
-            pygame.draw.circle(S, cont_col, p, th / 2)
+        # container: pre-rendered anti-aliased walls (+ glow), soft shadow, rotated with the body
+        wall, shadow = self._container_surfaces(sim.wall_body.angle)
+        ccx, ccy = sim.cx * sc + sx, sim.cy * sc + sy
+        S.blit(shadow, (round(ccx + 6 * sc - shadow.get_width() / 2), round(ccy + 10 * sc - shadow.get_height() / 2)))
+        S.blit(wall, (round(ccx - wall.get_width() / 2), round(ccy - wall.get_height() / 2)))
 
         # balls (glow -> shadow -> sprite)
         for b in sim.balls:
@@ -458,11 +499,7 @@ class Renderer:
                 shd = self.shadows[b.tier] if k == 1.0 else pygame.transform.rotozoom(self.shadows[b.tier], 0, k)
                 off = 8 * sc * (1 + b.tier * 0.15)
                 S.blit(shd, (px - shd.get_width() / 2 + off * 0.5, py - shd.get_height() / 2 + off))
-            spr = self.sprites[b.tier]
-            ang = -math.degrees(b.shape.body.angle) if self._spins(b.tier) else 0
-            if k != 1.0 or ang:
-                spr = pygame.transform.rotozoom(spr, ang, k)
-            S.blit(spr, (px - spr.get_width() / 2, py - spr.get_height() / 2))
+            self.blit_ball(b.tier, px, py, b.shape.body.angle if self._spins(b.tier) else 0.0, k)
 
         # particles
         for p in sim.particles:
@@ -496,11 +533,7 @@ class Renderer:
             band.fill((*_shade(col, 0.55), int(200 * (1 - out))))
             xoff = int((1 - (1 - (1 - slide) ** 3)) * -self.W + out * self.W)
             S.blit(band, (xoff, yb))
-            txt = cfg.banner_text.replace("{name}", cfg.tier_label(bn.tier)).replace("{tier}", str(bn.tier + 1))
-            try:
-                ts = self.f_banner.render(txt, True, (255, 255, 255))
-            except Exception:
-                ts = self.f_banner.render(f"Tier {bn.tier + 1}!", True, (255, 255, 255))
+            ts = self._banner_surface(bn.tier, h)
             ts.set_alpha(int(255 * (1 - out)))
             S.blit(ts, (xoff + (self.W - ts.get_width()) // 2, yb + (h - ts.get_height()) // 2))
 
@@ -516,11 +549,9 @@ class Renderer:
             bw, bh = int(self.W * 0.7), max(4, int(22 * sc))
             bx, by = (self.W - bw) // 2, int(self.H * cfg.progress_bar_y)
             bc = self._tc(cfg.progress_bar_color)
-            track = pygame.Surface((bw, bh), pygame.SRCALPHA)
-            pygame.draw.rect(track, (*bc, 60), (0, 0, bw, bh), border_radius=bh // 2)
-            S.blit(track, (bx, by))
+            S.blit(self._pill(bw, bh, bc, 60 / 255), (bx, by))
             if self._bar > 0.01:
-                pygame.draw.rect(S, bc, (bx, by, max(bh, int(bw * self._bar)), bh), border_radius=bh // 2)
+                S.blit(self._pill(max(bh, int(bw * self._bar)), bh, bc, 1.0), (bx, by))
             pct = self.f_label.render(f"{int(round(self._bar * 100))}%", True, bc)
             S.blit(pct, (bx + bw + int(14 * sc), by + (bh - pct.get_height()) // 2))
 
@@ -577,9 +608,9 @@ def physics_steps(fps: int):
         yield n, 1.0 / hz
 
 
-def simulate(cfg: MergeConfig) -> MergeSim:
+def simulate(cfg: MergeConfig):
     """Run the physics only (fast) — used to find winning seeds."""
-    sim = MergeSim(cfg)
+    sim = make_sim(cfg)
     hz = max(PHYSICS_HZ, int(cfg.fps))
     while not sim.done:
         sim.step(1.0 / hz)
@@ -594,11 +625,73 @@ def _step_frame(sim: MergeSim, steps) -> None:
         sim.step(dt)
 
 
+def raw_format(surf: pygame.Surface) -> str:
+    """FFmpeg pix_fmt of a surface's own memory, so frames can be piped without a conversion copy
+    (pygame.image.tobytes(..., 'RGB') cost ~10 ms a frame at 1080p). 'rgb24' = needs tobytes."""
+    if surf.get_bytesize() == 4 and surf.get_pitch() == surf.get_width() * 4 and sys.byteorder == "little":
+        masks = surf.get_masks()[:3]
+        if masks == (0xFF0000, 0x00FF00, 0x0000FF):
+            return "bgr0"
+        if masks == (0x0000FF, 0x00FF00, 0xFF0000):
+            return "rgb0"
+    return "rgb24"
+
+
+def frame_bytes(surf: pygame.Surface, fmt: str):
+    return surf.get_view("1") if fmt != "rgb24" else pygame.image.tobytes(surf, "RGB")
+
+
+def video_encode_cmd(cfg: MergeConfig, W: int, H: int, encoder: list[str] | None = None,
+                     out: str = "__OUT__", pix_fmt: str = "rgb24") -> tuple[list[str], str]:
+    """FFmpeg command that turns raw RGB frames on stdin into the export video (no audio).
+    Frames are already drawn at the export size, so the only filters are: pad to even size, and one
+    high-precision RGB -> BT.709 4:2:0 conversion (tagged, so players show the right colours)."""
+    if encoder:
+        enc, enc_name = encoder, encoder[1] if len(encoder) > 1 else "custom"
+    else:
+        enc, enc_name = encoder_args(cfg.export_codec, QUALITIES.get(cfg.export_quality, 17), cfg.export_encoder,
+                                     W, H, cfg.fps)
+    cmd = [ffmpeg_exe(), "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", pix_fmt,
+           "-s", f"{W}x{H}", "-r", str(cfg.fps), "-i", "-",
+           "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2," + COLOR_FILTER,
+           *enc, *COLOR_TAGS, "-pix_fmt", "yuv420p", "-r", str(cfg.fps), "-g", str(int(cfg.fps) * 2),
+           "-movflags", "+faststart", out]
+    return cmd, enc_name
+
+
+def make_sim(cfg: MergeConfig):
+    """Simulation for cfg.mode (merge | escape | breaker)."""
+    from .modes import registry
+    return registry.sim_for(cfg)
+
+
+def make_renderer(cfg: MergeConfig, scale: float = 1.0):
+    from .modes import registry
+    return registry.renderer_for(cfg, scale)
+
+
 def render_video(cfg: MergeConfig, out_path: str, progress: Callable[[float], None] | None = None,
                  encoder: list[str] | None = None, lock=None) -> dict:
-    """Render one Merge video to MP4. Returns metadata.
+    """Render one video (any mode) to MP4/MOV. Returns metadata.
     `lock`: optional lock held around every pygame call (the desktop app passes one so the
-    render thread never draws at the same time as the live preview — pygame is not thread-safe)."""
+    render thread never draws at the same time as the live preview — pygame is not thread-safe).
+    If a GPU encoder fails, the render is retried once on the CPU encoder (same seed = same video)."""
+    try:
+        return _render_video(cfg, out_path, progress, encoder, lock)
+    except EncoderError as e:
+        if encoder or e.enc_name.startswith("lib"):
+            raise
+        cfg.export_encoder = "cpu"
+        return _render_video(cfg, out_path, progress, None, lock)
+
+
+class EncoderError(RuntimeError):
+    def __init__(self, msg: str, enc_name: str):
+        super().__init__(msg)
+        self.enc_name = enc_name
+
+
+def _render_video(cfg: MergeConfig, out_path: str, progress, encoder, lock) -> dict:
     lock = lock or contextlib.nullcontext()
     t0 = time.time()
     cfg.sanitize_export()
@@ -607,9 +700,9 @@ def render_video(cfg: MergeConfig, out_path: str, progress: Callable[[float], No
     if cfg.auto_sounds:      # Myinstants auto sounds (cached; offline = built-in pop)
         from .sounds import resolve_auto
         sound_plan = resolve_auto(cfg)
-    sim = MergeSim(cfg)
+    sim = make_sim(cfg)
     with lock:
-        rend = Renderer(cfg, cfg.export_scale())
+        rend = make_renderer(cfg, cfg.export_scale())
     steps = physics_steps(cfg.fps)
     est_frames = int(cfg.video_seconds() * cfg.fps)
     out_path = str(out_path)
@@ -617,14 +710,8 @@ def render_video(cfg: MergeConfig, out_path: str, progress: Callable[[float], No
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     tmpdir = tempfile.mkdtemp(prefix="mm911_")
     silent = os.path.join(tmpdir, "video" + Path(out_path).suffix)
-    if encoder:
-        enc, enc_name = encoder, encoder[1] if len(encoder) > 1 else "custom"
-    else:
-        enc, enc_name = encoder_args(cfg.export_codec, QUALITIES.get(cfg.export_quality, 18), cfg.export_encoder)
-    cmd = [ffmpeg_exe(), "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
-           "-s", f"{rend.W}x{rend.H}", "-r", str(cfg.fps), "-i", "-",
-           "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2",   # encoders need even sizes
-           *enc, "-pix_fmt", "yuv420p", "-r", str(cfg.fps), "-movflags", "+faststart", silent]
+    pix = raw_format(rend.surface)
+    cmd, enc_name = video_encode_cmd(cfg, rend.W, rend.H, encoder, silent, pix)
     creation = 0x08000000 if os.name == "nt" else 0  # no console window on Windows
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=creation)
     frames = 0
@@ -636,11 +723,14 @@ def render_video(cfg: MergeConfig, out_path: str, progress: Callable[[float], No
                 surf = rend.draw(sim)
                 if cfg.export_thumbnail and thumb is None and _thumb_moment_frame(sim, cfg):
                     thumb = surf.copy()
-                raw = pygame.image.tobytes(surf, "RGB")
+                raw = frame_bytes(surf, pix)   # a view of this renderer's own surface (no copy)
             try:
                 proc.stdin.write(raw)
             except (BrokenPipeError, OSError):
                 break   # encoder died; the error is reported below
+            finally:
+                if hasattr(raw, "release"):
+                    raw = None
             frames += 1
             if progress and frames % 15 == 0:
                 progress(min(0.97, frames / est_frames))
@@ -653,7 +743,8 @@ def render_video(cfg: MergeConfig, out_path: str, progress: Callable[[float], No
         proc.wait()
         rend.close()
     if proc.returncode != 0:
-        raise RuntimeError(f"Video encoder ({enc_name}) failed: {err.strip()[-400:]}")
+        _rm(silent)
+        raise EncoderError(f"Video encoder ({enc_name}) failed: {err.strip()[-400:]}", enc_name)
     seconds = frames / cfg.fps
     thumb_path = ""
     if cfg.export_thumbnail:
@@ -679,12 +770,15 @@ def render_video(cfg: MergeConfig, out_path: str, progress: Callable[[float], No
         pass
     if progress:
         progress(1.0)
-    return {"file": out_path, "seed": cfg.seed, "won": sim.won, "best_tier": sim.best_tier + 1,
-            "seconds": round(seconds, 2), "merges": sim.merges, "best_combo": sim.best_combo,
+    meta = {"file": out_path, "mode": cfg.mode, "seed": cfg.seed, "won": sim.won, "best_tier": sim.best_tier + 1,
+            "seconds": round(seconds, 2), "merges": getattr(sim, "merges", 0),
+            "best_combo": getattr(sim, "best_combo", 0),
             "thumbnail": thumb_path, "fps": cfg.fps, "size": f"{rend.W}x{rend.H}", "encoder": enc_name,
             "render_seconds": round(time.time() - t0, 1),
             "sounds": [d["name"] for d in (sound_plan or {}).get("sounds", [])]
             + [f"{k}: {Path(getattr(cfg, k)).name}" for k in ("drop_sound", "final_sound") if getattr(cfg, k)]}
+    meta.update(getattr(sim, "stats", lambda: {})())
+    return meta
 
 
 def _rm(path: str) -> None:
@@ -710,6 +804,8 @@ def build_audio(cfg: MergeConfig, sim: MergeSim, seconds: float) -> AudioTrack:
                 continue
             last_t = at
         sample, semis, vol = bank.event(ev.kind, ev.tier)
+        if getattr(ev, "pitch", None) is not None and ev.kind != "final":
+            semis = max(-24.0, min(24.0, ev.pitch + (cfg.drop_pitch if ev.kind == "drop" else 0.0)))
         track.add(sample, at, semis, vol)
     if cfg.music_path and cfg.music_volume > 0:
         track.add_music(load_music(cfg.music_path, seconds + 3), cfg.music_volume)
@@ -735,16 +831,35 @@ def _thumb_moment(sim: MergeSim, cfg: MergeConfig) -> bool:
     return False
 
 
+def surface_jpeg(surf: pygame.Surface, quality: int = 92) -> bytes:
+    """High-quality JPEG (Pillow, 4:4:4 chroma for >= 95) of a frame; pygame's own JPEG writer
+    uses a fixed, lower quality and 4:2:0 chroma, which smeared the preview and thumbnails."""
+    import io
+    try:
+        from PIL import Image
+    except Exception:  # pragma: no cover
+        buf = io.BytesIO()
+        pygame.image.save(surf, buf, "f.jpg")
+        return buf.getvalue()
+    im = Image.frombytes("RGB", surf.get_size(), pygame.image.tobytes(surf, "RGB"))
+    buf = io.BytesIO()
+    im.save(buf, "JPEG", quality=quality, subsampling=0 if quality >= 95 else 2, optimize=quality >= 95)
+    return buf.getvalue()
+
+
 def _save_jpg(surf: pygame.Surface, path: str) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    pygame.image.save(surf, path)
+    if str(path).lower().endswith((".jpg", ".jpeg")):
+        Path(path).write_bytes(surface_jpeg(surf, 95))
+    else:
+        pygame.image.save(surf, path)
 
 
 def make_thumbnail(cfg: MergeConfig, out_path: str) -> dict:
     """Thumbnail only (no video): runs the physics fast and grabs the Final Form moment."""
     prepare_images(cfg)
-    sim = MergeSim(cfg)
-    rend = Renderer(cfg)
+    sim = make_sim(cfg)
+    rend = make_renderer(cfg)
     steps = physics_steps(cfg.fps)
     shot = None
     while not sim.done:
@@ -761,12 +876,8 @@ def make_thumbnail(cfg: MergeConfig, out_path: str) -> dict:
 
 def render_preview_frame(cfg: MergeConfig, sim: MergeSim, rend: Renderer) -> bytes:
     """JPEG bytes of the current frame (for the live preview in the app)."""
-    import io
-    surf = rend.draw(sim)
-    buf = io.BytesIO()
-    pygame.image.save(surf, buf, "preview.jpg")
-    return buf.getvalue()
+    return surface_jpeg(rend.draw(sim), 90)
 
 
-__all__ = ["Renderer", "render_video", "build_audio", "make_thumbnail", "simulate", "render_preview_frame",
+__all__ = ["Renderer", "render_video", "video_encode_cmd", "make_sim", "make_renderer", "build_audio", "make_thumbnail", "simulate", "render_preview_frame",
            "prepare_images", "CREDIT"]

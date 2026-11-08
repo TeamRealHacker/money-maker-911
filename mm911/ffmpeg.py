@@ -73,25 +73,54 @@ def _available(enc: str) -> bool:
     return enc in out and _encoder_works(enc)
 
 
-def encoder_args(codec: str = "h264", quality: int = 18, which: str = "auto") -> tuple[list[str], str]:
+# Bitrate ceilings for the hardware encoders' constant-quality mode (per 1080p60; scaled by pixels x fps).
+HW_MAXRATE_1080P60 = 45   # Mbit/s
+
+
+def _hw_rates(width: int, height: int, fps: int) -> tuple[str, str]:
+    k = (width * height * max(24, fps)) / (1080 * 1920 * 60)
+    mr = max(12, int(HW_MAXRATE_1080P60 * k))
+    return f"{mr}M", f"{mr * 2}M"
+
+
+def encoder_args(codec: str = "h264", quality: int = 17, which: str = "auto",
+                 width: int = 1080, height: int = 1920, fps: int = 60) -> tuple[list[str], str]:
     """Video encoder arguments for the export settings. Hardware (NVIDIA/Intel/AMD) when asked for or
-    when 'auto' finds one that really works; otherwise CPU (libx264 / libx265). Returns (args, name)."""
+    when 'auto' finds one that really works; otherwise CPU (libx264 / libx265). Returns (args, name).
+    Quality is an x264-style CRF (14-24). Hardware encoders get the matching constant-quality value
+    with a generous bitrate ceiling, so sharp edges and photos don't smear on busy frames."""
     codec = "h265" if codec == "h265" else "h264"
     q = int(quality)
+    maxrate, bufsize = _hw_rates(width, height, fps)
     vendors = ["nvidia", "intel", "amd"] if which == "auto" else ([which] if which in ("nvidia", "intel", "amd") else [])
     for v in vendors:
         enc = _HW[(codec, v)]
         if _available(enc):
             if v == "nvidia":
-                args = ["-c:v", enc, "-preset", "p5", "-rc", "vbr", "-cq", str(q + 2), "-b:v", "0"]
+                args = ["-c:v", enc, "-preset", "p6", "-tune", "hq", "-rc", "vbr", "-cq", str(q), "-b:v", "0",
+                        "-maxrate", maxrate, "-bufsize", bufsize, "-spatial-aq", "1", "-bf", "2"]
             elif v == "intel":
-                args = ["-c:v", enc, "-global_quality", str(q + 3)]
+                args = ["-c:v", enc, "-preset", "slow", "-global_quality", str(q + 1), "-maxrate", maxrate,
+                        "-bufsize", bufsize]
             else:
-                args = ["-c:v", enc, "-quality", "quality", "-rc", "cqp", "-qp_i", str(q + 2), "-qp_p", str(q + 4)]
-            if codec == "h265":
+                args = ["-c:v", enc, "-quality", "quality", "-rc", "cqp", "-qp_i", str(q), "-qp_p", str(q + 1),
+                        "-qp_b", str(q + 2)]
+            if codec == "h264":
+                args += ["-profile:v", "high"]
+            else:
                 args += ["-tag:v", "hvc1"]
             return args, enc
     if codec == "h265" and _available("libx265"):
-        return ["-c:v", "libx265", "-preset", "fast", "-crf", str(q + 4), "-tag:v", "hvc1",
-                "-x265-params", "log-level=error"], "libx265"
-    return ["-c:v", "libx264", "-preset", "fast" if q <= 15 else "veryfast", "-crf", str(q)], "libx264"
+        return ["-c:v", "libx265", "-preset", "medium", "-crf", str(q + 3), "-tag:v", "hvc1",
+                "-x265-params", "log-level=error:aq-mode=3"], "libx265"
+    # 'medium' instead of 'veryfast': noticeably crisper edges at the same CRF; pygame drawing is
+    # the slow part of a render anyway, not the encoder.
+    preset = "slow" if q <= 14 else "medium" if q <= 18 else "fast" if q <= 21 else "veryfast"
+    return ["-c:v", "libx264", "-preset", preset, "-crf", str(q), "-profile:v", "high", "-aq-mode", "3"], "libx264"
+
+
+# RGB frames -> 4:2:0 BT.709 (what YouTube / phones assume for HD), converted with full-precision
+# chroma and tagged in the stream so players don't fall back to BT.601 and shift the colours.
+COLOR_FILTER = ("scale=out_color_matrix=bt709:out_range=tv:flags=lanczos+accurate_rnd+full_chroma_int,"
+                "format=yuv420p,setparams=range=tv:color_primaries=bt709:color_trc=bt709:colorspace=bt709")
+COLOR_TAGS = ["-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv"]

@@ -22,20 +22,27 @@
   - App: Sounds · Myinstants panel (search, keyword chips, ▶ preview, Use for tiers / drop / final, ✨ Auto fill low → high, per-tier sound + pitch with exact pitched preview), Themes (save / load / delete / import / export), Background, Balls and Effects sections, per-text styling, batch "vary per video" checkboxes + sound keywords.
   - CLI: `--myinstants`, `--auto-sounds`, `--sound-strategy`, `--sound-count`, `--drop-keyword`, `--final-keyword`, look flags (`--forms --shape --gravity --bg-colors --particles --shake ...`), `--set KEY=VALUE` for anything, `sounds search|fetch|analyze|auto|cache`, batch `--randomize` + `--sound-keywords`.
   - Seeds from v0.4.0 re-render identically (new effect randomness uses its own RNG), except runs where the near-miss slow-down fires (it changes the physics timing); turn `near_miss` off for exact old re-renders. New presets: neon_triangle_combo, space_planets_slowmo, custom_bowl_confetti, minimal_mono_15s. Offline tests in `tests/test_sounds_customization.py`.
+- **2026-11-08** · 🔍🌀🧱 v0.6.0 Picture quality, premium round balls, duplicate checker, Escape + Breaker (branch `feature/quality-and-next-modes`):
+  - **Why pictures looked blurry**: user photos were shrunk to 1024 px on load, then stretched back up for big balls and supersampled 3×; every ball was drawn with hard-edged pygame circles/masks, shrunk with `smoothscale` on straight alpha (dark halos round every edge) and rotozoomed again every frame (rim included); emoji were drawn at 3× then shrunk; cut-out outlines were 16 hard stamps; the live preview was a 0.36× frame stretched by the browser (blurrier still on HiDPI screens) saved with pygame's low-quality JPEG; the export was x264 `veryfast` CRF 18 with an untagged BT.601 conversion (players assume BT.709 for HD, so colours shifted too). Containers and the progress bar were not anti-aliased at all.
+  - **Fix** (`mm911/sprites.py`): Pillow decodes pictures at full resolution (EXIF rotation applied); one Lanczos resample in premultiplied alpha straight to the final on-screen size; exact analytic anti-aliasing for discs, rims and rings (rim computed from the same circle as the mask: no seams); emoji SVGs rasterised at the exact pixel size; colour bleeding so per-frame rotation can't pull black into edges; the ball is base + rolling picture + static rim/highlight overlay, so rotation never blurs the rim; per (picture, size, look) cache; sprites are BGRA-native (blits on the SIMD path).
+  - Round balls: smart crop (edge-energy saliency for photos, alpha bounding box for cut-outs; Smart / Centre / Top / Whole picture + zoom), picture rim width, glossy highlight and 3D shading sliders, cut-out style **disc / sticker / circle** with a smooth round sticker outline (blurred-SDF dilation) and colour decontamination; containers, the Breaker arena and the progress bar are supersampled anti-aliased layers; GUI tier circles are built at 96 px; the live preview renders at the preview's real pixel height (devicePixelRatio aware); banners show the tier picture when its name is an emoji (was a box glyph).
+  - Export: x264 `medium` (`slow` for Max) CRF 17 for High / 14 Max, NVENC `p6 hq` constant quality with a high bitrate ceiling, tuned QSV / AMF; `scale=out_color_matrix=bt709:flags=lanczos+accurate_rnd+full_chroma_int` + bt709 tags; frames piped straight from the surface (no RGB copy); a failing GPU encoder retries the render on the CPU; thumbnails JPEG q95 4:4:4. Cut-outs are stored up to 2048 px (cache version 2: existing cut-outs are redone once).
+  - 🧬 Duplicate checker (`mm911/dedupe.py`): 64-bit DCT pHash of 8 sampled frames (whole frame + action area). Same settings with another seed score ~0.65-0.78, a re-encoded copy ≥ 0.99; threshold 0.9. Batches compare each new video with the output folder (`.mm911_hashes.json`): skip = re-render with a new seed, flag = mark `similar_to` in titles.csv. CLI `dedupe --in folder [--delete]`, batch `--no-dedupe --dedupe-threshold --dedupe-action`, app Batch section.
+  - 🌀 Escape (`modes/escape.py`): ball in N spinning rings with gaps (alternating, faster outward), shatter + pitch ladder low → high per escape, pitched bounces, counter, tension on the last ring, slow-mo + ESCAPED! with the ball gliding to the centre and growing; the ball wears / evolves through your Tiers pictures; assist opens a stuck gap so 20/20 seeds win in 9-33 s. Rings: one cached anti-aliased layer + per-frame recompute of only the gap pixels.
+  - 🧱 Breaker (`modes/breaker.py`): balls smash a brick wall (full, pyramid, diamond, heart, checker, stripes), tough top rows, pitch ladder per brick, +1 ball every N bricks, steering after quiet spells (30/30 runs clear in 18-39 s), CLEARED! ending.
+  - Modes share one config (`mode` + `escape_*` / `breaker_*`), `modes/registry.py`, the export pipeline, sounds (Myinstants per-tier sounds map onto escapes / brick rows), batch knobs, thumbnails, dedupe and the app (mode picker, per-mode sections, Merge-only rows hide). CLI `--mode escape|breaker --rings --gap --ring-spin --bricks`. Presets: `escape_rings`, `escape_selfie_grow`, `breaker_heart`. Tests: `test_quality.py`, `test_dedupe.py`, `test_escape.py`, `test_breaker.py`, `test_modes_ui.py`.
 
 ## 🔜 TODO (in order)
-1. Duplicate checker for batches
-2. 🌀 Escape
-3. 🧱 Breaker
-4. 🥛 Glass Rush
-5. 👻 Ghost Escape
-6. 🎵 Rhythmic (MIDI)
-7. ➕ Accumulate
-8. ✏️ Drawer
-9. 🏢 Glass Tower
-10. 🚩 Flag Battle
-11. ⚔️ Weapon Ball Battle
-12. New 2D: Race, Plinko, Gravity Flip, Snake Grow, Chain Reaction, Countdown Survival, Color Sort, Voting
-13. ☁️ Colab rendering (google-colab-cli via WSL2)
-14. 3D modes: Wave, Marble Run, Ball Crush, Jelly, Cut Count, Magnet, then Hydraulic Press, Liquid Pour, Shatter, Coin Pusher
-15. YouTube upload queue
+1. 🥛 Glass Rush
+2. 👻 Ghost Escape
+3. 🎵 Rhythmic (MIDI)
+4. ➕ Accumulate
+5. ✏️ Drawer
+6. 🏢 Glass Tower
+7. 🚩 Flag Battle
+8. ⚔️ Weapon Ball Battle
+9. New 2D: Race, Plinko, Gravity Flip, Snake Grow, Chain Reaction, Countdown Survival, Color Sort, Voting
+10. ☁️ Colab rendering (google-colab-cli via WSL2)
+11. 3D modes: Wave, Marble Run, Ball Crush, Jelly, Cut Count, Magnet, then Hydraulic Press, Liquid Pour, Shatter, Coin Pusher
+12. YouTube upload queue
+13. Polish ideas: Escape "rhythm" mode (bounces play a melody), Breaker power-ups, live preview for the dedupe score
