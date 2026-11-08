@@ -16,7 +16,7 @@
 ![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)
 ![Status](https://img.shields.io/badge/status-in%20development-orange?style=for-the-badge)
 
-**720p to 4K · 24 to 120 fps · H.264 / H.265 · YouTube Shorts / TikTok / Reels ready**
+**1080×1920 · 60 fps · YouTube Shorts / TikTok / Reels ready**
 
 **[⬇️ Download the portable .exe](https://github.com/TeamRealHacker/money-maker-911/releases/tag/nightly)**
 
@@ -46,17 +46,14 @@
 
 | Area | Status |
 |------|--------|
-| 🍉 Merge Evolution | ✅ **Working** (6 palettes, 11 shapes incl. custom polygon, spin + wobble, particles, Final Form ending) |
-| 🎛️ Unlimited Merge customization | ✅ Physics, 3-15 forms, size curves, container colour/glow, solid / 3-colour angled gradient / image / looping video backgrounds, ball outline/shadow/glow, 6 particle styles, screen shake, per-text font/size/colour/position, 15s preset + custom seconds + "until Final Form", themes save/load/import/export |
-| ✨ Shorts juice | ✅ Chain-combo popups, slow-mo final merge, progress bar to Final Form, near-miss tension ("ALMOST..."), tier-reached banners, merge counter |
-| 🔊 Myinstants auto sounds | ✅ Search + preview + download-once cache, auto-assign low → high pitch across tiers (one sound pitched up, or several sorted by measured pitch), separate drop / final sounds, per-tier sound + pitch override, offline fallback to the built-in pop |
+| 🍉 Merge Evolution | ✅ **Working** (6 palettes, 6 shapes, spin, particles, Final Form ending) |
 | 🎨 Merge polish | ✅ Tier image folder + circle-crop preview, per-tier names / hex colours / emoji, 5 emoji sets, auto thumbnail `.jpg`, 30/45/60s presets |
-| 🔊 Drop-in sound + auto pitch | ✅ Working (any mp3/wav/ogg, built-in pop, pitch step / jitter / volumes) |
-| 🏭 Batch factory + titles.csv | ✅ Working (anti-repeat rotation, pick which knobs vary, a Myinstants keyword per video, "only wins" seed search) |
+| ✂️ AI cut-outs | ✅ `--cutout` (rembg: birefnet-general / isnet-general-use / u2net) + `--reject-text`; optional: `pip install rembg rapidocr-onnxruntime` |
+| 🔊 Drop-in sound + auto pitch | ✅ Working (any mp3/wav/ogg, built-in pop) |
+| 🏭 Batch factory + titles.csv | ✅ Working (anti-repeat rotation, "only wins" seed search) |
 | 🖥️ Desktop app | ✅ Splash, onboarding, live preview, inspector |
 | 📦 Portable .exe | ✅ Built by GitHub Actions → [Nightly release](https://github.com/TeamRealHacker/money-maker-911/releases/tag/nightly) |
-| ✂️ AI cut-outs + text filter | ✅ BiRefNet / ISNet / U²-Net offline (onnxruntime), sticker outline, skips images with text |
-| 🔁 Duplicate checker | 🔜 Next |
+| 🖼️ AI cut-outs | 🔜 Next |
 | 🌀 Other 2D modes | 🔜 One by one |
 | ☁️ Colab rendering | 🔜 Planned |
 | 🔵 3D modes | 🔜 Planned |
@@ -147,22 +144,11 @@ Everything it can do in one place:
 - **Built-in AI background removal** (BiRefNet / ISNet / U²-Net via ONNX, runs offline)
 - Auto crop, auto circle-mask, outline and drop-shadow
 - Caption remover: rejects or crops out images that contain text
-
-```bash
-# AI cut-outs from the command line (models download once, then work offline)
-python main.py render --image-folder memes/ --cutout isnet-general-use --reject-text
-python main.py cutout --in memes/ --out memes_cut/ --model birefnet-general --reject-text
-pip install -r requirements-ai.txt   # only needed when running from source
-```
 - Meme finder helpers: GIPHY search (free key) and bulk folder import
 
 ### 🔊 Sound
 - Drop in **any sound file**: Myinstants clips, your own recordings, `.mp3 / .wav / .ogg`
-- **Myinstants built in**: search, ▶ preview, "Use for tiers", or **✨ Auto fill low → high**. Several clips are
-  measured (spectral centroid + fundamental, decoded with the bundled FFmpeg), sorted, and pitch-shifted so tier 1 is
-  the lowest and the Final Form the highest. Optional separate drop / final sounds (e.g. `click` / `vine boom`).
-  Clips download once to `%APPDATA%\MoneyMaker911\sounds` (`~/.mm911/sounds` on Linux/macOS), never into the repo.
-- **Auto pitch** per tier, per bounce, per merge (rising pitch = more satisfying), with per-tier manual overrides
+- **Auto pitch** per tier, per bounce, per merge (rising pitch = more satisfying)
 - Melody mode: import a MIDI file and every hit plays the next note
 - Volume, reverb and random pitch-jitter so no two videos sound the same
 - Optional background music slot (off by default)
@@ -181,7 +167,7 @@ pip install -r requirements-ai.txt   # only needed when running from source
 - Warns when you use real people, logos or copyrighted clips
 
 ### 🎞️ Export
-- 9:16 vertical at 720p, 1080p, 2K or 4K; 24, 25, 30, 48, 50, 60, 90 or 120 fps; H.264 or H.265; MP4 or MOV; GPU encoding (NVIDIA / Intel / AMD) with CPU fallback
+- 1080×1920 vertical, 60 fps (also 30 fps, 1080×1080, 1920×1080)
 - H.264 / H.265 / AV1 via FFmpeg
 - Hardware encoding: **NVIDIA NVENC**, AMD AMF, Intel QSV
 - Length presets: 15 s, 30 s, 45 s, 60 s, or "until finished"
@@ -291,22 +277,7 @@ MoneyMaker911.exe render --preset presets\fruit_candy.json --out output\merge.mp
 MoneyMaker911.exe batch --count 20 --out output --length 30 --emoji-set Fruit
 MoneyMaker911.exe thumb --preset presets\emoji_fruit.json --out output\thumb.jpg
 MoneyMaker911.exe render --image-folder C:\memes\cats --length 45 --out output\cats.mp4
-
-:: Myinstants sounds, picked automatically and laid out low -> high
-MoneyMaker911.exe render --myinstants "bubble pop" --out output\bubbles.mp4
-MoneyMaker911.exe render --auto-sounds --sound-strategy pitch_up --final-keyword "vine boom" --out output\pop.mp4
-MoneyMaker911.exe sounds search boing
-MoneyMaker911.exe sounds auto "pop, bubble" --tiers 9
-
-:: deep customization: flags for the common knobs, --set for any setting (export flags --fps --res --codec ... work too)
-MoneyMaker911.exe render --preset presets\neon_triangle_combo.json --length 15
-MoneyMaker911.exe render --forms 12 --shape triangle --bg-colors "#1a1a40,#7a1fa2,#ff6f61" --bg-angle 60 ^
-  --particles confetti --shake 12 --set ball_glow=0.6 --set show_progress_bar=true --out output\custom.mp4
-MoneyMaker911.exe batch --count 20 --randomize palette,shape,background,particles,sound_keyword ^
-  --sound-keywords "pop,bubble,boing,water drop" --out output
 ```
-New showcase presets: `neon_triangle_combo`, `space_planets_slowmo`, `custom_bowl_confetti`, `minimal_mono_15s`. Every setting in the app is a key in the preset `.json` (see `mm911/config.py`), so a preset can change anything.
-
 Every video also gets a matching `.jpg` thumbnail (the Final Form moment). Tier image folders are read in name order, so call files `1.png, 2.png, 3.png…`.
 
 ### Option B: Run from source
@@ -348,8 +319,7 @@ money-maker-911/
 ├─ mm911/
 │  ├─ config.py         # every editable setting, palettes, hooks
 │  ├─ render.py         # renderer + FFmpeg export
-│  ├─ audio.py          # sound loading, pitch, mixing (SoundBank: per-tier sounds)
-│  ├─ sounds.py         # Myinstants search / cache / pitch analysis / auto low->high
+│  ├─ audio.py          # sound loading, pitch, mixing
 │  ├─ batch.py          # batch factory + titles.csv
 │  ├─ modes/merge.py    # 🍉 Merge Evolution physics
 │  ├─ gui/              # desktop app (splash, onboarding, studio)
