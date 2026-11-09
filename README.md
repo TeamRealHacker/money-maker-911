@@ -72,7 +72,8 @@
 | 👻 Ghost Escape (v0.8.0) | ✅ Escape in the dark: a ghost light follows the ball, the front ring turns ghost every few seconds<br><img src="docs/demo-ghost.gif" width="180"> |
 | 🎵 Rhythmic (v0.9.0) | ✅ Escape where every bounce plays the next note of a song: drop in any .mid file (or use built-in Ode to Joy), notes are your pop sound pitch-shifted<br><img src="docs/demo-rhythmic.gif" width="180"> |
 | ➕ Accumulate (v0.10.0) | ✅ One ball bounces, every few wall hits spawns another until the target (default 100) is reached, pitch climbs with the count<br><img src="docs/demo-accumulate.gif" width="180"> |
-| 🎵 Other 2D modes | 🔜 One by one (Drawer next) |
+| ✏️ Drawer (v0.11.0) | ✅ The ball is a brush that paints a hidden picture into view (your own photo or generated art), notes climb with the %, the rest fades in at the target |
+| 🎵 Other 2D modes | 🔜 One by one (Glass Tower next) |
 | ☁️ Colab rendering | 🔜 Planned |
 | 🔵 3D modes | 🔜 Planned |
 
@@ -107,9 +108,9 @@ Everything it can do in one place:
 |---|------|--------------|--------------|
 | 1 | 🍉 **Merge Evolution** ✅ | Items drop into a ring and merge up tiers until the Final Form | *"Will it reach the Final Form?"* |
 | 2 | 🌀 **Escape** ✅ | A ball bounces inside spinning rings with gaps and tries to escape | *"How fast can it escape?"* |
-| 3 | 🎵 **Rhythmic** | Every bounce plays the next note of a melody | *"Recognize this melody?"* |
-| 4 | ✏️ **Drawer** | The ball leaves a trail that draws a hidden picture | *"You know this one?"* |
-| 5 | ➕ **Accumulate** | Every bounce spawns a new ball until the screen fills | *"How many until it overflows?"* |
+| 3 | 🎵 **Rhythmic** ✅ | Every bounce plays the next note of a melody | *"Recognize this melody?"* |
+| 4 | ✏️ **Drawer** ✅ | The ball leaves a trail that draws a hidden picture | *"You know this one?"* |
+| 5 | ➕ **Accumulate** ✅ | Every bounce spawns a new ball until the screen fills | *"How many until it overflows?"* |
 | 6 | 👻 **Ghost Escape** ✅ | Dodge a ring of spikes that closes in | *"Can it dodge the trap?"* |
 | 7 | 🧱 **Breaker** ✅ | Balls smash through layered walls | *"Will the wall break?"* |
 | 8 | 🏢 **Glass Tower** | Balls crash down a tower of glass floors | *"How many floors survive?"* |

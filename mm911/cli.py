@@ -16,7 +16,8 @@ CUT_CHOICES = list(imageprep.MODELS) + [imageprep.QUICK]
 
 def _add_look_args(sp) -> None:
     """Common overrides for render / thumb / batch (anything else: put it in a preset .json)."""
-    sp.add_argument("--mode", choices=MODES, help="game mode: merge (default), escape, breaker")
+    sp.add_argument("--mode", choices=MODES, help="game mode: " + ", ".join(MODES) + " (default merge)")
+    sp.add_argument("--picture", help="Drawer: the picture the brush reveals (default: your first tier picture)")
     sp.add_argument("--rings", type=int, help="Escape: number of rings (1-30)")
     sp.add_argument("--gap", type=float, help="Escape: ring gap in degrees")
     sp.add_argument("--ring-spin", type=float, help="Escape: ring spin in degrees/second")
@@ -91,7 +92,7 @@ def _parse_value(cur, raw: str):
 def apply_args(cfg: MergeConfig, a) -> MergeConfig:
     if a.length:
         cfg.max_seconds = LENGTH_PRESETS[a.length + "s"]
-    simple = {"mode": "mode", "rings": "escape_rings", "gap": "escape_gap_deg", "ring_spin": "escape_spin",
+    simple = {"mode": "mode", "picture": "drawer_picture", "rings": "escape_rings", "gap": "escape_gap_deg", "ring_spin": "escape_spin",
               "bricks": "breaker_rows", "seconds": "max_seconds", "fps": "fps", "tiers": "tiers", "shape": "container_shape",
               "gravity": "gravity", "bounce": "bounce", "friction": "friction", "spin": "container_spin",
               "ball_scale": "ball_scale", "drop_interval": "spawn_interval", "bg": "bg_mode", "bg_angle": "bg_angle",

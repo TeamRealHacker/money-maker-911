@@ -1,0 +1,10 @@
+{
+  "mode": "drawer",
+  "theme_name": "Drawer",
+  "hook": "Can it paint the whole picture?",
+  "palette": "Candy",
+  "drawer_target": 97,
+  "drawer_brush": 2.6,
+  "drawer_balls": 1,
+  "tier_emojis": ["🎨", "🖌️", "✏️", "🖍️", "🌈", "✨", "💖", "🌟", "👑"]
+}

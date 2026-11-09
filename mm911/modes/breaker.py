@@ -100,12 +100,15 @@ class BreakerSim:
         self.cx, self.cy = W / 2, (self.arena[1] + self.arena[3]) / 2
         self._build_walls()
         self._build_bricks()
-        for i in range(cfg.breaker_balls):
+        for i in range(self._start_balls()):
             self._add_ball()
         self.space.on_collision(1, 3, begin=self._on_brick)
         self.space.on_collision(1, 2, begin=self._on_wall)
 
     # ---------- setup ----------
+    def _start_balls(self) -> int:
+        return self.cfg.breaker_balls
+
     def _build_walls(self) -> None:
         x0, y0, x1, y1 = self.arena
         body = self.space.static_body

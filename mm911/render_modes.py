@@ -512,6 +512,9 @@ class BreakerRenderer(Renderer):
                 self.layer.blit(self._brick_sprite(b, "n"), (x, y))
             self._drawn[id(b)] = state
 
+    def _under_balls(self, sim, dx: int, dy: int) -> None:
+        """Hook for modes that paint inside the arena (Drawer)."""
+
     def _ball(self, idx: int) -> dict:
         t = idx % max(1, self.cfg.tiers)
         info = self._balls.get(t)
@@ -540,7 +543,7 @@ class BreakerRenderer(Renderer):
         if ctext:
             left = sim.total - sim.broken
             txt = (ctext.replace("{left}", str(left)).replace("{broken}", str(sim.broken))
-                   .replace("{total}", str(sim.total)).replace("{balls}", str(len(sim.balls)))
+                   .replace("{total}", str(sim.total)).replace("{balls}", str(len(sim.balls))).replace("{pct}", str(getattr(sim, "pct", 0)))
                    .replace("{time}", f"{sim.vt:.1f}"))
             pulse = max(0.0, 1 - (sim.vt - sim._last_break_vt) / 0.2) if sim.broken else 0.0
             s = self.f_count.render(txt, True, self._tc(cfg.counter_color))
@@ -551,6 +554,7 @@ class BreakerRenderer(Renderer):
         S.blit(self.arena_layer, (round(self.arena_pos[0] + dx), round(self.arena_pos[1] + dy)))
         self._sync_layer(sim)
         S.blit(self.layer, (dx, dy))
+        self._under_balls(sim, dx, dy)
         # hit flashes + breaking bricks (pop and fade)
         for b in sim.bricks:
             if b.broken_vt is None and sim.vt - b.hit_vt < 0.1:
@@ -632,3 +636,151 @@ class RhythmicRenderer(EscapeRenderer):
 
     def _final_txt(self) -> str:
         return self.cfg.rhythm_final_text
+
+
+def _plasma(w: int, h: int, cols: list, seed: int = 1) -> np.ndarray:
+    """Generated artwork for Drawer when no picture is given: smooth waves through the palette colours."""
+    ys, xs = np.mgrid[0:h, 0:w].astype(np.float32)
+    u, v = xs / max(1, w), ys / max(1, h)
+    rng = np.random.RandomState(seed)
+    f = np.zeros_like(u)
+    for _ in range(4):
+        a, b = rng.uniform(1.5, 4.5, 2)
+        ph = rng.uniform(0, 6.28)
+        f += np.sin(u * a * 3.1 + v * b * 2.3 + ph + np.sin(v * 5 + ph) * 0.6)
+    f = (f / 8.0 + 0.5) % 1.0
+    pal = np.array(cols, np.float32)
+    n = len(pal)
+    pos = f * (n - 1)
+    i0 = np.clip(pos.astype(np.int32), 0, n - 2)
+    t = (pos - i0)[..., None]
+    return (pal[i0] * (1 - t) + pal[i0 + 1] * t).astype(np.uint8)
+
+
+class DrawerRenderer(BreakerRenderer):
+    """Drawer: a hidden picture (dim at first) is painted in by the brushes. The picture lives on one
+    arena-sized canvas; each frame only the new brush stamps are blitted onto it."""
+
+    def __init__(self, cfg, scale: float = 1.0):
+        super().__init__(cfg, scale)
+        self._canvas = None
+        self._sim_id = None
+        self._stamped = 0
+        self._last = None
+        self._full = None
+        self._ghost = None
+        self._masks: dict = {}
+
+    def _picture_rgb(self, w: int, h: int) -> np.ndarray:
+        from PIL import Image
+        cfg = self.cfg
+        pal = [hex_to_rgb(c) for c in self.pal["tiers"]]
+        src = None
+        for path in (cfg.drawer_picture, self.images[0] if self.images else ""):
+            if path:
+                src = sprites.load_source(path)
+                if src is not None:
+                    break
+        if src is None:
+            return _plasma(w, h, pal + [pal[0]], cfg.seed)
+        # cover-fit, smart crop around the subject; transparent pictures sit on generated art
+        k = max(w / src.width, h / src.height)
+        im = sprites.resize_hq(src, (max(w, round(src.width * k)), max(h, round(src.height * k))))
+        fx, fy = sprites.smart_focus(src) if cfg.image_fit == "smart" else (0.5, 0.5)
+        left = int(min(max(fx * im.width - w / 2, 0), im.width - w))
+        top = int(min(max(fy * im.height - h / 2, 0), im.height - h))
+        im = im.crop((left, top, left + w, top + h))
+        base = Image.fromarray(_plasma(w, h, pal + [pal[0]], cfg.seed)).convert("RGBA")
+        base.alpha_composite(im)
+        return np.asarray(base.convert("RGB"))
+
+    def _build_canvas(self) -> None:
+        sc = self.scale
+        x0, y0, x1, y1 = self.arena_px
+        w, h = max(8, int(round(x1 - x0))), max(8, int(round(y1 - y0)))
+        rgb = self._picture_rgb(w, h)
+        rr = min(28 * sc, w / 4)
+        mask = sprites.rounded_rect(w, h, rr, (255, 255, 255))[..., 3]
+        full = np.dstack([rgb, np.clip(mask * 255, 0, 255).astype(np.uint8)]).astype(np.uint8)
+        g = float(self.cfg.drawer_ghost)
+        lum = (rgb[..., 0] * 0.3 + rgb[..., 1] * 0.59 + rgb[..., 2] * 0.11)[..., None]
+        dim = np.repeat(lum, 3, axis=2) * g * 0.8 + rgb * g * 0.2
+        ghost = np.dstack([np.clip(dim, 0, 255), full[..., 3]]).astype(np.uint8)
+
+        def surf(a: np.ndarray) -> pygame.Surface:
+            bgra = np.ascontiguousarray(a[..., [2, 1, 0, 3]])
+            return pygame.image.frombuffer(bgra.tobytes(), (a.shape[1], a.shape[0]), "BGRA").copy()
+        self._full, self._ghost = surf(full), surf(ghost)
+        self._canvas = self._ghost.copy()
+        self._corner = int(math.ceil(rr)) + 1
+        self._corners = []
+        c = self._corner
+        white = np.full((h, w, 4), 255, np.uint8)
+        white[..., 3] = full[..., 3]
+        wsurf = surf(white)
+        for (cx, cy) in ((0, 0), (w - c, 0), (0, h - c), (w - c, h - c)):
+            self._corners.append(((cx, cy), wsurf.subsurface((cx, cy, c, c)).copy()))
+        self._wh = (w, h)
+
+    def _mask_for(self, R: int) -> pygame.Surface:
+        m = self._masks.get(R)
+        if m is None:
+            n = 2 * R + 2
+            a = np.zeros((n, n, 4), np.uint8)
+            a[..., :3] = 255
+            # steep edge: overlapping stamps leave no seams
+            a[..., 3] = np.clip((R + 0.5 - sprites._grid(n, R + 1, R + 1)) * 4 * 255, 0, 255).astype(np.uint8)
+            m = pygame.image.frombuffer(np.ascontiguousarray(a[..., [2, 1, 0, 3]]).tobytes(), (n, n), "BGRA").copy()
+            self._masks[R] = m
+        return m
+
+    def _stamp(self, x: float, y: float, R: int) -> None:
+        w, h = self._wh
+        sx, sy = self.arena_px[0], self.arena_px[1]
+        px, py = int(round(x - sx)) - R - 1, int(round(y - sy)) - R - 1
+        n = 2 * R + 2
+        box = pygame.Rect(px, py, n, n).clip(pygame.Rect(0, 0, w, h))
+        if box.w <= 0 or box.h <= 0:
+            return
+        piece = self._full.subsurface(box).copy()
+        mask = self._mask_for(R).subsurface(pygame.Rect(box.x - px, box.y - py, box.w, box.h))
+        piece.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        self._canvas.blit(piece, box.topleft)
+
+    def _under_balls(self, sim, dx: int, dy: int) -> None:
+        if self._canvas is None:
+            self._build_canvas()
+        if self._sim_id != id(sim) or self._stamped > len(sim.paint_log):
+            self._canvas = self._ghost.copy()
+            self._sim_id, self._stamped, self._last = id(sim), 0, None
+        R = max(2, int(round(sim.brush * self.scale)) + 1)      # +1 px: neighbouring bands overlap, no hairline gaps
+        log = sim.paint_log
+        if self._stamped < len(log):
+            step = max(1.5, R * 0.1)
+            last = self._last if self._stamped else None
+            for x, y in log[self._stamped:]:
+                x, y = x * self.scale, y * self.scale
+                if last is not None:
+                    d = math.hypot(x - last[0], y - last[1])
+                    if d < step * 0.7:
+                        continue
+                    if d < R * 2.5:          # fill in between the 60 Hz positions
+                        n = int(d // step)
+                        for k in range(1, n + 1):
+                            self._stamp(last[0] + (x - last[0]) * k / (n + 1), last[1] + (y - last[1]) * k / (n + 1), R)
+                self._stamp(x, y, R)
+                last = (x, y)
+            self._last = last
+            self._stamped = len(log)
+            c = self._corner
+            for (cx, cy), piece in self._corners:        # keep the rounded arena corners clean
+                self._canvas.blit(piece, (cx, cy), special_flags=pygame.BLEND_RGBA_MULT)
+        out = self._canvas
+        if sim.finished_at is not None:
+            e = min(1.0, max(0.0, (sim.vt - sim.finished_at) / 0.4))
+            if e > 0:
+                out = self._canvas.copy()
+                self._full.set_alpha(int(255 * e))
+                out.blit(self._full, (0, 0))
+                self._full.set_alpha(255)
+        self.surface.blit(out, (round(self.arena_px[0] + dx), round(self.arena_px[1] + dy)))

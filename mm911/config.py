@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_NAME = "Money Maker 911"
 CREDIT = "made by TeamRealHackers"
-VERSION = "0.10.0"
+VERSION = "0.11.0"
 
 # Soft, non-neon palettes. Each: background top, background bottom, container, text, tier colors
 PALETTES: dict[str, dict] = {
@@ -101,14 +101,18 @@ RANDOM_KNOBS = {
 DEFAULT_RANDOM_KNOBS = ["palette", "shape", "hook", "spin", "drop_interval"]
 
 
-MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythmic", "accumulate"]
+MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythmic", "accumulate", "drawer"]
+MODE_HOOKS = {"merge": "Will it reach the Final Form?", "escape": "Can it escape all 8 rings?",
+              "breaker": "Can it break every brick?", "glass": "Will the glass hold?",
+              "ghost": "Can the ghost escape the dark?", "rhythmic": "Can the ball play the whole song?",
+              "accumulate": "Can it reach 100 balls?", "drawer": "Can it paint the whole picture?"}
 BREAKER_PATTERNS = ["full", "pyramid", "diamond", "heart", "checker", "stripes"]
 
 
 @dataclass
 class MergeConfig:
     """Settings for every mode (the name stays for old presets / imports). mode picks the game."""
-    mode: str = "merge"                # merge | escape | breaker | glass | ghost | rhythmic | accumulate
+    mode: str = "merge"                # merge | escape | breaker | glass | ghost | rhythmic | accumulate | drawer
     # video
     width: int = 1080
     height: int = 1920
@@ -318,6 +322,13 @@ class MergeConfig:
     accumulate_every: int = 6          # +1 ball every N wall hits
     accumulate_counter_text: str = "{broken} / {total}"
     accumulate_final_text: str = "{total} BALLS!"
+    drawer_target: int = 97            # % of the arena to paint
+    drawer_brush: float = 2.4          # brush radius = ball radius x this
+    drawer_balls: int = 1
+    drawer_picture: str = ""           # picture to reveal ("" = your first Tiers picture, else generated art)
+    drawer_ghost: float = 0.35         # brightness of the unpainted preview of the picture (0 = black)
+    drawer_counter_text: str = "{pct}%"
+    drawer_final_text: str = "PAINTED!"
     breaker_pitch_low: float = -5.0    # first brick
     breaker_pitch_high: float = 14.0   # last brick
     # Glass Rush (also uses the escape_* rings / ball / trail / glow settings)
@@ -481,6 +492,8 @@ class MergeConfig:
     def clamp(self) -> "MergeConfig":
         """Keep values in a range the engine can handle (presets / GUI / batch can send anything)."""
         self.tiers = max(MIN_TIERS, min(MAX_TIERS, int(self.tiers)))
+        if self.mode != "merge" and self.hook == MODE_HOOKS["merge"]:    # the untouched default hook follows the mode
+            self.hook = MODE_HOOKS.get(self.mode, self.hook)
         self.fps = max(15, min(120, int(self.fps)))
         self.spawn_interval = max(0.03, float(self.spawn_interval))
         self.ball_scale = max(0.2, min(4.0, float(self.ball_scale)))
@@ -513,6 +526,10 @@ class MergeConfig:
         self.glass_speed_gain = max(0.0, min(0.3, float(self.glass_speed_gain)))
         self.accumulate_target = max(2, min(500, int(self.accumulate_target)))
         self.accumulate_every = max(1, min(40, int(self.accumulate_every)))
+        self.drawer_target = max(10, min(100, int(self.drawer_target)))
+        self.drawer_brush = max(2.0, min(6.0, float(self.drawer_brush)))
+        self.drawer_balls = max(1, min(6, int(self.drawer_balls)))
+        self.drawer_ghost = max(0.0, min(0.8, float(self.drawer_ghost)))
         if self.breaker_pattern not in BREAKER_PATTERNS: self.breaker_pattern = "full"
         if self.dedupe_action not in ("skip", "flag"): self.dedupe_action = "skip"
         self.dedupe_threshold = max(0.5, min(1.0, float(self.dedupe_threshold)))

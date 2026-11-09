@@ -11,6 +11,7 @@ MODES = {
     "ghost": "👻 Ghost Escape",
     "rhythmic": "🎵 Rhythmic",
     "accumulate": "➕ Accumulate",
+    "drawer": "✏️ Drawer",
 }
 
 
@@ -25,6 +26,9 @@ def sim_for(cfg):
     if m == "accumulate":
         from .accumulate import AccumulateSim
         return AccumulateSim(cfg)
+    if m == "drawer":
+        from .drawer import DrawerSim
+        return DrawerSim(cfg)
     if m == "ghost":
         from .ghost import GhostSim
         return GhostSim(cfg)
@@ -49,6 +53,9 @@ def renderer_for(cfg, scale: float = 1.0):
     if m == "accumulate":
         from ..render_modes import BreakerRenderer
         return BreakerRenderer(cfg, scale)
+    if m == "drawer":
+        from ..render_modes import DrawerRenderer
+        return DrawerRenderer(cfg, scale)
     if m == "ghost":
         from ..render_modes import GhostRenderer
         return GhostRenderer(cfg, scale)

@@ -5,3 +5,5 @@ dist/
 output/
 *.spec
 .venv/
+.pytest_cache/
+__pycache__/
