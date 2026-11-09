@@ -18,6 +18,8 @@ MODES = {
     "plinko": "🎯 Plinko",
     "race": "🏁 Race",
     "flip": "🔄 Gravity Flip",
+    "snake": "🐍 Snake Grow",
+    "chain": "💥 Chain Reaction",
 }
 
 
@@ -32,6 +34,12 @@ def sim_for(cfg):
     if m == "accumulate":
         from .accumulate import AccumulateSim
         return AccumulateSim(cfg)
+    if m == "chain":
+        from .chain import ChainSim
+        return ChainSim(cfg)
+    if m == "snake":
+        from .snake import SnakeSim
+        return SnakeSim(cfg)
     if m == "flip":
         from .flip import FlipSim
         return FlipSim(cfg)
@@ -74,12 +82,18 @@ def renderer_for(cfg, scale: float = 1.0):
     if m == "breaker":
         from ..render_modes import BreakerRenderer
         return BreakerRenderer(cfg, scale)
-    if m == "flip":
-        from ..render_modes import BreakerRenderer
-        return BreakerRenderer(cfg, scale)
     if m == "accumulate":
         from ..render_modes import BreakerRenderer
         return BreakerRenderer(cfg, scale)
+    if m == "chain":
+        from ..render_modes import ChainRenderer
+        return ChainRenderer(cfg, scale)
+    if m == "snake":
+        from ..render_modes import SnakeRenderer
+        return SnakeRenderer(cfg, scale)
+    if m == "flip":
+        from ..render_modes import FlipRenderer
+        return FlipRenderer(cfg, scale)
     if m == "race":
         from ..render_modes import RaceRenderer
         return RaceRenderer(cfg, scale)

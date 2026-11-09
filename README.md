@@ -78,8 +78,10 @@
 | ⚔️ Weapon Battle (v0.14.0) | ✅ Fighters swing swords, spears and maces; only weapons hurt |
 | 🎯 Plinko (v0.15.0) | ✅ Balls fall through pegs into point slots, notes on every peg, jackpot at the target |
 | 🏁 Race (v0.16.0) | ✅ 2-12 of your pictures race down a field of pegs, first across the chequered line wins<br><img src="docs/demo-race.gif" width="180"> |
-| 🔄 Gravity Flip (v0.17.0) | ✅ Balls tumble while gravity flips down / up / left / right, each flip a higher note, GRAVITY BROKEN! at the end<br><img src="docs/demo-flip.gif" width="180"> |
-| 🎵 Other 2D modes | 🔜 One by one (Snake Grow, Chain Reaction... next) |
+| 🔄 Gravity Flip (v0.17.0) | ✅ Pictures tumble in a box, gravity flips every few seconds (up/down, spin, random), a higher note each flip |
+| 🐍 Snake Grow (v0.18.0) | ✅ A snake of your pictures eats dots, one picture and one higher note per segment |
+| 💥 Chain Reaction (v0.19.0) | ✅ One picture pops, its shockwave pops the next, a higher note per pop |
+| 🎵 Other 2D modes | 🔜 One by one (Countdown Survival, Color Sort, Voting... next) |
 | ☁️ Colab rendering | 🔜 Planned |
 | 🔵 3D modes | 🔜 Planned |
 
