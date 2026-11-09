@@ -43,9 +43,10 @@
 - **2026-11-09** · 🏁 Race (v0.16.0): `mode: race`, 2-12 pictures race down a peg field to a chequered finish line, first across wins (WINNER! + slow-mo, ~8 s); settings racers / rows / size / peg size / gravity; preset `race`, batch, CI smoke, tests
 - **2026-11-09** · 🔄 Gravity Flip (v0.17.0): `mode: flip`, 1-80 pictures tumble in a box (real physics, they bump each other), every N seconds gravity flips (up/down, spin round all four walls, or random) and they all fly to the other side; chevrons in the box show where "down" is and flash on every flip, each flip plays a higher note, quiet pitched bumps, FLIPPED! after the target flips (default 14 flips, ~20 s). Settings: pictures, flips, seconds between flips, pattern, picture size, gravity, counter / ending text. Preset `gravity_flip`, batch (pattern / pace vary), GUI section, CI smoke, `tests/test_flip.py`. Also: `.pytest_cache` untracked for good.
 - **2026-11-09** · 🐍 Snake Grow (v0.18.0): `mode: snake`, a snake made of your Tiers pictures (head = picture 1, then 2, 3 ... one per segment) steers to a dot (shown as the next picture), every dot eaten adds a segment and a higher note, with a turn rate limit, wall avoidance and tighter turns when it circles the food so every seed finishes (6/6 seeds in 21-24 s for length 30). Settings: length, speed, turning, segment size, counter / ending text. Preset `snake_grow`, batch, GUI section, CI smoke, `tests/test_snake.py`.
+- **2026-11-09** · 💥 Chain Reaction (v0.19.0): `mode: chain`, 70 pictures drift around the arena (they pass through each other); one pops, its shockwave ring pops every picture it touches, each pop a higher note; when a chain dies out a spark pops the nearest survivor so every seed ends with everything popped (BOOM!, 12-22 s). Settings: pictures, shockwave reach, drift speed, picture size, counter / ending text. Preset `chain_reaction`, batch, GUI section, CI smoke, `tests/test_chain.py`.
 
 ## 🔜 TODO (in order)
-1. New 2D: Chain Reaction, Countdown Survival, Color Sort, Voting
+1. New 2D: Countdown Survival, Color Sort, Voting
 2. ☁️ Colab rendering (google-colab-cli via WSL2)
 3. 3D modes: Wave, Marble Run, Ball Crush, Jelly, Cut Count, Magnet, then Hydraulic Press, Liquid Pour, Shatter, Coin Pusher
 4. YouTube upload queue

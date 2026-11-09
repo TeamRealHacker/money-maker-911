@@ -18,7 +18,7 @@ EMOJI = {"Fruit": "🍉", "Animal": "🐾", "Planet": "🪐", "Food": "🍔", "G
 
 
 MODE_WORD = {"merge": ("Merge", "#merge"), "escape": ("Escape", "#escape #rings"),
-             "breaker": ("Breaker", "#breaker #bricks"), "glass": ("Glass Rush", "#glass #asmr"), "ghost": ("Ghost Escape", "#ghost #spooky"), "rhythmic": ("Rhythmic", "#music #satisfying"), "accumulate": ("Accumulate", "#satisfying #oddlysatisfying"), "drawer": ("Drawer", "#painting #satisfying #asmr"), "tower": ("Glass Tower", "#glass #asmr #satisfying"), "battle": ("Flag Battle", "#battle #flags #countryballs"), "weapon": ("Weapon Battle", "#battle #weapons #satisfying"), "plinko": ("Plinko", "#plinko #satisfying #oddlysatisfying"), "race": ("Race", "#race #marblerace #satisfying"), "flip": ("Gravity Flip", "#gravity #satisfying #oddlysatisfying"), "snake": ("Snake Grow", "#snake #satisfying #oddlysatisfying")}
+             "breaker": ("Breaker", "#breaker #bricks"), "glass": ("Glass Rush", "#glass #asmr"), "ghost": ("Ghost Escape", "#ghost #spooky"), "rhythmic": ("Rhythmic", "#music #satisfying"), "accumulate": ("Accumulate", "#satisfying #oddlysatisfying"), "drawer": ("Drawer", "#painting #satisfying #asmr"), "tower": ("Glass Tower", "#glass #asmr #satisfying"), "battle": ("Flag Battle", "#battle #flags #countryballs"), "weapon": ("Weapon Battle", "#battle #weapons #satisfying"), "plinko": ("Plinko", "#plinko #satisfying #oddlysatisfying"), "race": ("Race", "#race #marblerace #satisfying"), "flip": ("Gravity Flip", "#gravity #satisfying #oddlysatisfying"), "snake": ("Snake Grow", "#snake #satisfying #oddlysatisfying"), "chain": ("Chain Reaction", "#chainreaction #satisfying #asmr")}
 
 
 def make_title(cfg: MergeConfig) -> str:
@@ -31,6 +31,8 @@ def make_title(cfg: MergeConfig) -> str:
         return f"Can the ghost escape the dark? 👻 {cfg.hook} #shorts"
     if cfg.mode == "glass":
         return f"Will the glass hold? 🥛 {cfg.hook} #shorts"
+    if cfg.mode == "chain":
+        return f"{cfg.chain_balls} pictures, one chain reaction 💥 {cfg.hook} #shorts"
     if cfg.mode == "snake":
         return f"Snake grows to {cfg.snake_target} 🐍 {cfg.hook} #shorts"
     if cfg.mode == "flip":
@@ -144,6 +146,13 @@ def vary(base: MergeConfig, i: int, rng: random.Random, randomize: bool) -> Merg
             ch["escape_alternate"] = rng.random() < 0.7
         if "drop_interval" in knobs:
             ch["glass_hp"] = max(2, min(10, base.glass_hp + rng.choice([-1, 0, 1])))
+    elif base.mode == "chain":
+        for k in ("container_shape", "container_spin", "spawn_interval"):
+            ch.pop(k, None)
+        if "shape" in knobs:
+            ch["chain_balls"] = max(15, base.chain_balls + rng.choice([-10, 0, 10]))
+        if "spin" in knobs:
+            ch["chain_radius"] = round(rng.uniform(140, 200))
     elif base.mode == "snake":
         for k in ("container_shape", "container_spin", "spawn_interval"):
             ch.pop(k, None)

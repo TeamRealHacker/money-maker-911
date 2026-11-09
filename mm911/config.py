@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_NAME = "Money Maker 911"
 CREDIT = "made by TeamRealHackers"
-VERSION = "0.18.0"
+VERSION = "0.19.0"
 
 # Soft, non-neon palettes. Each: background top, background bottom, container, text, tier colors
 PALETTES: dict[str, dict] = {
@@ -101,7 +101,7 @@ RANDOM_KNOBS = {
 DEFAULT_RANDOM_KNOBS = ["palette", "shape", "hook", "spin", "drop_interval"]
 
 
-MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythmic", "accumulate", "drawer", "tower", "battle", "weapon", "plinko", "race", "flip", "snake"]
+MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythmic", "accumulate", "drawer", "tower", "battle", "weapon", "plinko", "race", "flip", "snake", "chain"]
 FLIP_PATTERNS = ["updown", "spin", "random"]
 WEAPON_TYPES = ["sword", "spear", "mace", "mixed"]
 MODE_HOOKS = {"merge": "Will it reach the Final Form?", "escape": "Can it escape all 8 rings?",
@@ -110,14 +110,15 @@ MODE_HOOKS = {"merge": "Will it reach the Final Form?", "escape": "Can it escape
               "accumulate": "Can it reach 100 balls?", "drawer": "Can it paint the whole picture?",
               "tower": "How many floors will break?", "battle": "Who wins the battle?",
               "weapon": "Who survives?", "plinko": "Can it reach the jackpot?", "race": "Who wins the race?",
-              "flip": "Survive every flip?", "snake": "How long can it grow?"}
+              "flip": "Survive every flip?", "snake": "How long can it grow?",
+              "chain": "How many will pop?"}
 BREAKER_PATTERNS = ["full", "pyramid", "diamond", "heart", "checker", "stripes"]
 
 
 @dataclass
 class MergeConfig:
     """Settings for every mode (the name stays for old presets / imports). mode picks the game."""
-    mode: str = "merge"                # merge | escape | breaker | glass | ghost | rhythmic | accumulate | drawer | tower | battle | weapon | plinko | race | flip | snake
+    mode: str = "merge"                # merge | escape | breaker | glass | ghost | rhythmic | accumulate | drawer | tower | battle | weapon | plinko | race | flip | snake | chain
     # video
     width: int = 1080
     height: int = 1920
@@ -374,6 +375,12 @@ class MergeConfig:
     snake_radius: float = 26.0
     snake_counter_text: str = "LENGTH {broken} / {total}"
     snake_final_text: str = "{total} LONG!"
+    chain_balls: int = 70              # pictures drifting around
+    chain_radius: float = 120.0        # shockwave reach (px)
+    chain_speed: float = 260.0
+    chain_ball_radius: float = 24.0
+    chain_counter_text: str = "{broken} / {total} POPPED"
+    chain_final_text: str = "BOOM!"
     weapon_type: str = "mixed"        # sword | spear | mace | mixed (Weapon Battle)
     weapon_length: float = 1.0
     weapon_spin: float = 1.0
@@ -610,6 +617,10 @@ class MergeConfig:
         self.snake_speed = max(200.0, min(3000.0, float(self.snake_speed)))
         self.snake_turn = max(1.5, min(14.0, float(self.snake_turn)))
         self.snake_radius = max(8.0, min(60.0, float(self.snake_radius)))
+        self.chain_balls = max(2, min(300, int(self.chain_balls)))
+        self.chain_radius = max(60.0, min(500.0, float(self.chain_radius)))
+        self.chain_speed = max(60.0, min(1500.0, float(self.chain_speed)))
+        self.chain_ball_radius = max(8.0, min(60.0, float(self.chain_ball_radius)))
         if self.weapon_type not in WEAPON_TYPES: self.weapon_type = "mixed"
         self.weapon_length = max(0.5, min(2.0, float(self.weapon_length)))
         self.weapon_spin = max(0.2, min(3.0, float(self.weapon_spin)))

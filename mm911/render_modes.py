@@ -1110,3 +1110,28 @@ class SnakeRenderer(BreakerRenderer):
         k = (0.3 + 0.7 * k + 0.07 * math.sin(sim.vt * 7)) * 1.3
         spr = pygame.transform.rotozoom(info["sprite"], 0, max(0.1, k))
         S.blit(spr, (round(fx * sc + dx - spr.get_width() / 2), round(fy * sc + dy - spr.get_height() / 2)))
+
+
+class ChainRenderer(BreakerRenderer):
+    """Chain Reaction: drifting pictures plus expanding shockwave rings."""
+
+    def _radius(self) -> float:
+        return self.cfg.chain_ball_radius
+
+    def _under_balls(self, sim, dx: int, dy: int) -> None:
+        sc, S = self.scale, self.surface
+        for wx, wy, born, tier in sim.waves:
+            age = sim.vt - born
+            if age >= 0.5:
+                continue
+            R = int(sim.wave_radius(age) * sc)
+            if R < 2:
+                continue
+            fade = 1 - age / 0.5
+            col = self._tier_color(tier)
+            th = max(2, int(10 * sc * fade))
+            size = 2 * R + 4
+            s = pygame.Surface((size, size), pygame.SRCALPHA)
+            pygame.draw.circle(s, (*col, int(70 * fade)), (size // 2, size // 2), R)
+            pygame.draw.circle(s, (*col, int(210 * fade)), (size // 2, size // 2), R, th)
+            S.blit(s, (round(wx * sc + dx - size / 2), round(wy * sc + dy - size / 2)))
