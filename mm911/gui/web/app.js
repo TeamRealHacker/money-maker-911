@@ -2,9 +2,10 @@ const MODES = [
   ["🍉 Merge Evolution", "merge"], ["🌀 Escape", "escape"], ["🧱 Breaker", "breaker"], ["🥛 Glass Rush", "glass"], ["👻 Ghost Escape", "ghost"], ["🎵 Rhythmic", "rhythmic"], ["➕ Accumulate", "accumulate"], ["✏️ Drawer", "drawer"], ["🏢 Glass Tower", "tower"], ["🚩 Flag Battle", "battle"],
   ["⚔️ Weapon Battle", "weapon"],
   ["🏁 Race", "race"], ["🎯 Plinko", "plinko"], ["🌊 Wave 3D"], ["🎢 Marble Run 3D"], ["🧲 Magnet 3D"],
+  ["🔄 Gravity Flip", "flip"],
 ];
 const MODE_HOOKS = { merge: "Will it reach the Final Form?", escape: "Can it escape all 8 rings?",
-  breaker: "Can it break every brick?", glass: "Will the glass hold?", ghost: "Can the ghost escape the dark?", rhythmic: "Can the ball play the whole song?", accumulate: "Can it reach 100 balls?", drawer: "Can it paint the whole picture?", tower: "How many floors will break?", battle: "Who wins the battle?", weapon: "Who survives?", plinko: "Can it reach the jackpot?", race: "Who wins the race?" };
+  breaker: "Can it break every brick?", glass: "Will the glass hold?", ghost: "Can the ghost escape the dark?", rhythmic: "Can the ball play the whole song?", accumulate: "Can it reach 100 balls?", drawer: "Can it paint the whole picture?", tower: "How many floors will break?", battle: "Who wins the battle?", weapon: "Who survives?", plinko: "Can it reach the jackpot?", race: "Who wins the race?", flip: "Survive every flip?" };
 const $ = (s) => document.querySelector(s);
 let state = {};
 let booted = false;
@@ -369,7 +370,7 @@ function fill() {
   document.querySelectorAll("#modes a[data-mode]").forEach((a) => a.classList.toggle("on", a.dataset.mode === mode));
   const mt = MODES.find((m) => m[1] === mode);
   if ($("#modetitle") && mt) $("#modetitle").textContent = mt[0].replace(/^\S+\s/, "");
-  if ($("#winslabel")) $("#winslabel").textContent = { merge: "Only Final Form wins", escape: "Only full escapes", breaker: "Only cleared walls", glass: "Only fully shattered", ghost: "Only full escapes", rhythmic: "Only full escapes", accumulate: "Only reached target", drawer: "Only fully painted", tower: "Only fully shattered", battle: "Only a clear winner", weapon: "Only a clear winner", plinko: "Only reached the jackpot", race: "Only a clear winner" }[mode] || "Only wins";
+  if ($("#winslabel")) $("#winslabel").textContent = { merge: "Only Final Form wins", escape: "Only full escapes", breaker: "Only cleared walls", glass: "Only fully shattered", ghost: "Only full escapes", rhythmic: "Only full escapes", accumulate: "Only reached target", drawer: "Only fully painted", tower: "Only fully shattered", battle: "Only a clear winner", weapon: "Only a clear winner", plinko: "Only reached the jackpot", race: "Only a clear winner", flip: "Only completed flips" }[mode] || "Only wins";
   document.querySelectorAll("[data-k]").forEach((el) => {
     if (el === document.activeElement && el.type === "text") return;   // don't fight the user's typing
     const v = c[el.dataset.k];

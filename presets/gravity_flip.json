@@ -1,0 +1,9 @@
+{
+  "mode": "flip",
+  "theme_name": "Gravity Flip",
+  "hook": "Survive every flip?",
+  "palette": "Candy",
+  "flip_balls": 14,
+  "flip_count": 14,
+  "tier_emojis": ["🟡", "🔴", "🟢", "🔵", "🟣", "🟠", "⚪", "🟤", "⚫"]
+}

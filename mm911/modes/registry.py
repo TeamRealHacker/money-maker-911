@@ -17,6 +17,7 @@ MODES = {
     "weapon": "⚔️ Weapon Battle",
     "plinko": "🎯 Plinko",
     "race": "🏁 Race",
+    "flip": "🔄 Gravity Flip",
 }
 
 
@@ -31,6 +32,9 @@ def sim_for(cfg):
     if m == "accumulate":
         from .accumulate import AccumulateSim
         return AccumulateSim(cfg)
+    if m == "flip":
+        from .flip import FlipSim
+        return FlipSim(cfg)
     if m == "race":
         from .race import RaceSim
         return RaceSim(cfg)
@@ -73,6 +77,9 @@ def renderer_for(cfg, scale: float = 1.0):
     if m == "accumulate":
         from ..render_modes import BreakerRenderer
         return BreakerRenderer(cfg, scale)
+    if m == "flip":
+        from ..render_modes import FlipRenderer
+        return FlipRenderer(cfg, scale)
     if m == "race":
         from ..render_modes import RaceRenderer
         return RaceRenderer(cfg, scale)

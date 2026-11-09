@@ -248,6 +248,17 @@
     <div class="row col"><span>Ending text</span><input type="text" data-k="plinko_final_text"></div>
     <div class="hint">Balls wear your Tiers pictures. The edge slots pay the most.</div>
   </details>
+  <details open data-modes="flip"><summary>🔄 Gravity Flip</summary>
+    <div class="row"><span>Pictures in the box</span><input type="range" data-k="flip_balls" min="1" max="60"></div>
+    <div class="row"><span>Flips to reach</span><input type="range" data-k="flip_count" min="2" max="60"></div>
+    <div class="row"><span>Seconds between flips</span><input type="range" data-k="flip_every" min="0.5" max="6" step="0.1"></div>
+    <div class="row"><span>Flip pattern</span><select data-k="flip_pattern"><option value="updown">Up / down</option><option value="spin">Spin round the walls</option><option value="random">Random</option></select></div>
+    <div class="row"><span>Picture size</span><input type="range" data-k="flip_ball_radius" min="10" max="80"></div>
+    <div class="row"><span>Gravity</span><input type="range" data-k="flip_gravity" min="800" max="5000" step="50"></div>
+    <div class="row col"><span>Counter <em class="hint">{broken} {total}</em></span><input type="text" data-k="flip_counter_text"></div>
+    <div class="row col"><span>Ending text</span><input type="text" data-k="flip_final_text"></div>
+    <div class="hint">Pictures wear your Tiers pictures.</div>
+  </details>
   <details open data-modes="race"><summary>🏁 Race</summary>
     <div class="row"><span>Racers (pictures)</span><input type="range" data-k="race_racers" min="2" max="12"></div>
     <div class="row"><span>Rows of pegs</span><input type="range" data-k="race_rows" min="4" max="18"></div>

@@ -1050,3 +1050,45 @@ class RaceRenderer(PlinkoRenderer):
                     pygame.draw.rect(S, col, (round(x0 + i * sq + dx), round(fy + j * sq + dy), w, sq))
         ts = self.f_slot.render("FINISH", True, self.cont_col)
         S.blit(ts, (round((x0 + x1) / 2 - ts.get_width() / 2 + dx), round(fy + 2 * sq + 10 * sc + dy)))
+
+
+class FlipRenderer(BreakerRenderer):
+    """Gravity Flip: the Breaker arena plus big chevrons that show where "down" is, flashing on every flip."""
+
+    def __init__(self, cfg, scale: float = 1.0):
+        super().__init__(cfg, scale)
+        self._chev: dict = {}
+
+    def _radius(self) -> float:
+        return self.cfg.flip_ball_radius
+
+    def _chevron(self, d: str, size: int, bright: float) -> pygame.Surface:
+        key = (d, size, round(bright, 1))
+        s = self._chev.get(key)
+        if s is not None:
+            return s
+        gx, gy = {"down": (0, 1), "up": (0, -1), "right": (1, 0), "left": (-1, 0)}[d]
+        pad = size
+        s = pygame.Surface((2 * size + 2 * pad, 2 * size + 2 * pad), pygame.SRCALPHA)
+        cx = cy = s.get_width() / 2
+        a = int(34 + 120 * bright)
+        th = max(3, int(size * 0.16))
+        for k in range(3):                       # three chevrons marching in the gravity direction
+            off = (k - 1) * size * 0.62
+            px, py = -gy, gx                     # perpendicular
+            tip = (cx + gx * (off + size * 0.35), cy + gy * (off + size * 0.35))
+            l = (cx + gx * (off - size * 0.25) + px * size * 0.7, cy + gy * (off - size * 0.25) + py * size * 0.7)
+            r = (cx + gx * (off - size * 0.25) - px * size * 0.7, cy + gy * (off - size * 0.25) - py * size * 0.7)
+            col = (*self.cont_col[:3], int(a * (0.45 + 0.28 * k)))
+            pygame.draw.lines(s, col, False, [l, tip, r], th)
+        if len(self._chev) > 80:
+            self._chev.clear()
+        self._chev[key] = s
+        return s
+
+    def _under_balls(self, sim, dx: int, dy: int) -> None:
+        sc, S = self.scale, self.surface
+        x0, y0, x1, y1 = (v * sc for v in sim.arena)
+        size = int(min(x1 - x0, y1 - y0) * 0.17)
+        spr = self._chevron(sim.dir, size, max(0.0, 1 - (sim.vt - sim.flip_vt) / 0.5))
+        S.blit(spr, (round((x0 + x1) / 2 - spr.get_width() / 2 + dx), round((y0 + y1) / 2 - spr.get_height() / 2 + dy)))
