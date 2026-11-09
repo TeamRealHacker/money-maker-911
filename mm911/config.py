@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_NAME = "Money Maker 911"
 CREDIT = "made by TeamRealHackers"
-VERSION = "0.14.0"
+VERSION = "0.15.0"
 
 # Soft, non-neon palettes. Each: background top, background bottom, container, text, tier colors
 PALETTES: dict[str, dict] = {
@@ -101,21 +101,21 @@ RANDOM_KNOBS = {
 DEFAULT_RANDOM_KNOBS = ["palette", "shape", "hook", "spin", "drop_interval"]
 
 
-MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythmic", "accumulate", "drawer", "tower", "battle", "weapon"]
+MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythmic", "accumulate", "drawer", "tower", "battle", "weapon", "plinko"]
 WEAPON_TYPES = ["sword", "spear", "mace", "mixed"]
 MODE_HOOKS = {"merge": "Will it reach the Final Form?", "escape": "Can it escape all 8 rings?",
               "breaker": "Can it break every brick?", "glass": "Will the glass hold?",
               "ghost": "Can the ghost escape the dark?", "rhythmic": "Can the ball play the whole song?",
               "accumulate": "Can it reach 100 balls?", "drawer": "Can it paint the whole picture?",
               "tower": "How many floors will break?", "battle": "Who wins the battle?",
-              "weapon": "Who survives?"}
+              "weapon": "Who survives?", "plinko": "Can it reach the jackpot?"}
 BREAKER_PATTERNS = ["full", "pyramid", "diamond", "heart", "checker", "stripes"]
 
 
 @dataclass
 class MergeConfig:
     """Settings for every mode (the name stays for old presets / imports). mode picks the game."""
-    mode: str = "merge"                # merge | escape | breaker | glass | ghost | rhythmic | accumulate | drawer | tower | battle | weapon
+    mode: str = "merge"                # merge | escape | breaker | glass | ghost | rhythmic | accumulate | drawer | tower | battle | weapon | plinko
     # video
     width: int = 1080
     height: int = 1920
@@ -341,6 +341,16 @@ class MergeConfig:
     tower_counter_text: str = "{left} floors left"
     tower_final_text: str = "TOWER DOWN!"
     battle_fighters: int = 0           # 0 = one fighter per form (Tiers picture)
+    plinko_target: int = 100           # points to reach
+    plinko_balls: int = 120            # balls available
+    plinko_interval: float = 0.35      # seconds between balls
+    plinko_rows: int = 9
+    plinko_slots: int = 7
+    plinko_peg_radius: float = 9.0
+    plinko_ball_radius: float = 23.0
+    plinko_gravity: float = 1900.0
+    plinko_counter_text: str = "{score} / {total}"
+    plinko_final_text: str = "JACKPOT!"
     weapon_type: str = "mixed"        # sword | spear | mace | mixed (Weapon Battle)
     weapon_length: float = 1.0
     weapon_spin: float = 1.0
@@ -554,6 +564,14 @@ class MergeConfig:
         self.tower_floor_height = max(8.0, min(80.0, float(self.tower_floor_height)))
         self.battle_fighters = max(0, min(30, int(self.battle_fighters)))
         if self.battle_fighters == 1: self.battle_fighters = 2
+        self.plinko_target = max(5, min(2000, int(self.plinko_target)))
+        self.plinko_balls = max(1, min(1000, int(self.plinko_balls)))
+        self.plinko_interval = max(0.05, min(5.0, float(self.plinko_interval)))
+        self.plinko_rows = max(3, min(16, int(self.plinko_rows)))
+        self.plinko_slots = max(3, min(11, int(self.plinko_slots)))
+        self.plinko_peg_radius = max(3.0, min(30.0, float(self.plinko_peg_radius)))
+        self.plinko_ball_radius = max(8.0, min(40.0, float(self.plinko_ball_radius)))
+        self.plinko_gravity = max(400.0, min(5000.0, float(self.plinko_gravity)))
         if self.weapon_type not in WEAPON_TYPES: self.weapon_type = "mixed"
         self.weapon_length = max(0.5, min(2.0, float(self.weapon_length)))
         self.weapon_spin = max(0.2, min(3.0, float(self.weapon_spin)))

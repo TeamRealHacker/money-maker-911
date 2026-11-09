@@ -552,6 +552,7 @@ class BreakerRenderer(Renderer):
             left = sim.total - sim.broken
             txt = (ctext.replace("{left}", str(left)).replace("{broken}", str(sim.broken))
                    .replace("{total}", str(sim.total)).replace("{balls}", str(len(sim.balls))).replace("{pct}", str(getattr(sim, "pct", 0)))
+                   .replace("{score}", str(int(round(getattr(sim, "score", 0)))))
                    .replace("{time}", f"{sim.vt:.1f}"))
             pulse = max(0.0, 1 - (sim.vt - sim._last_break_vt) / 0.2) if sim.broken else 0.0
             s = self.f_count.render(txt, True, self._tc(cfg.counter_color))
@@ -950,3 +951,76 @@ class WeaponRenderer(BattleRenderer):
             rot = pygame.transform.rotozoom(spr, -math.degrees(ball.angle), k)
             S.blit(rot, (round(p.x * sc + sx - rot.get_width() / 2), round(p.y * sc + sy - rot.get_height() / 2)))
         super()._over_balls(sim, sx, sy)
+
+
+class PlinkoRenderer(BreakerRenderer):
+    """Plinko: pegs (flash when hit), slot dividers with their point values, +points popups."""
+
+    def __init__(self, cfg, scale: float = 1.0):
+        super().__init__(cfg, scale)
+        self._pegs_layer = None
+        self._peg_spr: dict = {}
+        self.f_slot = _font(cfg, max(10, int(40 * scale)))
+        self.f_pop = _font(cfg, max(10, int(54 * scale)))
+
+    def _radius(self) -> float:
+        return self.cfg.plinko_ball_radius
+
+    def _peg(self, r: float, hot: float):
+        key = (round(r, 1), round(hot, 1))
+        s = self._peg_spr.get(key)
+        if s is None:
+            R = r + 3
+            col = tuple(int(self.cont_col[i] + (255 - self.cont_col[i]) * hot) for i in range(3))
+            n = int(2 * R + 4)
+            g = sprites._grid(n, n / 2, n / 2)
+            base = sprites.solid(sprites.disc(g, r), col, 1.0)
+            if hot > 0:
+                glow = sprites.solid(sprites.disc(g, r + 3 * self.scale * hot), (255, 255, 255), 0.35 * hot)
+                sprites.over(glow, base, 0, 0)
+                base = glow
+            s = sprites.to_surface(base)
+            self._peg_spr[key] = s
+        return s
+
+    def _under_balls(self, sim, dx: int, dy: int) -> None:
+        sc, S = self.scale, self.surface
+        x0, y0, x1, y1 = (v * sc for v in sim.arena)
+        pr = sim.peg_r * sc
+        for x, y, row, shape in sim.pegs:
+            age = sim.vt - sim.peg_hit.get(id(shape), -9.0)
+            hot = max(0.0, 1 - age / 0.25)
+            spr = self._peg(pr, round(hot, 1))
+            S.blit(spr, (round(x * sc - spr.get_width() / 2 + dx), round(y * sc - spr.get_height() / 2 + dy)))
+        n = self.cfg.plinko_slots
+        top = sim.slot_top * sc
+        for i in range(n):
+            xa = x0 + i * sim.slot_w * sc
+            age = sim.vt - sim.slot_hit.get(i, -9.0)
+            hot = max(0.0, 1 - age / 0.35)
+            col = self._tier_color(min(self.cfg.tiers - 1, i))
+            band = pygame.Surface((int(sim.slot_w * sc) - 4, int(y1 - top)), pygame.SRCALPHA)
+            band.fill((*col, int(60 + 120 * hot)))
+            S.blit(band, (round(xa + 2 + dx), round(top + dy)))
+            txt = f"x{sim.values[i]:g}"
+            ts = self.f_slot.render(txt, True, _shade(col, 0.5) if hot < 0.3 else (255, 255, 255))
+            S.blit(ts, (round(xa + sim.slot_w * sc / 2 - ts.get_width() / 2 + dx), round(y1 - ts.get_height() - 6 * sc + dy)))
+            if i:
+                pygame.draw.line(S, self.cont_col, (xa + dx, top + dy), (xa + dx, y1 + dy), max(2, int(5 * sc)))
+
+    def _over_balls(self, sim, sx: float, sy: float) -> None:
+        sc, S = self.scale, self.surface
+        for pu in sim.popups:
+            age = (sim.vt - pu.born) / pu.life
+            pop = min(1.0, age / 0.15)
+            s = self.f_pop.render(pu.text, True, (255, 255, 255))
+            o = self.f_pop.render(pu.text, True, _shade(self._tier_color(pu.tier), 0.45))
+            k = 0.6 + 0.5 * pop - 0.1 * pop * pop
+            s, o = pygame.transform.rotozoom(s, 0, k), pygame.transform.rotozoom(o, 0, k)
+            a = int(255 * max(0.0, 1 - max(0.0, age - 0.5) / 0.5))
+            s.set_alpha(a); o.set_alpha(a)
+            x = pu.x * sc + sx - s.get_width() / 2
+            y_ = pu.y * sc + sy - s.get_height() / 2 - age * 140 * sc
+            for ddx, ddy in ((-3, 0), (3, 0), (0, -3), (0, 3)):
+                S.blit(o, (x + ddx * sc, y_ + ddy * sc))
+            S.blit(s, (x, y_))

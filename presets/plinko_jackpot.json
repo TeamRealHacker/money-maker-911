@@ -1,0 +1,8 @@
+{
+  "mode": "plinko",
+  "theme_name": "Plinko",
+  "hook": "Can it reach the jackpot?",
+  "palette": "Candy",
+  "plinko_target": 100,
+  "tier_emojis": ["🟡", "🔴", "🟢", "🔵", "🟣", "🟠", "⚪", "🟤", "⚫"]
+}

@@ -76,7 +76,8 @@
 | 🏢 Glass Tower (v0.12.0) | ✅ Balls crash down a tower of glass floors that crack where they are hit, each floor a note higher |
 | 🚩 Flag Battle (v0.13.0) | ✅ Your pictures / flags are fighters with health bars; last one standing wins |
 | ⚔️ Weapon Battle (v0.14.0) | ✅ Fighters swing swords, spears and maces; only weapons hurt |
-| 🎵 Other 2D modes | 🔜 One by one (Race, Plinko, Gravity Flip... next) |
+| 🎯 Plinko (v0.15.0) | ✅ Balls fall through pegs into point slots, notes on every peg, jackpot at the target |
+| 🎵 Other 2D modes | 🔜 One by one (Race, Gravity Flip... next) |
 | ☁️ Colab rendering | 🔜 Planned |
 | 🔵 3D modes | 🔜 Planned |
 

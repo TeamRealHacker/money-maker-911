@@ -15,6 +15,7 @@ MODES = {
     "tower": "🏢 Glass Tower",
     "battle": "🚩 Flag Battle",
     "weapon": "⚔️ Weapon Battle",
+    "plinko": "🎯 Plinko",
 }
 
 
@@ -29,6 +30,9 @@ def sim_for(cfg):
     if m == "accumulate":
         from .accumulate import AccumulateSim
         return AccumulateSim(cfg)
+    if m == "plinko":
+        from .plinko import PlinkoSim
+        return PlinkoSim(cfg)
     if m == "weapon":
         from .weapon import WeaponSim
         return WeaponSim(cfg)
@@ -65,6 +69,9 @@ def renderer_for(cfg, scale: float = 1.0):
     if m == "accumulate":
         from ..render_modes import BreakerRenderer
         return BreakerRenderer(cfg, scale)
+    if m == "plinko":
+        from ..render_modes import PlinkoRenderer
+        return PlinkoRenderer(cfg, scale)
     if m == "weapon":
         from ..render_modes import WeaponRenderer
         return WeaponRenderer(cfg, scale)
