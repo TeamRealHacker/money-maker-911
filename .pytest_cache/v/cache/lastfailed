@@ -1,0 +1,3 @@
+{
+  "tests/test_api_headless.py::test_bootstrap_is_json_serialisable": true
+}

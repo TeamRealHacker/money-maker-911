@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_NAME = "Money Maker 911"
 CREDIT = "made by TeamRealHackers"
-VERSION = "0.19.0"
+VERSION = "0.18.0"
 
 # Soft, non-neon palettes. Each: background top, background bottom, container, text, tier colors
 PALETTES: dict[str, dict] = {
@@ -101,24 +101,21 @@ RANDOM_KNOBS = {
 DEFAULT_RANDOM_KNOBS = ["palette", "shape", "hook", "spin", "drop_interval"]
 
 
-MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythmic", "accumulate", "drawer", "tower", "battle", "weapon", "plinko", "race", "flip", "snake", "chain"]
-FLIP_PATTERNS = ["updown", "spin", "random"]
+MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythmic", "accumulate", "drawer", "tower", "battle", "weapon", "plinko", "race", "flip", "snake"]
 WEAPON_TYPES = ["sword", "spear", "mace", "mixed"]
 MODE_HOOKS = {"merge": "Will it reach the Final Form?", "escape": "Can it escape all 8 rings?",
               "breaker": "Can it break every brick?", "glass": "Will the glass hold?",
               "ghost": "Can the ghost escape the dark?", "rhythmic": "Can the ball play the whole song?",
               "accumulate": "Can it reach 100 balls?", "drawer": "Can it paint the whole picture?",
               "tower": "How many floors will break?", "battle": "Who wins the battle?",
-              "weapon": "Who survives?", "plinko": "Can it reach the jackpot?", "race": "Who wins the race?",
-              "flip": "Survive every flip?", "snake": "How long can it grow?",
-              "chain": "How many will pop?"}
+              "weapon": "Who survives?", "plinko": "Can it reach the jackpot?", "race": "Who wins the race?", "flip": "Can gravity survive?", "snake": "How long can it get?"}
 BREAKER_PATTERNS = ["full", "pyramid", "diamond", "heart", "checker", "stripes"]
 
 
 @dataclass
 class MergeConfig:
     """Settings for every mode (the name stays for old presets / imports). mode picks the game."""
-    mode: str = "merge"                # merge | escape | breaker | glass | ghost | rhythmic | accumulate | drawer | tower | battle | weapon | plinko | race | flip | snake | chain
+    mode: str = "merge"                # merge | escape | breaker | glass | ghost | rhythmic | accumulate | drawer | tower | battle | weapon | plinko | race | flip | snake
     # video
     width: int = 1080
     height: int = 1920
@@ -361,26 +358,21 @@ class MergeConfig:
     race_gravity: float = 500.0
     race_counter_text: str = "{time}s"
     race_final_text: str = "WINNER!"
-    flip_balls: int = 14               # pictures tumbling in the box
-    flip_every: float = 1.4            # seconds between gravity flips
-    flip_count: int = 14               # flips to reach
-    flip_pattern: str = "updown"       # updown | spin | random
-    flip_gravity: float = 2200.0
+    flip_target: int = 14              # gravity flips to reach
+    flip_interval: float = 1.5         # seconds between flips
+    flip_balls: int = 6
+    flip_gravity: float = 1500.0
     flip_ball_radius: float = 40.0
-    flip_counter_text: str = "FLIP {broken} / {total}"
-    flip_final_text: str = "FLIPPED!"
-    snake_target: int = 30             # length to reach
-    snake_speed: float = 900.0
-    snake_turn: float = 5.0            # rad/s the head can turn
-    snake_radius: float = 26.0
-    snake_counter_text: str = "LENGTH {broken} / {total}"
-    snake_final_text: str = "{total} LONG!"
-    chain_balls: int = 70              # pictures drifting around
-    chain_radius: float = 120.0        # shockwave reach (px)
-    chain_speed: float = 260.0
-    chain_ball_radius: float = 24.0
-    chain_counter_text: str = "{broken} / {total} POPPED"
-    chain_final_text: str = "BOOM!"
+    flip_counter_text: str = "{broken} / {total}"
+    flip_final_text: str = "GRAVITY BROKEN!"
+    snake_target: int = 30             # food to eat
+    snake_speed: float = 650.0
+    snake_turn: float = 3.2            # radians / second
+    snake_ball_radius: float = 28.0
+    snake_food_size: float = 34.0
+    snake_gap: float = 1.15            # segment spacing (x radius)
+    snake_counter_text: str = "{broken} / {total}"
+    snake_final_text: str = "LONGEST SNAKE!"
     weapon_type: str = "mixed"        # sword | spear | mace | mixed (Weapon Battle)
     weapon_length: float = 1.0
     weapon_spin: float = 1.0
@@ -607,20 +599,17 @@ class MergeConfig:
         self.race_peg_radius = max(3.0, min(20.0, float(self.race_peg_radius)))
         self.race_ball_radius = max(10.0, min(46.0, float(self.race_ball_radius)))
         self.race_gravity = max(400.0, min(5000.0, float(self.race_gravity)))
-        self.flip_balls = max(1, min(80, int(self.flip_balls)))
-        self.flip_every = max(0.4, min(8.0, float(self.flip_every)))
-        self.flip_count = max(2, min(80, int(self.flip_count)))
-        if self.flip_pattern not in FLIP_PATTERNS: self.flip_pattern = "updown"
-        self.flip_gravity = max(500.0, min(6000.0, float(self.flip_gravity)))
-        self.flip_ball_radius = max(10.0, min(80.0, float(self.flip_ball_radius)))
-        self.snake_target = max(5, min(300, int(self.snake_target)))
-        self.snake_speed = max(200.0, min(3000.0, float(self.snake_speed)))
-        self.snake_turn = max(1.5, min(14.0, float(self.snake_turn)))
-        self.snake_radius = max(8.0, min(60.0, float(self.snake_radius)))
-        self.chain_balls = max(2, min(300, int(self.chain_balls)))
-        self.chain_radius = max(60.0, min(500.0, float(self.chain_radius)))
-        self.chain_speed = max(60.0, min(1500.0, float(self.chain_speed)))
-        self.chain_ball_radius = max(8.0, min(60.0, float(self.chain_ball_radius)))
+        self.flip_target = max(2, min(60, int(self.flip_target)))
+        self.flip_interval = max(0.6, min(5.0, float(self.flip_interval)))
+        self.flip_balls = max(1, min(40, int(self.flip_balls)))
+        self.flip_gravity = max(300.0, min(4000.0, float(self.flip_gravity)))
+        self.flip_ball_radius = max(10.0, min(60.0, float(self.flip_ball_radius)))
+        self.snake_target = max(2, min(120, int(self.snake_target)))
+        self.snake_speed = max(200.0, min(1500.0, float(self.snake_speed)))
+        self.snake_turn = max(1.0, min(8.0, float(self.snake_turn)))
+        self.snake_ball_radius = max(12.0, min(50.0, float(self.snake_ball_radius)))
+        self.snake_food_size = max(16.0, min(70.0, float(self.snake_food_size)))
+        self.snake_gap = max(0.6, min(2.0, float(self.snake_gap)))
         if self.weapon_type not in WEAPON_TYPES: self.weapon_type = "mixed"
         self.weapon_length = max(0.5, min(2.0, float(self.weapon_length)))
         self.weapon_spin = max(0.2, min(3.0, float(self.weapon_spin)))

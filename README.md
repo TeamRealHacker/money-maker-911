@@ -78,10 +78,9 @@
 | ⚔️ Weapon Battle (v0.14.0) | ✅ Fighters swing swords, spears and maces; only weapons hurt |
 | 🎯 Plinko (v0.15.0) | ✅ Balls fall through pegs into point slots, notes on every peg, jackpot at the target |
 | 🏁 Race (v0.16.0) | ✅ 2-12 of your pictures race down a field of pegs, first across the chequered line wins<br><img src="docs/demo-race.gif" width="180"> |
-| 🔄 Gravity Flip (v0.17.0) | ✅ Pictures tumble in a box, gravity flips every few seconds (up/down, spin, random), a higher note each flip |
-| 🐍 Snake Grow (v0.18.0) | ✅ A snake of your pictures eats dots, one picture and one higher note per segment |
-| 💥 Chain Reaction (v0.19.0) | ✅ One picture pops, its shockwave pops the next, a higher note per pop |
-| 🎵 Other 2D modes | 🔜 One by one (Countdown Survival, Color Sort, Voting... next) |
+| 🔄 Gravity Flip (v0.17.0) | ✅ Balls tumble while gravity flips down / up / left / right, each flip a higher note, GRAVITY BROKEN! at the end<br><img src="docs/demo-flip.gif" width="180"> |
+| 🐍 Snake Grow (v0.18.0) | ✅ A snake of your pictures eats food and grows a segment per bite, each bite a higher note, LONGEST SNAKE! at the target<br><img src="docs/demo-snake.gif" width="180"> |
+| 🎵 Other 2D modes | 🔜 One by one (Chain Reaction, Countdown Survival... next) |
 | ☁️ Colab rendering | 🔜 Planned |
 | 🔵 3D modes | 🔜 Planned |
 
@@ -128,7 +127,7 @@ Everything it can do in one place:
 | 12 | 🏁 **Race** *(new)* | Balls race down a randomized obstacle course | *"Pick your winner!"* |
 | 13 | 🎯 **Plinko** *(new)* | Balls drop through pegs into prize slots | *"Where will it land?"* |
 | 14 | 🧲 **Gravity Flip** *(new)* | Gravity rotates every few seconds | *"Can it stay inside?"* |
-| 15 | 🐍 **Snake Grow** *(new)* | A ball grows with every hit until it fills the arena | *"How big can it get?"* |
+| 15 | 🐍 **Snake Grow** ✅ | A ball grows with every hit until it fills the arena | *"How big can it get?"* |
 | 16 | 💥 **Chain Reaction** *(new)* | One hit sets off a domino of explosions | *"Watch it all go!"* |
 | 17 | 🔢 **Countdown Survival** *(new)* | Last ball standing before the timer hits 0 | *"Will anyone survive 30s?"* |
 | 18 | 🧩 **Color Sort** *(new)* | Balls sort themselves into matching tubes | *"So satisfying…"* |
