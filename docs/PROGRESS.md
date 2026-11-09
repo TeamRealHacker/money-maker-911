@@ -34,15 +34,15 @@
 - **2026-11-08** · 🥛 v0.7.0 Glass Rush + bigger test suite: new mode **Glass Rush** (`mode: glass`, `--mode glass`): nested rings of glass; every hit cracks the ring it touched (jagged crack lines that turn with the ring, bright flash on impact), when a ring has taken all its hits it shatters into shards, the ball rushes on a little faster and a note higher, SHATTERED! at the end. Settings: hits for the inner ring, tougher per ring, speed-up per ring, crack colour / on-off, spin, plus the shared ring size / ball / trail / glow / pitch settings; the ball wears your Tiers pictures. Every seed wins in about 13-17 s (each bounce is a hit). Batch varies rings / spin / toughness per video, title + hashtags, preset `glass_rush`, mode picker entry; switching mode now also swaps the default hook (never one you wrote). **Bug fixed**: a settings file with a wrong-typed value (e.g. `"tiers": "abc"`) crashed the app at startup; every field is now coerced or falls back to its default. **Tests**: `test_glass.py`, `test_api_headless.py` (corrupted settings recovery, onboarding persistence, previews in every mode, concurrent set_config / tier_previews / apply_emoji_set / clear_tier_image from threads, broken pictures), `test_ui_controls.py` (pokes EVERY control in every mode + clicks every button in headless Chromium: no JS errors, every control reaches Python).
 - **2026-11-08** · 👻 Ghost Escape (v0.8.0): dark room + ghost light, ghost-phase rings, batch/GUI/preset/CI smoke
 - **2026-11-08** · 🎵 Rhythmic (v0.9.0): `mode: rhythmic`, every bounce plays the next note of a melody (stdlib MIDI reader `mm911/midi.py`, busiest track, chords keep top note; built-in Ode to Joy), base note + transpose, GUI .mid picker, preset `rhythmic_joy`, batch/CI smoke, tests
+- **2026-11-09** · ➕ Accumulate (v0.10.0): `mode: accumulate`, one ball in a box, every N wall hits (default 6) spawns another (balls never push each other) until the target (default 100, ~20 s) is reached; pitch climbs with the count, slow-mo + "100 BALLS!" ending; settings target / every / ball size / speed / trail / counter + ending text; batch varies the pace; GUI section, mode picker, test
 
 ## 🔜 TODO (in order)
-1. ➕ Accumulate
-2. ✏️ Drawer
-3. 🏢 Glass Tower
-4. 🚩 Flag Battle
-5. ⚔️ Weapon Ball Battle
-6. New 2D: Race, Plinko, Gravity Flip, Snake Grow, Chain Reaction, Countdown Survival, Color Sort, Voting
-7. ☁️ Colab rendering (google-colab-cli via WSL2)
-8. 3D modes: Wave, Marble Run, Ball Crush, Jelly, Cut Count, Magnet, then Hydraulic Press, Liquid Pour, Shatter, Coin Pusher
-9. YouTube upload queue
-10. Polish ideas: Escape "rhythm" mode (bounces play a melody), Breaker power-ups, live preview for the dedupe score
+1. ✏️ Drawer
+2. 🏢 Glass Tower
+3. 🚩 Flag Battle
+4. ⚔️ Weapon Ball Battle
+5. New 2D: Race, Plinko, Gravity Flip, Snake Grow, Chain Reaction, Countdown Survival, Color Sort, Voting
+6. ☁️ Colab rendering (google-colab-cli via WSL2)
+7. 3D modes: Wave, Marble Run, Ball Crush, Jelly, Cut Count, Magnet, then Hydraulic Press, Liquid Pour, Shatter, Coin Pusher
+8. YouTube upload queue
+9. Polish ideas: Escape "rhythm" mode (bounces play a melody), Breaker power-ups, live preview for the dedupe score

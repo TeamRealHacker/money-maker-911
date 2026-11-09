@@ -1,0 +1,12 @@
+{
+  "tests/test_api_headless.py::test_bootstrap_is_json_serialisable": true,
+  "tests/test_api_headless.py::test_corrupted_settings_recover": true,
+  "tests/test_api_headless.py::test_finish_onboarding_persists_tiers": true,
+  "tests/test_api_headless.py::test_set_config_rejects_garbage": true,
+  "tests/test_api_headless.py::test_preview_every_mode_returns_frames[merge]": true,
+  "tests/test_api_headless.py::test_preview_every_mode_returns_frames[escape]": true,
+  "tests/test_api_headless.py::test_preview_every_mode_returns_frames[breaker]": true,
+  "tests/test_api_headless.py::test_preview_every_mode_returns_frames[glass]": true,
+  "tests/test_api_headless.py::test_concurrent_calls_do_not_break_preview": true,
+  "tests/test_api_headless.py::test_bad_images_do_not_break_previews": true
+}

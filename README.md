@@ -71,7 +71,8 @@
 | 🥛 Glass Rush (v0.7.0) | ✅ Rings of glass crack with every hit and shatter one by one, pitch rising |
 | 👻 Ghost Escape (v0.8.0) | ✅ Escape in the dark: a ghost light follows the ball, the front ring turns ghost every few seconds<br><img src="docs/demo-ghost.gif" width="180"> |
 | 🎵 Rhythmic (v0.9.0) | ✅ Escape where every bounce plays the next note of a song: drop in any .mid file (or use built-in Ode to Joy), notes are your pop sound pitch-shifted<br><img src="docs/demo-rhythmic.gif" width="180"> |
-| 🎵 Other 2D modes | 🔜 One by one (Rhythmic next) |
+| ➕ Accumulate (v0.10.0) | ✅ One ball bounces, every few wall hits spawns another until the target (default 100) is reached, pitch climbs with the count<br><img src="docs/demo-accumulate.gif" width="180"> |
+| 🎵 Other 2D modes | 🔜 One by one (Drawer next) |
 | ☁️ Colab rendering | 🔜 Planned |
 | 🔵 3D modes | 🔜 Planned |
 
@@ -406,7 +407,7 @@ money-maker-911/
 - [x] **Phase 2: 🍉 Merge Evolution** (first full mode + studio UI)
 - [x] **Phase 3: Batch factory** + title/hashtag CSV + anti-repeat rotation
 - [x] **Phase 4: AI cut-outs** + image/meme import
-- [ ] **Phase 5: Escape ✅, Breaker ✅, Glass Rush ✅, Ghost Escape ✅, Rhythmic ✅**
+- [ ] **Phase 5: Escape ✅, Breaker ✅, Glass Rush ✅, Ghost Escape ✅, Rhythmic ✅, Accumulate ✅**
 - [ ] **Phase 6: Battle modes** (Flag, Weapon) + remaining 2D modes
 - [ ] **Phase 7: ☁️ Colab GPU rendering** (WSL2 bridge)
 - [ ] **Phase 8: 3D modes** (Wave, Marble Run, Ball Crush, Jelly, Cut Count, Magnet)

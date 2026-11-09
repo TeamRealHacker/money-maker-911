@@ -536,9 +536,10 @@ class BreakerRenderer(Renderer):
         hook_col = self._tc(cfg.hook_color)
         for line in self._wrap(self.f_hook, cfg.hook, self.W * 0.86):
             y += self._text_center(self.f_hook, line, y, hook_col)
-        if cfg.breaker_counter_text:
+        ctext = getattr(sim, "counter_text", None) or cfg.breaker_counter_text
+        if ctext:
             left = sim.total - sim.broken
-            txt = (cfg.breaker_counter_text.replace("{left}", str(left)).replace("{broken}", str(sim.broken))
+            txt = (ctext.replace("{left}", str(left)).replace("{broken}", str(sim.broken))
                    .replace("{total}", str(sim.total)).replace("{balls}", str(len(sim.balls)))
                    .replace("{time}", f"{sim.vt:.1f}"))
             pulse = max(0.0, 1 - (sim.vt - sim._last_break_vt) / 0.2) if sim.broken else 0.0
@@ -606,7 +607,7 @@ class BreakerRenderer(Renderer):
         if sim.finished_at is not None:
             kk = min(1.0, (sim.vt - sim.finished_at) / 0.4)
             scale = 0.5 + 0.5 * (1 - (1 - kk) ** 3) + 0.08 * math.sin(kk * math.pi)
-            s = self.f_big.render(cfg.breaker_final_text, True, final_col)
+            s = self.f_big.render((getattr(sim, "final_text", None) or cfg.breaker_final_text).replace("{total}", str(sim.total)), True, final_col)
             if s.get_width() * scale > self.W * 0.94:
                 scale *= self.W * 0.94 / (s.get_width() * scale)
             s = pygame.transform.rotozoom(s, 0, scale)

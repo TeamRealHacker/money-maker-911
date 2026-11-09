@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_NAME = "Money Maker 911"
 CREDIT = "made by TeamRealHackers"
-VERSION = "0.9.0"
+VERSION = "0.10.0"
 
 # Soft, non-neon palettes. Each: background top, background bottom, container, text, tier colors
 PALETTES: dict[str, dict] = {
@@ -101,14 +101,14 @@ RANDOM_KNOBS = {
 DEFAULT_RANDOM_KNOBS = ["palette", "shape", "hook", "spin", "drop_interval"]
 
 
-MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythmic"]
+MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythmic", "accumulate"]
 BREAKER_PATTERNS = ["full", "pyramid", "diamond", "heart", "checker", "stripes"]
 
 
 @dataclass
 class MergeConfig:
     """Settings for every mode (the name stays for old presets / imports). mode picks the game."""
-    mode: str = "merge"                # merge | escape | breaker | glass | ghost | rhythmic
+    mode: str = "merge"                # merge | escape | breaker | glass | ghost | rhythmic | accumulate
     # video
     width: int = 1080
     height: int = 1920
@@ -314,6 +314,10 @@ class MergeConfig:
     breaker_trail: int = 6
     breaker_counter_text: str = "{left} left"
     breaker_final_text: str = "CLEARED!"
+    accumulate_target: int = 100       # balls to reach
+    accumulate_every: int = 6          # +1 ball every N wall hits
+    accumulate_counter_text: str = "{broken} / {total}"
+    accumulate_final_text: str = "{total} BALLS!"
     breaker_pitch_low: float = -5.0    # first brick
     breaker_pitch_high: float = 14.0   # last brick
     # Glass Rush (also uses the escape_* rings / ball / trail / glow settings)
@@ -507,6 +511,8 @@ class MergeConfig:
         self.glass_hp_growth = max(0.0, min(4.0, float(self.glass_hp_growth)))
         self.glass_spin = max(0.0, min(360.0, float(self.glass_spin)))
         self.glass_speed_gain = max(0.0, min(0.3, float(self.glass_speed_gain)))
+        self.accumulate_target = max(2, min(500, int(self.accumulate_target)))
+        self.accumulate_every = max(1, min(40, int(self.accumulate_every)))
         if self.breaker_pattern not in BREAKER_PATTERNS: self.breaker_pattern = "full"
         if self.dedupe_action not in ("skip", "flag"): self.dedupe_action = "skip"
         self.dedupe_threshold = max(0.5, min(1.0, float(self.dedupe_threshold)))
