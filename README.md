@@ -77,6 +77,7 @@
 | 🚩 Flag Battle (v0.13.0) | ✅ Your pictures / flags are fighters with health bars; last one standing wins |
 | ⚔️ Weapon Battle (v0.14.0) | ✅ Fighters swing swords, spears and maces; only weapons hurt |
 | 🎯 Plinko (v0.15.0) | ✅ Balls fall through pegs into point slots, notes on every peg, jackpot at the target |
+| 🏁 Race (v0.16.0) | ✅ 2-12 of your pictures race down a field of pegs, first across the chequered line wins<br><img src="docs/demo-race.gif" width="180"> |
 | 🎵 Other 2D modes | 🔜 One by one (Race, Gravity Flip... next) |
 | ☁️ Colab rendering | 🔜 Planned |
 | 🔵 3D modes | 🔜 Planned |

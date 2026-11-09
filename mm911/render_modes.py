@@ -1024,3 +1024,29 @@ class PlinkoRenderer(BreakerRenderer):
             for ddx, ddy in ((-3, 0), (3, 0), (0, -3), (0, 3)):
                 S.blit(o, (x + ddx * sc, y_ + ddy * sc))
             S.blit(s, (x, y_))
+
+
+class RaceRenderer(PlinkoRenderer):
+    """Race: pegs plus a chequered finish line."""
+
+    def _radius(self) -> float:
+        return self.cfg.race_ball_radius
+
+    def _under_balls(self, sim, dx: int, dy: int) -> None:
+        sc, S = self.scale, self.surface
+        x0, y0, x1, y1 = (v * sc for v in sim.arena)
+        pr = sim.peg_r * sc
+        for x, y, row, shape in sim.pegs:
+            age = sim.vt - sim.peg_hit.get(id(shape), -9.0)
+            spr = self._peg(pr, round(max(0.0, 1 - age / 0.25), 1))
+            S.blit(spr, (round(x * sc - spr.get_width() / 2 + dx), round(y * sc - spr.get_height() / 2 + dy)))
+        fy = sim.finish_y * sc
+        sq = max(8, int(24 * sc))
+        for j in range(2):
+            for i in range(int((x1 - x0) // sq) + 1):
+                col = (255, 255, 255) if (i + j) % 2 == 0 else (25, 25, 30)
+                w = min(sq, int(x1 - x0 - i * sq))
+                if w > 0:
+                    pygame.draw.rect(S, col, (round(x0 + i * sq + dx), round(fy + j * sq + dy), w, sq))
+        ts = self.f_slot.render("FINISH", True, self.cont_col)
+        S.blit(ts, (round((x0 + x1) / 2 - ts.get_width() / 2 + dx), round(fy + 2 * sq + 10 * sc + dy)))

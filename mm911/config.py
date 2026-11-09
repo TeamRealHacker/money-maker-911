@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_NAME = "Money Maker 911"
 CREDIT = "made by TeamRealHackers"
-VERSION = "0.15.0"
+VERSION = "0.16.0"
 
 # Soft, non-neon palettes. Each: background top, background bottom, container, text, tier colors
 PALETTES: dict[str, dict] = {
@@ -101,21 +101,21 @@ RANDOM_KNOBS = {
 DEFAULT_RANDOM_KNOBS = ["palette", "shape", "hook", "spin", "drop_interval"]
 
 
-MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythmic", "accumulate", "drawer", "tower", "battle", "weapon", "plinko"]
+MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythmic", "accumulate", "drawer", "tower", "battle", "weapon", "plinko", "race"]
 WEAPON_TYPES = ["sword", "spear", "mace", "mixed"]
 MODE_HOOKS = {"merge": "Will it reach the Final Form?", "escape": "Can it escape all 8 rings?",
               "breaker": "Can it break every brick?", "glass": "Will the glass hold?",
               "ghost": "Can the ghost escape the dark?", "rhythmic": "Can the ball play the whole song?",
               "accumulate": "Can it reach 100 balls?", "drawer": "Can it paint the whole picture?",
               "tower": "How many floors will break?", "battle": "Who wins the battle?",
-              "weapon": "Who survives?", "plinko": "Can it reach the jackpot?"}
+              "weapon": "Who survives?", "plinko": "Can it reach the jackpot?", "race": "Who wins the race?"}
 BREAKER_PATTERNS = ["full", "pyramid", "diamond", "heart", "checker", "stripes"]
 
 
 @dataclass
 class MergeConfig:
     """Settings for every mode (the name stays for old presets / imports). mode picks the game."""
-    mode: str = "merge"                # merge | escape | breaker | glass | ghost | rhythmic | accumulate | drawer | tower | battle | weapon | plinko
+    mode: str = "merge"                # merge | escape | breaker | glass | ghost | rhythmic | accumulate | drawer | tower | battle | weapon | plinko | race
     # video
     width: int = 1080
     height: int = 1920
@@ -351,6 +351,13 @@ class MergeConfig:
     plinko_gravity: float = 1900.0
     plinko_counter_text: str = "{score} / {total}"
     plinko_final_text: str = "JACKPOT!"
+    race_racers: int = 6               # pictures racing
+    race_rows: int = 14
+    race_peg_radius: float = 9.0
+    race_ball_radius: float = 30.0
+    race_gravity: float = 500.0
+    race_counter_text: str = "{time}s"
+    race_final_text: str = "WINNER!"
     weapon_type: str = "mixed"        # sword | spear | mace | mixed (Weapon Battle)
     weapon_length: float = 1.0
     weapon_spin: float = 1.0
@@ -572,6 +579,11 @@ class MergeConfig:
         self.plinko_peg_radius = max(3.0, min(30.0, float(self.plinko_peg_radius)))
         self.plinko_ball_radius = max(8.0, min(40.0, float(self.plinko_ball_radius)))
         self.plinko_gravity = max(400.0, min(5000.0, float(self.plinko_gravity)))
+        self.race_racers = max(2, min(12, int(self.race_racers)))
+        self.race_rows = max(4, min(18, int(self.race_rows)))
+        self.race_peg_radius = max(3.0, min(20.0, float(self.race_peg_radius)))
+        self.race_ball_radius = max(10.0, min(46.0, float(self.race_ball_radius)))
+        self.race_gravity = max(400.0, min(5000.0, float(self.race_gravity)))
         if self.weapon_type not in WEAPON_TYPES: self.weapon_type = "mixed"
         self.weapon_length = max(0.5, min(2.0, float(self.weapon_length)))
         self.weapon_spin = max(0.2, min(3.0, float(self.weapon_spin)))

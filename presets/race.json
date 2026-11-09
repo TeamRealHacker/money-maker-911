@@ -1,0 +1,8 @@
+{
+  "mode": "race",
+  "theme_name": "Race",
+  "hook": "Who wins the race?",
+  "palette": "Candy",
+  "race_racers": 6,
+  "tier_emojis": ["🟡", "🔴", "🟢", "🔵", "🟣", "🟠", "⚪", "🟤", "⚫"]
+}

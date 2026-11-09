@@ -16,6 +16,7 @@ MODES = {
     "battle": "🚩 Flag Battle",
     "weapon": "⚔️ Weapon Battle",
     "plinko": "🎯 Plinko",
+    "race": "🏁 Race",
 }
 
 
@@ -30,6 +31,9 @@ def sim_for(cfg):
     if m == "accumulate":
         from .accumulate import AccumulateSim
         return AccumulateSim(cfg)
+    if m == "race":
+        from .race import RaceSim
+        return RaceSim(cfg)
     if m == "plinko":
         from .plinko import PlinkoSim
         return PlinkoSim(cfg)
@@ -69,6 +73,9 @@ def renderer_for(cfg, scale: float = 1.0):
     if m == "accumulate":
         from ..render_modes import BreakerRenderer
         return BreakerRenderer(cfg, scale)
+    if m == "race":
+        from ..render_modes import RaceRenderer
+        return RaceRenderer(cfg, scale)
     if m == "plinko":
         from ..render_modes import PlinkoRenderer
         return PlinkoRenderer(cfg, scale)

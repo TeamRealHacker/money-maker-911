@@ -248,6 +248,15 @@
     <div class="row col"><span>Ending text</span><input type="text" data-k="plinko_final_text"></div>
     <div class="hint">Balls wear your Tiers pictures. The edge slots pay the most.</div>
   </details>
+  <details open data-modes="race"><summary>🏁 Race</summary>
+    <div class="row"><span>Racers (pictures)</span><input type="range" data-k="race_racers" min="2" max="12"></div>
+    <div class="row"><span>Rows of pegs</span><input type="range" data-k="race_rows" min="4" max="18"></div>
+    <div class="row"><span>Racer size</span><input type="range" data-k="race_ball_radius" min="10" max="46"></div>
+    <div class="row"><span>Peg size</span><input type="range" data-k="race_peg_radius" min="3" max="20"></div>
+    <div class="row"><span>Gravity</span><input type="range" data-k="race_gravity" min="600" max="4500" step="50"></div>
+    <div class="row col"><span>Counter <em class="hint">{time}</em></span><input type="text" data-k="race_counter_text"></div>
+    <div class="row col"><span>Ending text</span><input type="text" data-k="race_final_text"></div>
+  </details>
   <details open data-modes="drawer"><summary>✏️ Drawer</summary>
     <div class="row"><span>Picture to reveal</span><span><button class="ghost sm" onclick="mm.pick('drawer_picture','image')">Choose…</button><button class="link" onclick="mm.set({drawer_picture:''})">clear</button></span></div>
     <div class="hint">No picture chosen = your first Tiers picture, or generated artwork.</div>
