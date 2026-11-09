@@ -821,6 +821,9 @@ def prepare_images(cfg: MergeConfig, lock=None, note=None) -> dict:
 
 def _thumb_moment_frame(sim: MergeSim, cfg: MergeConfig) -> bool:
     """First frame at/after the Final Form has popped in (works at any FPS)."""
+    ready = getattr(sim, "thumb_ready", None)     # modes whose finish is empty (Glass Tower) pick their own moment
+    if ready is not None:
+        return bool(ready()) or (sim.finished_at is not None and sim.vt >= sim.finished_at + 0.45)
     return sim.finished_at is not None and sim.vt >= sim.finished_at + 0.45   # finished_at is video time
 
 

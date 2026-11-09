@@ -92,6 +92,7 @@ class BreakerSim:
         self._slow_len = 1.0
         self._slow_factor = 1.0
         self._last_break_vt = 0.0
+        self.constant_speed = True      # Breaker keeps the speed fixed; gravity modes turn this off
         self._to_remove: list[Brick] = []
         self._by_shape: dict = {}
         W, H = cfg.width, cfg.height
@@ -204,12 +205,17 @@ class BreakerSim:
                                           pitch=pitch_ladder(c, i, self.total)))
             if c.shake_strength > 0 and brick.max_hp > 1:
                 self.shake = max(self.shake, c.shake_strength * 0.6)
-            if c.breaker_split_every and self.broken % c.breaker_split_every == 0 \
-                    and len(self.balls) < c.breaker_max_balls:
-                src = self.balls[self.rng.randrange(len(self.balls))].shape.body.position
-                nb = self._add_ball((src.x, src.y))
-                if c.tier_banners and nb.index < c.tiers and nb.index >= 1:
-                    self.banners = [Banner(min(nb.index, c.tiers - 1), self.vt)]
+            self._after_break(brick)
+
+    def _after_break(self, brick: Brick) -> None:
+        """Extra ball every N bricks (Breaker); other modes override."""
+        c = self.cfg
+        if c.breaker_split_every and self.broken % c.breaker_split_every == 0 \
+                and len(self.balls) < c.breaker_max_balls:
+            src = self.balls[self.rng.randrange(len(self.balls))].shape.body.position
+            nb = self._add_ball((src.x, src.y))
+            if c.tier_banners and nb.index < c.tiers and nb.index >= 1:
+                self.banners = [Banner(min(nb.index, c.tiers - 1), self.vt)]
 
     def _burst(self, brick: Brick, n: int) -> None:
         c = self.cfg
@@ -260,21 +266,22 @@ class BreakerSim:
             v = body.velocity
             sp = v.length or 1.0
             vx, vy = v.x / sp, v.y / sp
-            if steer:
-                # nobody hit anything for a while: bend gently toward the nearest brick
-                p = body.position
-                tgt = min(alive, key=lambda b: (b.x - p.x) ** 2 + (b.y - p.y) ** 2)
-                dx, dy = tgt.x - p.x, tgt.y - p.y
-                dl = math.hypot(dx, dy) or 1.0
-                k = min(1.0, 1.6 * dt)
-                vx, vy = vx + (dx / dl - vx) * k, vy + (dy / dl - vy) * k
-            # never too flat (endless side-to-side) or too steep (endless up-down)
-            if abs(vy) < 0.18:
-                vy = math.copysign(0.18, vy or -1)
-            if abs(vx) < 0.08:
-                vx = math.copysign(0.08, vx or (1 if self.rng.random() < 0.5 else -1))
-            n = math.hypot(vx, vy) or 1.0
-            body.velocity = (vx / n * c.breaker_speed, vy / n * c.breaker_speed)
+            if self.constant_speed:
+                if steer:
+                    # nobody hit anything for a while: bend gently toward the nearest brick
+                    p = body.position
+                    tgt = min(alive, key=lambda b: (b.x - p.x) ** 2 + (b.y - p.y) ** 2)
+                    dx, dy = tgt.x - p.x, tgt.y - p.y
+                    dl = math.hypot(dx, dy) or 1.0
+                    k = min(1.0, 1.6 * dt)
+                    vx, vy = vx + (dx / dl - vx) * k, vy + (dy / dl - vy) * k
+                # never too flat (endless side-to-side) or too steep (endless up-down)
+                if abs(vy) < 0.18:
+                    vy = math.copysign(0.18, vy or -1)
+                if abs(vx) < 0.08:
+                    vx = math.copysign(0.08, vx or (1 if self.rng.random() < 0.5 else -1))
+                n = math.hypot(vx, vy) or 1.0
+                body.velocity = (vx / n * c.breaker_speed, vy / n * c.breaker_speed)
             # safety net: a ball squeezed out of the arena comes back in
             r = ball.shape.radius
             px_, py_ = body.position

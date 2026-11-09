@@ -431,6 +431,8 @@ class BreakerRenderer(Renderer):
     """Arena + brick wall + balls. Bricks live on one cached layer; only a brick that was hit or broken
     is redrawn, so a frame costs about the same as Merge."""
 
+    break_grow = 0.35          # a broken brick pops up by this much while it fades
+
     def __init__(self, cfg, scale: float = 1.0):
         self._labels = cfg.show_tier_labels
         super().__init__(cfg, scale)
@@ -562,7 +564,8 @@ class BreakerRenderer(Renderer):
                 S.blit(spr, (round(b.x * sc - spr.get_width() / 2 + dx), round(b.y * sc - spr.get_height() / 2 + dy)))
             elif b.broken_vt is not None and sim.vt - b.broken_vt < 0.25:
                 e = (sim.vt - b.broken_vt) / 0.25
-                spr = pygame.transform.rotozoom(self._brick_sprite(b, "flash"), 0, 1 + 0.35 * e)
+                spr = self._brick_sprite(b, "flash")
+                spr = pygame.transform.rotozoom(spr, 0, 1 + self.break_grow * e) if self.break_grow else spr.copy()
                 spr.set_alpha(int(255 * (1 - e)))
                 S.blit(spr, (round(b.x * sc - spr.get_width() / 2 + dx), round(b.y * sc - spr.get_height() / 2 + dy)))
         # balls + trails
@@ -784,3 +787,45 @@ class DrawerRenderer(BreakerRenderer):
                 out.blit(self._full, (0, 0))
                 self._full.set_alpha(255)
         self.surface.blit(out, (round(self.arena_px[0] + dx), round(self.arena_px[1] + dy)))
+
+
+class TowerRenderer(BreakerRenderer):
+    """Glass Tower: translucent glass floors that crack where they were hit."""
+    break_grow = 0.0
+
+    def _brick_sprite(self, b, state: str) -> pygame.Surface:
+        sc = self.scale
+        cracks = getattr(b, "cracks", [])
+        key = ("g", b.row, round(b.w * sc, 1), round(b.h * sc, 1), state, tuple(round(c, 2) for c in cracks[-12:]), len(cracks) > 12)
+        hit = self._brick_cache.get(key)
+        if hit is not None:
+            return hit
+        w, h = max(4, int(round(b.w * sc))), max(4, int(round(b.h * sc)))
+        col = self._tier_color(b.row)
+        light = _shade(col, 0.72)
+        r = min(h / 2, 8 * sc)
+        e = max(1, int(round(2.2 * sc)))
+        pm = sprites.rounded_rect(w, h, r, light if state != "flash" else (255, 255, 255), 0.95)
+        inner = sprites.rounded_rect(w - 2 * e, h - 2 * e, max(0.0, r - e), col if state != "flash" else (255, 255, 255), 0.85 if state == "flash" else 0.55)
+        pm[e:h - e, e:w - e] = inner
+        hl = sprites.rounded_rect(w - 16 * sc, max(2, h * 0.2), max(0.0, h * 0.1), (255, 255, 255), 0.55)
+        sprites.over(pm, hl, int(round(8 * sc)), int(round(e + 1 * sc)))
+        surf = sprites.to_surface(pm)
+        import random as _r
+        for i, fx in enumerate(cracks[-12:]):
+            rng = _r.Random(b.row * 131 + i * 17 + 5)
+            x, y = fx * w, h * 0.5
+            for ang in (rng.uniform(-170, -110), rng.uniform(-70, -10), rng.uniform(10, 70), rng.uniform(110, 170)):
+                pts = [(x, y)]
+                a = math.radians(ang)
+                for _ in range(4):
+                    a += math.radians(rng.uniform(-35, 35))
+                    ln = rng.uniform(0.35, 0.9) * h
+                    x2 = min(w - 1, max(0, pts[-1][0] + math.cos(a) * ln * 1.3))
+                    y2 = min(h - 1, max(0, pts[-1][1] + math.sin(a) * ln))
+                    pts.append((x2, y2))
+                pygame.draw.lines(surf, (255, 255, 255, 250), False, pts, max(1, int(round(1.6 * sc))))
+        if len(self._brick_cache) > 600:
+            self._brick_cache.clear()
+        self._brick_cache[key] = surf
+        return surf

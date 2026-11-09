@@ -36,13 +36,13 @@
 - **2026-11-08** · 🎵 Rhythmic (v0.9.0): `mode: rhythmic`, every bounce plays the next note of a melody (stdlib MIDI reader `mm911/midi.py`, busiest track, chords keep top note; built-in Ode to Joy), base note + transpose, GUI .mid picker, preset `rhythmic_joy`, batch/CI smoke, tests
 - **2026-11-09** · ➕ Accumulate (v0.10.0): `mode: accumulate`, one ball in a box, every N wall hits (default 6) spawns another (balls never push each other) until the target (default 100, ~20 s) is reached; pitch climbs with the count, slow-mo + "100 BALLS!" ending; settings target / every / ball size / speed / trail / counter + ending text; batch varies the pace; GUI section, mode picker, test
 - **2026-11-09** · ✏️ Drawer (v0.11.0): `mode: drawer`, the ball is a paint brush that reveals a hidden picture: your own photo (any picture: choose one in the Drawer section, `--picture file`, or it uses your first Tiers picture) or generated artwork; the unpainted picture is shown dim, every 2 % plays a higher note, % counter, at the target the rest fades in with PAINTED!. 1-6 brushes, brush size, target %, steering so every seed finishes (20/20 in 12-35 s). Anti-aliased stamps with no seams between bands, rounded arena corners stay clean. Untouched default hook now follows the mode in the CLI/batch too (not only in the app). Preset `drawer_art`, batch/GUI/CI smoke, `tests/test_drawer.py`. Also: `.pytest_cache` no longer committed.
+- **2026-11-09** · 🏢 Glass Tower (v0.12.0): `mode: tower`, balls fall through a tower of translucent glass floors (default 14, tinted with the tier colours) under real gravity; every bounce cracks the floor where it was hit (jagged crack lines), after N hits it shatters and the balls drop to the next one, each floor a note higher, TOWER DOWN! at the end (~22-28 s). Settings: floors, hits per floor, balls + interval, gravity, floor thickness, ball size/trail, counter/ending text; balls wear your Tiers pictures. Preset `glass_tower`, batch (floors / hits vary), GUI section, CI smoke, `tests/test_tower.py`. Breaker/Accumulate refactored onto shared hooks (`_start_balls`, `_after_break`, `constant_speed`); their seeds re-render identically (verified).
 
 ## 🔜 TODO (in order)
-1. 🏢 Glass Tower
-2. 🚩 Flag Battle
-3. ⚔️ Weapon Ball Battle
-4. New 2D: Race, Plinko, Gravity Flip, Snake Grow, Chain Reaction, Countdown Survival, Color Sort, Voting
-5. ☁️ Colab rendering (google-colab-cli via WSL2)
-6. 3D modes: Wave, Marble Run, Ball Crush, Jelly, Cut Count, Magnet, then Hydraulic Press, Liquid Pour, Shatter, Coin Pusher
-7. YouTube upload queue
-8. Polish ideas: Escape "rhythm" mode (bounces play a melody), Breaker power-ups, live preview for the dedupe score
+1. 🚩 Flag Battle
+2. ⚔️ Weapon Ball Battle
+3. New 2D: Race, Plinko, Gravity Flip, Snake Grow, Chain Reaction, Countdown Survival, Color Sort, Voting
+4. ☁️ Colab rendering (google-colab-cli via WSL2)
+5. 3D modes: Wave, Marble Run, Ball Crush, Jelly, Cut Count, Magnet, then Hydraulic Press, Liquid Pour, Shatter, Coin Pusher
+6. YouTube upload queue
+7. Polish ideas: Escape "rhythm" mode (bounces play a melody), Breaker power-ups, live preview for the dedupe score

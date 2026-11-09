@@ -1,0 +1,10 @@
+{
+  "mode": "tower",
+  "theme_name": "Glass Tower",
+  "hook": "How many floors will break?",
+  "palette": "Candy",
+  "tower_floors": 14,
+  "tower_hp": 4,
+  "tower_balls": 2,
+  "tier_emojis": ["🔴", "🟠", "🟡", "🟢", "🔵", "🟣", "⚫", "⚪", "🟤"]
+}

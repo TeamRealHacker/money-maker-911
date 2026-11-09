@@ -12,6 +12,7 @@ MODES = {
     "rhythmic": "🎵 Rhythmic",
     "accumulate": "➕ Accumulate",
     "drawer": "✏️ Drawer",
+    "tower": "🏢 Glass Tower",
 }
 
 
@@ -26,6 +27,9 @@ def sim_for(cfg):
     if m == "accumulate":
         from .accumulate import AccumulateSim
         return AccumulateSim(cfg)
+    if m == "tower":
+        from .tower import TowerSim
+        return TowerSim(cfg)
     if m == "drawer":
         from .drawer import DrawerSim
         return DrawerSim(cfg)
@@ -53,6 +57,9 @@ def renderer_for(cfg, scale: float = 1.0):
     if m == "accumulate":
         from ..render_modes import BreakerRenderer
         return BreakerRenderer(cfg, scale)
+    if m == "tower":
+        from ..render_modes import TowerRenderer
+        return TowerRenderer(cfg, scale)
     if m == "drawer":
         from ..render_modes import DrawerRenderer
         return DrawerRenderer(cfg, scale)

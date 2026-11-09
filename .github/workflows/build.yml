@@ -48,6 +48,7 @@ jobs:
           python main.py render --preset presets/rhythmic_joy.json --seconds 4 --fps 30 --out output/rhythmic.mp4
           python main.py render --mode accumulate --seconds 4 --fps 30 --out output/accumulate.mp4
           python main.py render --preset presets/drawer_art.json --seconds 4 --fps 30 --out output/drawer.mp4
+          python main.py render --preset presets/glass_tower.json --seconds 4 --fps 30 --out output/tower.mp4
           python main.py dedupe --in output
 
       - name: Smoke test (AI add-on imports, app still imports without models)

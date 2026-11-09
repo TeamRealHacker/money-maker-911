@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_NAME = "Money Maker 911"
 CREDIT = "made by TeamRealHackers"
-VERSION = "0.11.0"
+VERSION = "0.12.0"
 
 # Soft, non-neon palettes. Each: background top, background bottom, container, text, tier colors
 PALETTES: dict[str, dict] = {
@@ -101,18 +101,19 @@ RANDOM_KNOBS = {
 DEFAULT_RANDOM_KNOBS = ["palette", "shape", "hook", "spin", "drop_interval"]
 
 
-MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythmic", "accumulate", "drawer"]
+MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythmic", "accumulate", "drawer", "tower"]
 MODE_HOOKS = {"merge": "Will it reach the Final Form?", "escape": "Can it escape all 8 rings?",
               "breaker": "Can it break every brick?", "glass": "Will the glass hold?",
               "ghost": "Can the ghost escape the dark?", "rhythmic": "Can the ball play the whole song?",
-              "accumulate": "Can it reach 100 balls?", "drawer": "Can it paint the whole picture?"}
+              "accumulate": "Can it reach 100 balls?", "drawer": "Can it paint the whole picture?",
+              "tower": "How many floors will break?"}
 BREAKER_PATTERNS = ["full", "pyramid", "diamond", "heart", "checker", "stripes"]
 
 
 @dataclass
 class MergeConfig:
     """Settings for every mode (the name stays for old presets / imports). mode picks the game."""
-    mode: str = "merge"                # merge | escape | breaker | glass | ghost | rhythmic | accumulate | drawer
+    mode: str = "merge"                # merge | escape | breaker | glass | ghost | rhythmic | accumulate | drawer | tower
     # video
     width: int = 1080
     height: int = 1920
@@ -329,6 +330,14 @@ class MergeConfig:
     drawer_ghost: float = 0.35         # brightness of the unpainted preview of the picture (0 = black)
     drawer_counter_text: str = "{pct}%"
     drawer_final_text: str = "PAINTED!"
+    tower_floors: int = 14
+    tower_hp: int = 4                  # bounces a glass floor takes before it shatters
+    tower_balls: int = 2
+    tower_ball_interval: float = 1.2   # seconds between the balls joining
+    tower_gravity: float = 2200.0
+    tower_floor_height: float = 32.0
+    tower_counter_text: str = "{left} floors left"
+    tower_final_text: str = "TOWER DOWN!"
     breaker_pitch_low: float = -5.0    # first brick
     breaker_pitch_high: float = 14.0   # last brick
     # Glass Rush (also uses the escape_* rings / ball / trail / glow settings)
@@ -526,6 +535,12 @@ class MergeConfig:
         self.glass_speed_gain = max(0.0, min(0.3, float(self.glass_speed_gain)))
         self.accumulate_target = max(2, min(500, int(self.accumulate_target)))
         self.accumulate_every = max(1, min(40, int(self.accumulate_every)))
+        self.tower_floors = max(2, min(40, int(self.tower_floors)))
+        self.tower_hp = max(1, min(10, int(self.tower_hp)))
+        self.tower_balls = max(1, min(10, int(self.tower_balls)))
+        self.tower_ball_interval = max(0.1, min(10.0, float(self.tower_ball_interval)))
+        self.tower_gravity = max(400.0, min(6000.0, float(self.tower_gravity)))
+        self.tower_floor_height = max(8.0, min(80.0, float(self.tower_floor_height)))
         self.drawer_target = max(10, min(100, int(self.drawer_target)))
         self.drawer_brush = max(2.0, min(6.0, float(self.drawer_brush)))
         self.drawer_balls = max(1, min(6, int(self.drawer_balls)))
