@@ -107,6 +107,9 @@ class BreakerSim:
         self.space.on_collision(1, 2, begin=self._on_wall)
 
     # ---------- setup ----------
+    def _radius(self) -> float:
+        return self.cfg.breaker_ball_radius
+
     def _start_balls(self) -> int:
         return self.cfg.breaker_balls
 
@@ -149,7 +152,7 @@ class BreakerSim:
 
     def _add_ball(self, pos=None) -> BBall:
         c = self.cfg
-        r = c.breaker_ball_radius
+        r = self._radius()
         x0, y0, x1, y1 = self.arena
         body = pymunk.Body(1.0, pymunk.moment_for_circle(1.0, 0, r))
         if pos is None:

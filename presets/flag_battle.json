@@ -1,0 +1,38 @@
+{
+  "mode": "battle",
+  "theme_name": "Flag Battle",
+  "hook": "Which flag wins the battle?",
+  "palette": "Candy",
+  "tiers": 12,
+  "tier_emojis": [
+    "🇺🇸",
+    "🇬🇧",
+    "🇫🇷",
+    "🇩🇪",
+    "🇯🇵",
+    "🇧🇷",
+    "🇮🇳",
+    "🇨🇦",
+    "🇮🇹",
+    "🇪🇸",
+    "🇰🇷",
+    "🇹🇷"
+  ],
+  "tier_names": [
+    "USA",
+    "UK",
+    "France",
+    "Germany",
+    "Japan",
+    "Brazil",
+    "India",
+    "Canada",
+    "Italy",
+    "Spain",
+    "Korea",
+    "Turkey"
+  ],
+  "show_tier_labels": false,
+  "battle_hp": 100,
+  "battle_damage": 16
+}

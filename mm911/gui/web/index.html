@@ -218,6 +218,17 @@
     <div class="row col"><span>Ending text</span><input type="text" data-k="tower_final_text"></div>
     <div class="hint">The balls use your Tiers pictures / emoji. Floors are tinted with the tier colours.</div>
   </details>
+  <details open data-modes="battle"><summary>🚩 Flag Battle</summary>
+    <div class="hint">Every Tiers picture / emoji is a fighter (flags, faces, memes... any photo). Names come from the tier names.</div>
+    <div class="row"><span>Fighters <em class="hint">0 = one per form</em></span><input type="range" data-k="battle_fighters" min="0" max="30"></div>
+    <div class="row"><span>Health</span><input type="range" data-k="battle_hp" min="20" max="400" step="10"></div>
+    <div class="row"><span>Damage per hit</span><input type="range" data-k="battle_damage" min="3" max="80"></div>
+    <div class="row"><span>Fighter size</span><input type="range" data-k="battle_radius" min="20" max="110"></div>
+    <div class="row"><span>Speed</span><input type="range" data-k="breaker_speed" min="300" max="2500" step="25"></div>
+    <div class="row"><span>Trail</span><input type="range" data-k="breaker_trail" min="0" max="16"></div>
+    <div class="row col"><span>Counter <em class="hint">{balls} {broken}</em></span><input type="text" data-k="battle_counter_text"></div>
+    <div class="row col"><span>Ending text <em class="hint">{winner}</em></span><input type="text" data-k="battle_final_text"></div>
+  </details>
   <details open data-modes="drawer"><summary>✏️ Drawer</summary>
     <div class="row"><span>Picture to reveal</span><span><button class="ghost sm" onclick="mm.pick('drawer_picture','image')">Choose…</button><button class="link" onclick="mm.set({drawer_picture:''})">clear</button></span></div>
     <div class="hint">No picture chosen = your first Tiers picture, or generated artwork.</div>

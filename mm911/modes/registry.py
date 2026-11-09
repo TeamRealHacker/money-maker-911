@@ -13,6 +13,7 @@ MODES = {
     "accumulate": "➕ Accumulate",
     "drawer": "✏️ Drawer",
     "tower": "🏢 Glass Tower",
+    "battle": "🚩 Flag Battle",
 }
 
 
@@ -27,6 +28,9 @@ def sim_for(cfg):
     if m == "accumulate":
         from .accumulate import AccumulateSim
         return AccumulateSim(cfg)
+    if m == "battle":
+        from .battle import BattleSim
+        return BattleSim(cfg)
     if m == "tower":
         from .tower import TowerSim
         return TowerSim(cfg)
@@ -57,6 +61,9 @@ def renderer_for(cfg, scale: float = 1.0):
     if m == "accumulate":
         from ..render_modes import BreakerRenderer
         return BreakerRenderer(cfg, scale)
+    if m == "battle":
+        from ..render_modes import BattleRenderer
+        return BattleRenderer(cfg, scale)
     if m == "tower":
         from ..render_modes import TowerRenderer
         return TowerRenderer(cfg, scale)

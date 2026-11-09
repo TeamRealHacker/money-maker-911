@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_NAME = "Money Maker 911"
 CREDIT = "made by TeamRealHackers"
-VERSION = "0.12.0"
+VERSION = "0.13.0"
 
 # Soft, non-neon palettes. Each: background top, background bottom, container, text, tier colors
 PALETTES: dict[str, dict] = {
@@ -101,19 +101,19 @@ RANDOM_KNOBS = {
 DEFAULT_RANDOM_KNOBS = ["palette", "shape", "hook", "spin", "drop_interval"]
 
 
-MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythmic", "accumulate", "drawer", "tower"]
+MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythmic", "accumulate", "drawer", "tower", "battle"]
 MODE_HOOKS = {"merge": "Will it reach the Final Form?", "escape": "Can it escape all 8 rings?",
               "breaker": "Can it break every brick?", "glass": "Will the glass hold?",
               "ghost": "Can the ghost escape the dark?", "rhythmic": "Can the ball play the whole song?",
               "accumulate": "Can it reach 100 balls?", "drawer": "Can it paint the whole picture?",
-              "tower": "How many floors will break?"}
+              "tower": "How many floors will break?", "battle": "Who wins the battle?"}
 BREAKER_PATTERNS = ["full", "pyramid", "diamond", "heart", "checker", "stripes"]
 
 
 @dataclass
 class MergeConfig:
     """Settings for every mode (the name stays for old presets / imports). mode picks the game."""
-    mode: str = "merge"                # merge | escape | breaker | glass | ghost | rhythmic | accumulate | drawer | tower
+    mode: str = "merge"                # merge | escape | breaker | glass | ghost | rhythmic | accumulate | drawer | tower | battle
     # video
     width: int = 1080
     height: int = 1920
@@ -338,6 +338,12 @@ class MergeConfig:
     tower_floor_height: float = 32.0
     tower_counter_text: str = "{left} floors left"
     tower_final_text: str = "TOWER DOWN!"
+    battle_fighters: int = 0           # 0 = one fighter per form (Tiers picture)
+    battle_radius: float = 58.0
+    battle_hp: float = 100.0
+    battle_damage: float = 18.0        # health lost per hit (scaled by the other fighter's power)
+    battle_counter_text: str = "{balls} left"
+    battle_final_text: str = "{winner} WINS!"
     breaker_pitch_low: float = -5.0    # first brick
     breaker_pitch_high: float = 14.0   # last brick
     # Glass Rush (also uses the escape_* rings / ball / trail / glow settings)
@@ -541,6 +547,11 @@ class MergeConfig:
         self.tower_ball_interval = max(0.1, min(10.0, float(self.tower_ball_interval)))
         self.tower_gravity = max(400.0, min(6000.0, float(self.tower_gravity)))
         self.tower_floor_height = max(8.0, min(80.0, float(self.tower_floor_height)))
+        self.battle_fighters = max(0, min(30, int(self.battle_fighters)))
+        if self.battle_fighters == 1: self.battle_fighters = 2
+        self.battle_radius = max(10.0, min(120.0, float(self.battle_radius)))
+        self.battle_hp = max(10.0, min(1000.0, float(self.battle_hp)))
+        self.battle_damage = max(1.0, min(200.0, float(self.battle_damage)))
         self.drawer_target = max(10, min(100, int(self.drawer_target)))
         self.drawer_brush = max(2.0, min(6.0, float(self.drawer_brush)))
         self.drawer_balls = max(1, min(6, int(self.drawer_balls)))

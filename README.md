@@ -74,7 +74,8 @@
 | ➕ Accumulate (v0.10.0) | ✅ One ball bounces, every few wall hits spawns another until the target (default 100) is reached, pitch climbs with the count<br><img src="docs/demo-accumulate.gif" width="180"> |
 | ✏️ Drawer (v0.11.0) | ✅ The ball is a brush that paints a hidden picture into view (your own photo or generated art), notes climb with the %, the rest fades in at the target |
 | 🏢 Glass Tower (v0.12.0) | ✅ Balls crash down a tower of glass floors that crack where they are hit, each floor a note higher |
-| 🎵 Other 2D modes | 🔜 One by one (Flag Battle next) |
+| 🚩 Flag Battle (v0.13.0) | ✅ Your pictures / flags are fighters with health bars; last one standing wins |
+| 🎵 Other 2D modes | 🔜 One by one (Weapon Battle next) |
 | ☁️ Colab rendering | 🔜 Planned |
 | 🔵 3D modes | 🔜 Planned |
 
@@ -115,7 +116,7 @@ Everything it can do in one place:
 | 6 | 👻 **Ghost Escape** ✅ | Dodge a ring of spikes that closes in | *"Can it dodge the trap?"* |
 | 7 | 🧱 **Breaker** ✅ | Balls smash through layered walls | *"Will the wall break?"* |
 | 8 | 🏢 **Glass Tower** ✅ | Balls crash down a tower of glass floors | *"How many floors survive?"* |
-| 9 | 🚩 **Flag Battle** | Country/team balls fight for territory | *"Which country wins?"* |
+| 9 | 🚩 **Flag Battle** ✅ | Country/team balls fight for territory | *"Which country wins?"* |
 | 10 | ⚔️ **Weapon Ball Battle** | Balls with swords, shields and HP bars fight to the last one | *"Who survives?"* |
 | 11 | 🥛 **Glass Rush** ✅ | Rings of glass crack layer by layer | *"Will the glass hold?"* |
 | 12 | 🏁 **Race** *(new)* | Balls race down a randomized obstacle course | *"Pick your winner!"* |

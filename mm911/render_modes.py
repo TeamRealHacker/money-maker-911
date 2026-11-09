@@ -444,7 +444,10 @@ class BreakerRenderer(Renderer):
         self.strip_icons = []
 
     def build_tier(self, t: int, r_px: float | None = None) -> dict:
-        return super().build_tier(t, self.cfg.breaker_ball_radius * self.scale if r_px is None else r_px)
+        return super().build_tier(t, self._radius() * self.scale if r_px is None else r_px)
+
+    def _radius(self) -> float:
+        return self.cfg.breaker_ball_radius
 
     def _make_container(self) -> None:
         """The arena: anti-aliased rounded frame (+ glow), drawn once."""
@@ -516,6 +519,9 @@ class BreakerRenderer(Renderer):
 
     def _under_balls(self, sim, dx: int, dy: int) -> None:
         """Hook for modes that paint inside the arena (Drawer)."""
+
+    def _over_balls(self, sim, sx: float, sy: float) -> None:
+        """Hook for health bars, names ... drawn on top of the balls (Battle)."""
 
     def _ball(self, idx: int) -> dict:
         t = idx % max(1, self.cfg.tiers)
@@ -589,8 +595,10 @@ class BreakerRenderer(Renderer):
             if sim.vt - ball.born_vt < 0.25:
                 e = (sim.vt - ball.born_vt) / 0.25
                 k = 0.4 + 0.6 * e + 0.15 * math.sin(e * math.pi)
+            k *= getattr(ball, "scale_k", 1.0)
             spr = info["sprite"] if k == 1.0 else pygame.transform.rotozoom(info["sprite"], 0, k)
             S.blit(spr, (round(p.x * sc + sx - spr.get_width() / 2), round(p.y * sc + sy - spr.get_height() / 2)))
+        self._over_balls(sim, sx, sy)
         for p in sim.particles:
             self._draw_particle(p, sx, sy)
         for bn in sim.banners:
@@ -829,3 +837,53 @@ class TowerRenderer(BreakerRenderer):
             self._brick_cache.clear()
         self._brick_cache[key] = surf
         return surf
+
+
+class BattleRenderer(BreakerRenderer):
+    """Flag Battle: balls with health bars, a white flash on every hit and the fighter's name underneath."""
+
+    def __init__(self, cfg, scale: float = 1.0):
+        super().__init__(cfg, scale)
+        self._flash: dict = {}
+        self.f_name = _font(cfg, max(10, int(26 * scale)))
+
+    def _radius(self) -> float:
+        return self.cfg.battle_radius
+
+    def _flash_sprite(self, R: int) -> pygame.Surface:
+        s = self._flash.get(R)
+        if s is None:
+            s = sprites.to_surface(sprites.solid(sprites.disc(sprites._grid(2 * R + 2, R + 1, R + 1), R), (255, 255, 255), 0.75))
+            self._flash[R] = s
+        return s
+
+    def _over_balls(self, sim, sx: float, sy: float) -> None:
+        cfg, sc, S = self.cfg, self.scale, self.surface
+        r = cfg.battle_radius * sc
+        for ball in sim.balls:
+            p = ball.shape.body.position
+            x, y = p.x * sc + sx, p.y * sc + sy
+            k = getattr(ball, "scale_k", 1.0)
+            rr = r * k
+            age = sim.vt - ball.hit_vt
+            if age < 0.14:
+                f = self._flash_sprite(max(2, int(round(rr))))
+                f.set_alpha(int(255 * (1 - age / 0.14)))
+                S.blit(f, (round(x - f.get_width() / 2), round(y - f.get_height() / 2)))
+            if sim.finished_at is not None and ball is not sim.winner:
+                continue
+            frac = max(0.0, min(1.0, ball.hp / ball.max_hp))
+            if sim.winner is ball:
+                continue
+            bw, bh = rr * 2.0, max(5.0, 12 * sc)
+            bx, by = x - bw / 2, y - rr - bh - 6 * sc
+            pygame.draw.rect(S, (30, 30, 40), (bx - 2, by - 2, bw + 4, bh + 4), border_radius=int(bh))
+            col = (int(235 * min(1, 2 * (1 - frac)) + 20), int(210 * min(1, 2 * frac) + 20), 60)
+            if frac > 0:
+                pygame.draw.rect(S, col, (bx, by, bw * frac, bh), border_radius=int(bh))
+            name = cfg.tier_value("tier_names", ball.index % max(1, cfg.tiers))
+            if name:
+                ts = self.f_name.render(name, True, self._tc(cfg.counter_color))
+                if ts.get_width() > bw * 1.6:
+                    ts = pygame.transform.smoothscale(ts, (int(bw * 1.6), max(1, int(ts.get_height() * bw * 1.6 / ts.get_width()))))
+                S.blit(ts, (x - ts.get_width() / 2, y + rr + 3 * sc))
