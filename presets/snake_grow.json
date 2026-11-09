@@ -1,0 +1,8 @@
+{
+  "mode": "snake",
+  "theme_name": "Snake Grow",
+  "hook": "How long can it grow?",
+  "palette": "Candy",
+  "snake_target": 30,
+  "tier_emojis": ["🍎", "🍊", "🍋", "🍏", "🫐", "🍇", "🍓", "🍑", "🥝"]
+}

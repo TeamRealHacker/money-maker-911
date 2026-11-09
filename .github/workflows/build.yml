@@ -54,6 +54,7 @@ jobs:
           python main.py render --preset presets/plinko_jackpot.json --seconds 4 --fps 30 --out output/plinko.mp4
           python main.py render --preset presets/race.json --seconds 4 --fps 30 --out output/race.mp4
           python main.py render --preset presets/gravity_flip.json --seconds 4 --fps 30 --out output/flip.mp4
+          python main.py render --preset presets/snake_grow.json --seconds 4 --fps 30 --out output/snake.mp4
           python main.py dedupe --in output
 
       - name: Smoke test (AI add-on imports, app still imports without models)

@@ -1092,3 +1092,21 @@ class FlipRenderer(BreakerRenderer):
         size = int(min(x1 - x0, y1 - y0) * 0.17)
         spr = self._chevron(sim.dir, size, max(0.0, 1 - (sim.vt - sim.flip_vt) / 0.5))
         S.blit(spr, (round((x0 + x1) / 2 - spr.get_width() / 2 + dx), round((y0 + y1) / 2 - spr.get_height() / 2 + dy)))
+
+
+class SnakeRenderer(BreakerRenderer):
+    """Snake Grow: the Breaker arena, the snake's pictures as balls and a pulsing picture as food."""
+
+    def _radius(self) -> float:
+        return self.cfg.snake_radius
+
+    def _under_balls(self, sim, dx: int, dy: int) -> None:
+        if sim.food is None:
+            return
+        sc, S = self.scale, self.surface
+        fx, fy, idx = sim.food
+        info = self._ball(idx)
+        k = min(1.0, (sim.vt - sim.food_born) / 0.2)
+        k = (0.3 + 0.7 * k + 0.07 * math.sin(sim.vt * 7)) * 1.3
+        spr = pygame.transform.rotozoom(info["sprite"], 0, max(0.1, k))
+        S.blit(spr, (round(fx * sc + dx - spr.get_width() / 2), round(fy * sc + dy - spr.get_height() / 2)))

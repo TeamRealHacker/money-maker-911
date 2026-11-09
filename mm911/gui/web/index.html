@@ -248,6 +248,15 @@
     <div class="row col"><span>Ending text</span><input type="text" data-k="plinko_final_text"></div>
     <div class="hint">Balls wear your Tiers pictures. The edge slots pay the most.</div>
   </details>
+  <details open data-modes="snake"><summary>🐍 Snake Grow</summary>
+    <div class="row"><span>Length to reach</span><input type="range" data-k="snake_target" min="5" max="120"></div>
+    <div class="row"><span>Speed</span><input type="range" data-k="snake_speed" min="300" max="2000" step="50"></div>
+    <div class="row"><span>Turning</span><input type="range" data-k="snake_turn" min="2" max="12" step="0.5"></div>
+    <div class="row"><span>Segment size</span><input type="range" data-k="snake_radius" min="8" max="60"></div>
+    <div class="row col"><span>Counter <em class="hint">{broken} {total}</em></span><input type="text" data-k="snake_counter_text"></div>
+    <div class="row col"><span>Ending text</span><input type="text" data-k="snake_final_text"></div>
+    <div class="hint">Each segment wears the next Tiers picture.</div>
+  </details>
   <details open data-modes="flip"><summary>🔄 Gravity Flip</summary>
     <div class="row"><span>Pictures in the box</span><input type="range" data-k="flip_balls" min="1" max="60"></div>
     <div class="row"><span>Flips to reach</span><input type="range" data-k="flip_count" min="2" max="60"></div>
