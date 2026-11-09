@@ -46,3 +46,39 @@ def test_battle_draws_health_bars_and_video(tmp_path):
     cfg.max_seconds, cfg.fps = 3, 24
     render.render_video(cfg, str(out))
     assert out.stat().st_size > 5000
+
+
+@pytest.mark.parametrize("kw", [{}, dict(weapon_type="sword"), dict(weapon_type="spear", battle_fighters=15),
+                                dict(weapon_type="mace", tiers=3), dict(weapon_length=2.0, weapon_spin=3.0)])
+def test_weapon_battle_has_one_winner(kw):
+    for seed in (1, 2, 3):
+        sim = render.simulate(MergeConfig(mode="weapon", seed=seed, until_finished=True, **kw))
+        assert sim.won and len(sim.balls) == 1 and sim.eliminated == sim.total
+
+
+def test_weapon_only_blades_hurt():
+    cfg = MergeConfig(mode="weapon", seed=2)
+    sim = render.make_sim(cfg)
+    for _ in range(600):
+        sim.step(1 / 60)
+    assert sim.eliminated > 0 and all(b.weapon in ("sword", "spear", "mace") for b in sim.balls)
+
+
+def test_weapon_bad_values_and_draw():
+    c = MergeConfig.from_dict({"mode": "weapon", "weapon_type": "laser", "weapon_length": 99, "weapon_spin": "x"})
+    c.clamp()
+    assert c.weapon_type == "mixed" and c.weapon_length == 2.0 and c.weapon_spin >= 0.2
+    c.width, c.height = 360, 640
+    sim = render.make_sim(c)
+    r = render.make_renderer(c, 1.0)
+    for _ in range(120):
+        sim.step(1 / 60)
+    assert r.draw(sim).get_size() == (360, 640)
+
+
+def test_weapon_video_smoke(tmp_path):
+    cfg = MergeConfig.load("presets/weapon_battle.json")
+    cfg.width, cfg.height, cfg.max_seconds, cfg.fps = 360, 640, 3, 24
+    out = tmp_path / "w.mp4"
+    render.render_video(cfg, str(out))
+    assert out.stat().st_size > 5000

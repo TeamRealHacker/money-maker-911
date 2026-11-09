@@ -887,3 +887,66 @@ class BattleRenderer(BreakerRenderer):
                 if ts.get_width() > bw * 1.6:
                     ts = pygame.transform.smoothscale(ts, (int(bw * 1.6), max(1, int(ts.get_height() * bw * 1.6 / ts.get_width()))))
                 S.blit(ts, (x - ts.get_width() / 2, y + rr + 3 * sc))
+
+
+class WeaponRenderer(BattleRenderer):
+    """Weapon Battle: Flag Battle plus a sword / spear / mace turning around every fighter.
+    Each weapon is drawn once (supersampled) pointing right and rotated per frame."""
+
+    def __init__(self, cfg, scale: float = 1.0):
+        super().__init__(cfg, scale)
+        self._blades: dict = {}
+
+    def _blade(self, kind: str, Lpx: float, rpx: float) -> pygame.Surface:
+        key = (kind, round(Lpx), round(rpx))
+        spr = self._blades.get(key)
+        if spr is not None:
+            return spr
+        from .modes.weapon import WEAPONS
+        SS = 3
+        pad = int(rpx * 0.6) + 4
+        half = int(Lpx) + pad
+        size = half * 2
+        big = pygame.Surface((size * SS, size * SS), pygame.SRCALPHA)
+        c = half * SS
+        r = rpx * SS
+        L = Lpx * SS
+        wid = WEAPONS[kind][3] * r
+        steel, edge, wood, dark = (232, 238, 248), (70, 78, 98), (140, 92, 54), (50, 54, 66)
+
+        def poly(pts, col, outline=edge):
+            pygame.draw.polygon(big, col, [(c + x, c + y) for x, y in pts])
+            pygame.draw.polygon(big, outline, [(c + x, c + y) for x, y in pts], max(2, int(r * 0.05)))
+        a0 = r * 0.55
+        if kind == "sword":
+            poly([(a0, -wid * 0.28), (a0 + r * 0.3, -wid * 0.28), (a0 + r * 0.3, wid * 0.28), (a0, wid * 0.28)], wood)
+            poly([(a0 + r * 0.3, -wid * 0.9), (a0 + r * 0.45, -wid * 0.9), (a0 + r * 0.45, wid * 0.9), (a0 + r * 0.3, wid * 0.9)], (240, 200, 90))
+            poly([(a0 + r * 0.45, -wid * 0.5), (L - wid * 1.4, -wid * 0.42), (L, 0), (L - wid * 1.4, wid * 0.42), (a0 + r * 0.45, wid * 0.5)], steel)
+            pygame.draw.line(big, (255, 255, 255), (c + a0 + r * 0.55, c), (c + L - wid * 1.6, c), max(2, int(r * 0.05)))
+        elif kind == "spear":
+            poly([(a0, -wid * 0.35), (L - r * 0.7, -wid * 0.35), (L - r * 0.7, wid * 0.35), (a0, wid * 0.35)], wood)
+            poly([(L - r * 0.75, -wid * 1.3), (L, 0), (L - r * 0.75, wid * 1.3), (L - r * 0.62, 0)], steel)
+        else:
+            poly([(a0, -wid * 0.3), (L - r * 0.3, -wid * 0.3), (L - r * 0.3, wid * 0.3), (a0, wid * 0.3)], wood)
+            hx, hr = L - r * 0.38, r * 0.4
+            for k in range(8):
+                ang = k * math.pi / 4
+                poly([(hx + math.cos(ang - 0.28) * hr, math.sin(ang - 0.28) * hr),
+                      (hx + math.cos(ang) * hr * 1.55, math.sin(ang) * hr * 1.55),
+                      (hx + math.cos(ang + 0.28) * hr, math.sin(ang + 0.28) * hr)], steel)
+            pygame.draw.circle(big, dark, (c + hx, c), hr)
+            pygame.draw.circle(big, edge, (c + hx, c), hr, max(2, int(r * 0.05)))
+        spr = pygame.transform.smoothscale(big, (size, size))
+        self._blades[key] = spr
+        return spr
+
+    def _over_balls(self, sim, sx: float, sy: float) -> None:
+        sc, S = self.scale, self.surface
+        r = self.cfg.battle_radius * sc
+        for ball in sim.balls:
+            p = ball.shape.body.position
+            k = getattr(ball, "scale_k", 1.0)
+            spr = self._blade(ball.weapon, sim.weapon_len(ball) * sc, r)
+            rot = pygame.transform.rotozoom(spr, -math.degrees(ball.angle), k)
+            S.blit(rot, (round(p.x * sc + sx - rot.get_width() / 2), round(p.y * sc + sy - rot.get_height() / 2)))
+        super()._over_balls(sim, sx, sy)

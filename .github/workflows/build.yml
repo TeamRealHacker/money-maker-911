@@ -50,6 +50,7 @@ jobs:
           python main.py render --preset presets/drawer_art.json --seconds 4 --fps 30 --out output/drawer.mp4
           python main.py render --preset presets/glass_tower.json --seconds 4 --fps 30 --out output/tower.mp4
           python main.py render --preset presets/flag_battle.json --seconds 4 --fps 30 --out output/battle.mp4
+          python main.py render --preset presets/weapon_battle.json --seconds 4 --fps 30 --out output/weapon.mp4
           python main.py dedupe --in output
 
       - name: Smoke test (AI add-on imports, app still imports without models)

@@ -18,7 +18,7 @@ EMOJI = {"Fruit": "🍉", "Animal": "🐾", "Planet": "🪐", "Food": "🍔", "G
 
 
 MODE_WORD = {"merge": ("Merge", "#merge"), "escape": ("Escape", "#escape #rings"),
-             "breaker": ("Breaker", "#breaker #bricks"), "glass": ("Glass Rush", "#glass #asmr"), "ghost": ("Ghost Escape", "#ghost #spooky"), "rhythmic": ("Rhythmic", "#music #satisfying"), "accumulate": ("Accumulate", "#satisfying #oddlysatisfying"), "drawer": ("Drawer", "#painting #satisfying #asmr"), "tower": ("Glass Tower", "#glass #asmr #satisfying"), "battle": ("Flag Battle", "#battle #flags #countryballs")}
+             "breaker": ("Breaker", "#breaker #bricks"), "glass": ("Glass Rush", "#glass #asmr"), "ghost": ("Ghost Escape", "#ghost #spooky"), "rhythmic": ("Rhythmic", "#music #satisfying"), "accumulate": ("Accumulate", "#satisfying #oddlysatisfying"), "drawer": ("Drawer", "#painting #satisfying #asmr"), "tower": ("Glass Tower", "#glass #asmr #satisfying"), "battle": ("Flag Battle", "#battle #flags #countryballs"), "weapon": ("Weapon Battle", "#battle #weapons #satisfying")}
 
 
 def make_title(cfg: MergeConfig) -> str:
@@ -31,6 +31,8 @@ def make_title(cfg: MergeConfig) -> str:
         return f"Can the ghost escape the dark? 👻 {cfg.hook} #shorts"
     if cfg.mode == "glass":
         return f"Will the glass hold? 🥛 {cfg.hook} #shorts"
+    if cfg.mode == "weapon":
+        return f"Who survives? ⚔️ {cfg.hook} #shorts"
     if cfg.mode == "battle":
         return f"{cfg.battle_fighters or cfg.tiers} fighters, 1 winner 🚩 {cfg.hook} #shorts"
     if cfg.mode == "tower":
@@ -134,7 +136,7 @@ def vary(base: MergeConfig, i: int, rng: random.Random, randomize: bool) -> Merg
             ch["escape_alternate"] = rng.random() < 0.7
         if "drop_interval" in knobs:
             ch["glass_hp"] = max(2, min(10, base.glass_hp + rng.choice([-1, 0, 1])))
-    elif base.mode == "battle":
+    elif base.mode in ("battle", "weapon"):
         for k in ("container_shape", "container_spin", "spawn_interval"):
             ch.pop(k, None)
         if "spin" in knobs:

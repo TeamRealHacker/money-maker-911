@@ -64,6 +64,10 @@ class BattleSim(BreakerSim):
         self._by_ball[id(ball.shape)] = ball
         return ball
 
+    def rage(self) -> float:
+        """Sudden death: damage ramps up after half of the video so a fight can't drag on."""
+        return 1.0 + max(0.0, self.vt - 0.5 * self.cfg.max_seconds) / 12.0
+
     # ---------- fights ----------
     def _on_fight(self, arbiter, space, data) -> None:
         a = self._by_ball.get(id(arbiter.shapes[0]))
@@ -73,7 +77,7 @@ class BattleSim(BreakerSim):
         c = self.cfg
         self.hits += 1
         self._last_fight_vt = self.vt
-        d = c.battle_damage
+        d = c.battle_damage * self.rage()
         a.hp -= d * b.power * self.fx.uniform(0.85, 1.15)
         b.hp -= d * a.power * self.fx.uniform(0.85, 1.15)
         a.hit_vt = b.hit_vt = self.vt

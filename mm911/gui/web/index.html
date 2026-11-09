@@ -218,7 +218,7 @@
     <div class="row col"><span>Ending text</span><input type="text" data-k="tower_final_text"></div>
     <div class="hint">The balls use your Tiers pictures / emoji. Floors are tinted with the tier colours.</div>
   </details>
-  <details open data-modes="battle"><summary>🚩 Flag Battle</summary>
+  <details open data-modes="battle weapon"><summary>🚩 Fighters</summary>
     <div class="hint">Every Tiers picture / emoji is a fighter (flags, faces, memes... any photo). Names come from the tier names.</div>
     <div class="row"><span>Fighters <em class="hint">0 = one per form</em></span><input type="range" data-k="battle_fighters" min="0" max="30"></div>
     <div class="row"><span>Health</span><input type="range" data-k="battle_hp" min="20" max="400" step="10"></div>
@@ -228,6 +228,12 @@
     <div class="row"><span>Trail</span><input type="range" data-k="breaker_trail" min="0" max="16"></div>
     <div class="row col"><span>Counter <em class="hint">{balls} {broken}</em></span><input type="text" data-k="battle_counter_text"></div>
     <div class="row col"><span>Ending text <em class="hint">{winner}</em></span><input type="text" data-k="battle_final_text"></div>
+  </details>
+  <details open data-modes="weapon"><summary>⚔️ Weapons</summary>
+    <div class="row"><span>Weapon</span><select data-k="weapon_type"><option>mixed</option><option>sword</option><option>spear</option><option>mace</option></select></div>
+    <div class="row"><span>Length</span><input type="range" data-k="weapon_length" min="0.5" max="2" step="0.05"></div>
+    <div class="row"><span>Spin speed</span><input type="range" data-k="weapon_spin" min="0.2" max="3" step="0.1"></div>
+    <div class="hint">Only the weapon hurts: touching fighters just bounce. Damage and health are in Fighters.</div>
   </details>
   <details open data-modes="drawer"><summary>✏️ Drawer</summary>
     <div class="row"><span>Picture to reveal</span><span><button class="ghost sm" onclick="mm.pick('drawer_picture','image')">Choose…</button><button class="link" onclick="mm.set({drawer_picture:''})">clear</button></span></div>

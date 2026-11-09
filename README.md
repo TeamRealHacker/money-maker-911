@@ -75,7 +75,8 @@
 | ✏️ Drawer (v0.11.0) | ✅ The ball is a brush that paints a hidden picture into view (your own photo or generated art), notes climb with the %, the rest fades in at the target |
 | 🏢 Glass Tower (v0.12.0) | ✅ Balls crash down a tower of glass floors that crack where they are hit, each floor a note higher |
 | 🚩 Flag Battle (v0.13.0) | ✅ Your pictures / flags are fighters with health bars; last one standing wins |
-| 🎵 Other 2D modes | 🔜 One by one (Weapon Battle next) |
+| ⚔️ Weapon Battle (v0.14.0) | ✅ Fighters swing swords, spears and maces; only weapons hurt |
+| 🎵 Other 2D modes | 🔜 One by one (Race, Plinko, Gravity Flip... next) |
 | ☁️ Colab rendering | 🔜 Planned |
 | 🔵 3D modes | 🔜 Planned |
 
@@ -117,7 +118,7 @@ Everything it can do in one place:
 | 7 | 🧱 **Breaker** ✅ | Balls smash through layered walls | *"Will the wall break?"* |
 | 8 | 🏢 **Glass Tower** ✅ | Balls crash down a tower of glass floors | *"How many floors survive?"* |
 | 9 | 🚩 **Flag Battle** ✅ | Country/team balls fight for territory | *"Which country wins?"* |
-| 10 | ⚔️ **Weapon Ball Battle** | Balls with swords, shields and HP bars fight to the last one | *"Who survives?"* |
+| 10 | ⚔️ **Weapon Ball Battle** ✅ | Balls with swords, shields and HP bars fight to the last one | *"Who survives?"* |
 | 11 | 🥛 **Glass Rush** ✅ | Rings of glass crack layer by layer | *"Will the glass hold?"* |
 | 12 | 🏁 **Race** *(new)* | Balls race down a randomized obstacle course | *"Pick your winner!"* |
 | 13 | 🎯 **Plinko** *(new)* | Balls drop through pegs into prize slots | *"Where will it land?"* |

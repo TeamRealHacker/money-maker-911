@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_NAME = "Money Maker 911"
 CREDIT = "made by TeamRealHackers"
-VERSION = "0.13.0"
+VERSION = "0.14.0"
 
 # Soft, non-neon palettes. Each: background top, background bottom, container, text, tier colors
 PALETTES: dict[str, dict] = {
@@ -101,19 +101,21 @@ RANDOM_KNOBS = {
 DEFAULT_RANDOM_KNOBS = ["palette", "shape", "hook", "spin", "drop_interval"]
 
 
-MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythmic", "accumulate", "drawer", "tower", "battle"]
+MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythmic", "accumulate", "drawer", "tower", "battle", "weapon"]
+WEAPON_TYPES = ["sword", "spear", "mace", "mixed"]
 MODE_HOOKS = {"merge": "Will it reach the Final Form?", "escape": "Can it escape all 8 rings?",
               "breaker": "Can it break every brick?", "glass": "Will the glass hold?",
               "ghost": "Can the ghost escape the dark?", "rhythmic": "Can the ball play the whole song?",
               "accumulate": "Can it reach 100 balls?", "drawer": "Can it paint the whole picture?",
-              "tower": "How many floors will break?", "battle": "Who wins the battle?"}
+              "tower": "How many floors will break?", "battle": "Who wins the battle?",
+              "weapon": "Who survives?"}
 BREAKER_PATTERNS = ["full", "pyramid", "diamond", "heart", "checker", "stripes"]
 
 
 @dataclass
 class MergeConfig:
     """Settings for every mode (the name stays for old presets / imports). mode picks the game."""
-    mode: str = "merge"                # merge | escape | breaker | glass | ghost | rhythmic | accumulate | drawer | tower | battle
+    mode: str = "merge"                # merge | escape | breaker | glass | ghost | rhythmic | accumulate | drawer | tower | battle | weapon
     # video
     width: int = 1080
     height: int = 1920
@@ -339,6 +341,9 @@ class MergeConfig:
     tower_counter_text: str = "{left} floors left"
     tower_final_text: str = "TOWER DOWN!"
     battle_fighters: int = 0           # 0 = one fighter per form (Tiers picture)
+    weapon_type: str = "mixed"        # sword | spear | mace | mixed (Weapon Battle)
+    weapon_length: float = 1.0
+    weapon_spin: float = 1.0
     battle_radius: float = 58.0
     battle_hp: float = 100.0
     battle_damage: float = 18.0        # health lost per hit (scaled by the other fighter's power)
@@ -549,6 +554,9 @@ class MergeConfig:
         self.tower_floor_height = max(8.0, min(80.0, float(self.tower_floor_height)))
         self.battle_fighters = max(0, min(30, int(self.battle_fighters)))
         if self.battle_fighters == 1: self.battle_fighters = 2
+        if self.weapon_type not in WEAPON_TYPES: self.weapon_type = "mixed"
+        self.weapon_length = max(0.5, min(2.0, float(self.weapon_length)))
+        self.weapon_spin = max(0.2, min(3.0, float(self.weapon_spin)))
         self.battle_radius = max(10.0, min(120.0, float(self.battle_radius)))
         self.battle_hp = max(10.0, min(1000.0, float(self.battle_hp)))
         self.battle_damage = max(1.0, min(200.0, float(self.battle_damage)))
