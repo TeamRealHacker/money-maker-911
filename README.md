@@ -83,7 +83,8 @@
 | 💥 Chain Reaction (v0.19.0) | ✅ One picture pops and the blast pops every picture it touches, each pop a higher note, CHAIN COMPLETE!<br><img src="docs/demo-chain.gif" width="180"> |
 | ⏳ Countdown Survival (v0.20.0) | ✅ Pictures drift, one is eliminated at every tick of the countdown (higher note each time), last one standing: SURVIVOR!<br><img src="docs/demo-countdown.gif" width="180"> |
 | 🎨 Color Sort (v0.21.0) | ✅ Pictures drift and curve into the goal ring that wears their own picture, each sorted one plays a higher note, SORTED!<br><img src="docs/demo-colorsort.gif" width="180"> |
-| 🎵 Other 2D modes | 🔜 One by one (Voting... next) |
+| 🗳️ Voting (v0.22.0) | ✅ Candidates with live vote counters, the one with the fewest votes is voted out each round, last one wins: WINNER!<br><img src="docs/demo-voting.gif" width="180"> |
+| 🎵 Other 2D modes | 🔜 One by one (3D modes next) |
 | ☁️ Colab rendering | 🔜 Planned |
 | 🔵 3D modes | 🔜 Planned |
 

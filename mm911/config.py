@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_NAME = "Money Maker 911"
 CREDIT = "made by TeamRealHackers"
-VERSION = "0.21.0"
+VERSION = "0.22.0"
 
 # Soft, non-neon palettes. Each: background top, background bottom, container, text, tier colors
 PALETTES: dict[str, dict] = {
@@ -101,14 +101,14 @@ RANDOM_KNOBS = {
 DEFAULT_RANDOM_KNOBS = ["palette", "shape", "hook", "spin", "drop_interval"]
 
 
-MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythmic", "accumulate", "drawer", "tower", "battle", "weapon", "plinko", "race", "flip", "snake", "chain", "countdown", "colorsort"]
+MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythmic", "accumulate", "drawer", "tower", "battle", "weapon", "plinko", "race", "flip", "snake", "chain", "countdown", "colorsort", "voting"]
 WEAPON_TYPES = ["sword", "spear", "mace", "mixed"]
 MODE_HOOKS = {"merge": "Will it reach the Final Form?", "escape": "Can it escape all 8 rings?",
               "breaker": "Can it break every brick?", "glass": "Will the glass hold?",
               "ghost": "Can the ghost escape the dark?", "rhythmic": "Can the ball play the whole song?",
               "accumulate": "Can it reach 100 balls?", "drawer": "Can it paint the whole picture?",
               "tower": "How many floors will break?", "battle": "Who wins the battle?",
-              "weapon": "Who survives?", "plinko": "Can it reach the jackpot?", "race": "Who wins the race?", "flip": "Can gravity survive?", "snake": "How long can it get?", "chain": "Can one pop clear them all?", "countdown": "Who survives the countdown?", "colorsort": "Can it sort every colour?"}
+              "weapon": "Who survives?", "plinko": "Can it reach the jackpot?", "race": "Who wins the race?", "flip": "Can gravity survive?", "snake": "How long can it get?", "chain": "Can one pop clear them all?", "countdown": "Who survives the countdown?", "colorsort": "Can it sort every colour?", "voting": "Who gets your vote?"}
 BREAKER_PATTERNS = ["full", "pyramid", "diamond", "heart", "checker", "stripes"]
 
 
@@ -378,6 +378,12 @@ class MergeConfig:
     colorsort_ball_radius: float = 24.0
     colorsort_counter_text: str = "{left} LEFT"
     colorsort_final_text: str = "SORTED!"
+    voting_balls: int = 8              # candidates (pictures)
+    voting_seconds: float = 20.0       # total voting time: one is voted out at the end of every round
+    voting_speed: float = 150.0
+    voting_ball_radius: float = 80.0
+    voting_counter_text: str = "{left} LEFT"
+    voting_final_text: str = "WINNER!"
     flip_target: int = 14              # gravity flips to reach
     flip_interval: float = 1.5         # seconds between flips
     flip_balls: int = 6
@@ -629,6 +635,10 @@ class MergeConfig:
         self.colorsort_pull = max(0.3, min(10.0, float(self.colorsort_pull)))
         self.colorsort_speed = max(60.0, min(1500.0, float(self.colorsort_speed)))
         self.colorsort_ball_radius = max(8.0, min(60.0, float(self.colorsort_ball_radius)))
+        self.voting_balls = max(2, min(30, int(self.voting_balls)))
+        self.voting_seconds = max(4.0, min(120.0, float(self.voting_seconds)))
+        self.voting_speed = max(60.0, min(900.0, float(self.voting_speed)))
+        self.voting_ball_radius = max(16.0, min(160.0, float(self.voting_ball_radius)))
         self.chain_balls = max(2, min(300, int(self.chain_balls)))
         self.chain_radius = max(60.0, min(500.0, float(self.chain_radius)))
         self.chain_speed = max(60.0, min(1500.0, float(self.chain_speed)))

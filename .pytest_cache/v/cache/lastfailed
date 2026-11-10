@@ -1,3 +1,4 @@
 {
-  "tests/test_api_headless.py::test_bootstrap_is_json_serialisable": true
+  "tests/test_api_headless.py::test_bootstrap_is_json_serialisable": true,
+  "tests/test_api_sound.py::test_api_sound_and_preview_events": true
 }

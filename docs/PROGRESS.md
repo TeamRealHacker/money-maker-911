@@ -46,10 +46,10 @@
 - **2026-11-10** · 💥 Chain Reaction (v0.19.0): `mode: chain`, 70 pictures drift around the arena, one pops and every picture touching the blast pops too, each pop a higher note, CHAIN COMPLETE! when all are gone (a new spark lights a survivor if the chain dies, so every seed finishes); settings pictures / blast size / speed / size / texts; preset `chain_reaction`, batch, GUI section, CI smoke, `tests/test_chain.py`.
 - **2026-11-10** · ⏳ Countdown Survival (v0.20.0): `mode: countdown`, 30 pictures drift around the arena and one is eliminated at every tick of a 20 s countdown (each a higher note) until one is left: SURVIVOR!; settings pictures / countdown seconds / speed / size / texts; preset `countdown_survival`, batch, GUI section, CI smoke, `tests/test_countdown.py`.
 - **2026-11-10** · 🎨 Color Sort (v0.21.0): `mode: colorsort`, pictures drift and curve into the goal ring wearing their own picture (2-8 rings), each sorted one a higher note, SORTED! when all are home; settings pictures / rings / ring size / pull / speed / size / texts; preset `color_sort`, batch, GUI section, CI smoke, `tests/test_colorsort.py`.
+- **2026-11-11** · 🗳️ Voting (v0.22.0): `mode: voting`, 8 candidates (your Tiers pictures) drift around the arena with a live vote counter above each; at the end of every round the one with the fewest votes is voted out (higher note each time) until WINNER!; settings candidates / voting time / speed / size / texts; preset `voting`, batch, GUI section, CI smoke, `tests/test_voting.py`. Fix: picture size of Chain / Countdown / Color Sort / Voting now follows their own size slider in the video.
 
 ## 🔜 TODO (in order)
-1. New 2D: Voting
-2. ☁️ Colab rendering (google-colab-cli via WSL2)
-3. 3D modes: Wave, Marble Run, Ball Crush, Jelly, Cut Count, Magnet, then Hydraulic Press, Liquid Pour, Shatter, Coin Pusher
-4. YouTube upload queue
-5. Polish ideas: Escape "rhythm" mode (bounces play a melody), Breaker power-ups, live preview for the dedupe score
+1. ☁️ Colab rendering (google-colab-cli via WSL2)
+2. 3D modes: Wave, Marble Run, Ball Crush, Jelly, Cut Count, Magnet, then Hydraulic Press, Liquid Pour, Shatter, Coin Pusher
+3. YouTube upload queue
+4. Polish ideas: Escape "rhythm" mode (bounces play a melody), Breaker power-ups, live preview for the dedupe score

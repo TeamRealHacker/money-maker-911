@@ -447,7 +447,8 @@ class BreakerRenderer(Renderer):
         return super().build_tier(t, self._radius() * self.scale if r_px is None else r_px)
 
     def _radius(self) -> float:
-        return self.cfg.breaker_ball_radius
+        m = getattr(self.cfg, "mode", "")
+        return getattr(self.cfg, m + "_ball_radius", None) or self.cfg.breaker_ball_radius
 
     def _make_container(self) -> None:
         """The arena: anti-aliased rounded frame (+ glow), drawn once."""
@@ -1088,3 +1089,26 @@ class ColorSortRenderer(BreakerRenderer):
             if sim.vt - sim._last_break_vt < 0.15 and sim.broken:
                 pulse = 1.0
             self.surface.blit(spr, (round(x * sc + dx - spr.get_width() / 2), round(y * sc + dy - spr.get_height() / 2)))
+
+
+class VotingRenderer(BreakerRenderer):
+    """Arena + a live vote counter above every candidate."""
+
+    def __init__(self, cfg, scale: float = 1.0):
+        super().__init__(cfg, scale)
+        self.f_vote = _font(cfg, max(10, int(30 * scale)))
+
+    def _over_balls(self, sim, sx: float, sy: float) -> None:
+        sc, S = self.scale, self.surface
+        if sim.finished_at is not None:
+            return
+        for b in sim.balls:
+            p = b.shape.body.position
+            txt = str(sim.count(b))
+            s = self.f_vote.render(txt, True, (255, 255, 255))
+            o = self.f_vote.render(txt, True, (20, 20, 30))
+            x = p.x * sc + sx - s.get_width() / 2
+            y = p.y * sc + sy - b.shape.radius * sc - s.get_height() - 2 * sc
+            for ddx, ddy in ((-2, 0), (2, 0), (0, -2), (0, 2)):
+                S.blit(o, (x + ddx, y + ddy))
+            S.blit(s, (x, y))

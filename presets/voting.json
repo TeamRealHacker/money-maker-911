@@ -1,0 +1,8 @@
+{
+  "mode": "voting",
+  "theme_name": "Voting",
+  "hook": "Who gets your vote?",
+  "palette": "Candy",
+  "voting_balls": 8,
+  "tier_emojis": ["🐱", "🐶", "🦊", "🐼", "🐸", "🦁", "🐵", "🐰", "🐯"]
+}

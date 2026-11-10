@@ -22,6 +22,7 @@ MODES = {
     "chain": "💥 Chain Reaction",
     "countdown": "⏳ Countdown Survival",
     "colorsort": "🎨 Color Sort",
+    "voting": "🗳️ Voting",
 }
 
 
@@ -36,6 +37,9 @@ def sim_for(cfg):
     if m == "accumulate":
         from .accumulate import AccumulateSim
         return AccumulateSim(cfg)
+    if m == "voting":
+        from .voting import VotingSim
+        return VotingSim(cfg)
     if m == "colorsort":
         from .colorsort import ColorSortSim
         return ColorSortSim(cfg)
@@ -90,6 +94,9 @@ def renderer_for(cfg, scale: float = 1.0):
     if m == "breaker":
         from ..render_modes import BreakerRenderer
         return BreakerRenderer(cfg, scale)
+    if m == "voting":
+        from ..render_modes import VotingRenderer
+        return VotingRenderer(cfg, scale)
     if m == "colorsort":
         from ..render_modes import ColorSortRenderer
         return ColorSortRenderer(cfg, scale)
