@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_NAME = "Money Maker 911"
 CREDIT = "made by TeamRealHackers"
-VERSION = "0.20.0"
+VERSION = "0.21.0"
 
 # Soft, non-neon palettes. Each: background top, background bottom, container, text, tier colors
 PALETTES: dict[str, dict] = {
@@ -101,21 +101,21 @@ RANDOM_KNOBS = {
 DEFAULT_RANDOM_KNOBS = ["palette", "shape", "hook", "spin", "drop_interval"]
 
 
-MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythmic", "accumulate", "drawer", "tower", "battle", "weapon", "plinko", "race", "flip", "snake", "chain", "countdown"]
+MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythmic", "accumulate", "drawer", "tower", "battle", "weapon", "plinko", "race", "flip", "snake", "chain", "countdown", "colorsort"]
 WEAPON_TYPES = ["sword", "spear", "mace", "mixed"]
 MODE_HOOKS = {"merge": "Will it reach the Final Form?", "escape": "Can it escape all 8 rings?",
               "breaker": "Can it break every brick?", "glass": "Will the glass hold?",
               "ghost": "Can the ghost escape the dark?", "rhythmic": "Can the ball play the whole song?",
               "accumulate": "Can it reach 100 balls?", "drawer": "Can it paint the whole picture?",
               "tower": "How many floors will break?", "battle": "Who wins the battle?",
-              "weapon": "Who survives?", "plinko": "Can it reach the jackpot?", "race": "Who wins the race?", "flip": "Can gravity survive?", "snake": "How long can it get?", "chain": "Can one pop clear them all?", "countdown": "Who survives the countdown?"}
+              "weapon": "Who survives?", "plinko": "Can it reach the jackpot?", "race": "Who wins the race?", "flip": "Can gravity survive?", "snake": "How long can it get?", "chain": "Can one pop clear them all?", "countdown": "Who survives the countdown?", "colorsort": "Can it sort every colour?"}
 BREAKER_PATTERNS = ["full", "pyramid", "diamond", "heart", "checker", "stripes"]
 
 
 @dataclass
 class MergeConfig:
     """Settings for every mode (the name stays for old presets / imports). mode picks the game."""
-    mode: str = "merge"                # merge | escape | breaker | glass | ghost | rhythmic | accumulate | drawer | tower | battle | weapon | plinko | race | flip | snake | chain | countdown
+    mode: str = "merge"                # merge | escape | breaker | glass | ghost | rhythmic | accumulate | drawer | tower | battle | weapon | plinko | race | flip | snake | chain | countdown | colorsort
     # video
     width: int = 1080
     height: int = 1920
@@ -370,6 +370,14 @@ class MergeConfig:
     countdown_ball_radius: float = 28.0
     countdown_counter_text: str = "{left} LEFT"
     countdown_final_text: str = "SURVIVOR!"
+    colorsort_balls: int = 40          # pictures to sort
+    colorsort_zones: int = 4           # goal rings (2-8, at most the number of forms)
+    colorsort_zone_radius: float = 90.0
+    colorsort_pull: float = 2.2        # how strongly a picture turns toward its ring (rad/s)
+    colorsort_speed: float = 230.0
+    colorsort_ball_radius: float = 24.0
+    colorsort_counter_text: str = "{left} LEFT"
+    colorsort_final_text: str = "SORTED!"
     flip_target: int = 14              # gravity flips to reach
     flip_interval: float = 1.5         # seconds between flips
     flip_balls: int = 6
@@ -615,6 +623,12 @@ class MergeConfig:
         self.countdown_seconds = max(3.0, min(120.0, float(self.countdown_seconds)))
         self.countdown_speed = max(60.0, min(1500.0, float(self.countdown_speed)))
         self.countdown_ball_radius = max(8.0, min(70.0, float(self.countdown_ball_radius)))
+        self.colorsort_balls = max(2, min(200, int(self.colorsort_balls)))
+        self.colorsort_zones = max(2, min(8, int(self.colorsort_zones)))
+        self.colorsort_zone_radius = max(40.0, min(160.0, float(self.colorsort_zone_radius)))
+        self.colorsort_pull = max(0.3, min(10.0, float(self.colorsort_pull)))
+        self.colorsort_speed = max(60.0, min(1500.0, float(self.colorsort_speed)))
+        self.colorsort_ball_radius = max(8.0, min(60.0, float(self.colorsort_ball_radius)))
         self.chain_balls = max(2, min(300, int(self.chain_balls)))
         self.chain_radius = max(60.0, min(500.0, float(self.chain_radius)))
         self.chain_speed = max(60.0, min(1500.0, float(self.chain_speed)))

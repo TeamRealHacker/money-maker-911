@@ -21,6 +21,7 @@ MODES = {
     "snake": "🐍 Snake Grow",
     "chain": "💥 Chain Reaction",
     "countdown": "⏳ Countdown Survival",
+    "colorsort": "🎨 Color Sort",
 }
 
 
@@ -35,6 +36,9 @@ def sim_for(cfg):
     if m == "accumulate":
         from .accumulate import AccumulateSim
         return AccumulateSim(cfg)
+    if m == "colorsort":
+        from .colorsort import ColorSortSim
+        return ColorSortSim(cfg)
     if m == "countdown":
         from .countdown import CountdownSim
         return CountdownSim(cfg)
@@ -86,6 +90,9 @@ def renderer_for(cfg, scale: float = 1.0):
     if m == "breaker":
         from ..render_modes import BreakerRenderer
         return BreakerRenderer(cfg, scale)
+    if m == "colorsort":
+        from ..render_modes import ColorSortRenderer
+        return ColorSortRenderer(cfg, scale)
     if m in ("flip", "snake", "chain", "countdown"):
         from ..render_modes import BreakerRenderer
         return BreakerRenderer(cfg, scale)

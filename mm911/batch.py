@@ -18,7 +18,7 @@ EMOJI = {"Fruit": "🍉", "Animal": "🐾", "Planet": "🪐", "Food": "🍔", "G
 
 
 MODE_WORD = {"merge": ("Merge", "#merge"), "escape": ("Escape", "#escape #rings"),
-             "breaker": ("Breaker", "#breaker #bricks"), "glass": ("Glass Rush", "#glass #asmr"), "ghost": ("Ghost Escape", "#ghost #spooky"), "rhythmic": ("Rhythmic", "#music #satisfying"), "accumulate": ("Accumulate", "#satisfying #oddlysatisfying"), "drawer": ("Drawer", "#painting #satisfying #asmr"), "tower": ("Glass Tower", "#glass #asmr #satisfying"), "battle": ("Flag Battle", "#battle #flags #countryballs"), "weapon": ("Weapon Battle", "#battle #weapons #satisfying"), "plinko": ("Plinko", "#plinko #satisfying #oddlysatisfying"), "race": ("Race", "#race #marblerace #satisfying"), "flip": ("Gravity Flip", "#gravity #satisfying #oddlysatisfying"), "snake": ("Snake Grow", "#snake #satisfying #oddlysatisfying"), "chain": ("Chain Reaction", "#chainreaction #satisfying #oddlysatisfying"), "countdown": ("Countdown Survival", "#survival #countdown #satisfying")}
+             "breaker": ("Breaker", "#breaker #bricks"), "glass": ("Glass Rush", "#glass #asmr"), "ghost": ("Ghost Escape", "#ghost #spooky"), "rhythmic": ("Rhythmic", "#music #satisfying"), "accumulate": ("Accumulate", "#satisfying #oddlysatisfying"), "drawer": ("Drawer", "#painting #satisfying #asmr"), "tower": ("Glass Tower", "#glass #asmr #satisfying"), "battle": ("Flag Battle", "#battle #flags #countryballs"), "weapon": ("Weapon Battle", "#battle #weapons #satisfying"), "plinko": ("Plinko", "#plinko #satisfying #oddlysatisfying"), "race": ("Race", "#race #marblerace #satisfying"), "flip": ("Gravity Flip", "#gravity #satisfying #oddlysatisfying"), "snake": ("Snake Grow", "#snake #satisfying #oddlysatisfying"), "chain": ("Chain Reaction", "#chainreaction #satisfying #oddlysatisfying"), "countdown": ("Countdown Survival", "#survival #countdown #satisfying"), "colorsort": ("Color Sort", "#colorsort #satisfying #oddlysatisfying")}
 
 
 def make_title(cfg: MergeConfig) -> str:
@@ -31,6 +31,8 @@ def make_title(cfg: MergeConfig) -> str:
         return f"Can the ghost escape the dark? 👻 {cfg.hook} #shorts"
     if cfg.mode == "glass":
         return f"Will the glass hold? 🥛 {cfg.hook} #shorts"
+    if cfg.mode == "colorsort":
+        return f"Sorting {cfg.colorsort_balls} colours 🎨 {cfg.hook} #shorts"
     if cfg.mode == "countdown":
         return f"{cfg.countdown_balls} enter, 1 survives ⏳ {cfg.hook} #shorts"
     if cfg.mode == "chain":

@@ -82,7 +82,8 @@
 | 🐍 Snake Grow (v0.18.0) | ✅ A snake of your pictures eats food and grows a segment per bite, each bite a higher note, LONGEST SNAKE! at the target<br><img src="docs/demo-snake.gif" width="180"> |
 | 💥 Chain Reaction (v0.19.0) | ✅ One picture pops and the blast pops every picture it touches, each pop a higher note, CHAIN COMPLETE!<br><img src="docs/demo-chain.gif" width="180"> |
 | ⏳ Countdown Survival (v0.20.0) | ✅ Pictures drift, one is eliminated at every tick of the countdown (higher note each time), last one standing: SURVIVOR!<br><img src="docs/demo-countdown.gif" width="180"> |
-| 🎵 Other 2D modes | 🔜 One by one (Chain Reaction, Countdown Survival... next) |
+| 🎨 Color Sort (v0.21.0) | ✅ Pictures drift and curve into the goal ring that wears their own picture, each sorted one plays a higher note, SORTED!<br><img src="docs/demo-colorsort.gif" width="180"> |
+| 🎵 Other 2D modes | 🔜 One by one (Voting... next) |
 | ☁️ Colab rendering | 🔜 Planned |
 | 🔵 3D modes | 🔜 Planned |
 

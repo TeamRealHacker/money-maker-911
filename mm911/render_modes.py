@@ -1050,3 +1050,41 @@ class RaceRenderer(PlinkoRenderer):
                     pygame.draw.rect(S, col, (round(x0 + i * sq + dx), round(fy + j * sq + dy), w, sq))
         ts = self.f_slot.render("FINISH", True, self.cont_col)
         S.blit(ts, (round((x0 + x1) / 2 - ts.get_width() / 2 + dx), round(fy + 2 * sq + 10 * sc + dy)))
+
+
+class ColorSortRenderer(BreakerRenderer):
+    """Arena + coloured goal rings, each wearing the picture of the form it collects."""
+
+    def __init__(self, cfg, scale: float = 1.0):
+        super().__init__(cfg, scale)
+        self._zone_spr: dict = {}
+
+    def _zone_sprite(self, i: int, r: float) -> pygame.Surface:
+        key = (i, round(r, 1))
+        spr = self._zone_spr.get(key)
+        if spr is None:
+            col = self._tier_color(i)
+            pad = int(r * 0.2) + 6
+            n = int(2 * r) + 2 * pad
+            pm = np.zeros((n, n, 4), np.float32)
+            d = sprites._grid(n, n / 2, n / 2)
+            sprites.over(pm, sprites.solid(sprites.disc(d, r), col, 0.22))
+            ring = np.clip(sprites.disc(d, r) - sprites.disc(d, r - max(3.0, r * 0.07)), 0, 1)
+            sprites.over(pm, sprites.solid(ring, col, 0.95))
+            spr = sprites.to_surface(pm)
+            icon = self._ball(i)["sprite"]
+            k = (r * 0.7) / max(1.0, icon.get_width() / 2)
+            icon = pygame.transform.rotozoom(icon, 0, k)
+            icon.set_alpha(170)
+            spr.blit(icon, ((n - icon.get_width()) // 2, (n - icon.get_height()) // 2))
+            self._zone_spr[key] = spr
+        return spr
+
+    def _under_balls(self, sim, dx: int, dy: int) -> None:
+        sc = self.scale
+        for i, (x, y, r) in enumerate(getattr(sim, "zones", [])):
+            spr = self._zone_sprite(i, r * sc)
+            pulse = 1.0
+            if sim.vt - sim._last_break_vt < 0.15 and sim.broken:
+                pulse = 1.0
+            self.surface.blit(spr, (round(x * sc + dx - spr.get_width() / 2), round(y * sc + dy - spr.get_height() / 2)))

@@ -1,0 +1,9 @@
+{
+  "mode": "colorsort",
+  "theme_name": "Color Sort",
+  "hook": "Can it sort every colour?",
+  "palette": "Candy",
+  "colorsort_balls": 40,
+  "colorsort_zones": 4,
+  "tier_emojis": ["🔴", "🔵", "🟢", "🟡", "🟣", "🟠", "⚪", "🟤", "⚫"]
+}
