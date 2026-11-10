@@ -80,6 +80,7 @@
 | 🏁 Race (v0.16.0) | ✅ 2-12 of your pictures race down a field of pegs, first across the chequered line wins<br><img src="docs/demo-race.gif" width="180"> |
 | 🔄 Gravity Flip (v0.17.0) | ✅ Balls tumble while gravity flips down / up / left / right, each flip a higher note, GRAVITY BROKEN! at the end<br><img src="docs/demo-flip.gif" width="180"> |
 | 🐍 Snake Grow (v0.18.0) | ✅ A snake of your pictures eats food and grows a segment per bite, each bite a higher note, LONGEST SNAKE! at the target<br><img src="docs/demo-snake.gif" width="180"> |
+| 💥 Chain Reaction (v0.19.0) | ✅ One picture pops and the blast pops every picture it touches, each pop a higher note, CHAIN COMPLETE!<br><img src="docs/demo-chain.gif" width="180"> |
 | 🎵 Other 2D modes | 🔜 One by one (Chain Reaction, Countdown Survival... next) |
 | ☁️ Colab rendering | 🔜 Planned |
 | 🔵 3D modes | 🔜 Planned |

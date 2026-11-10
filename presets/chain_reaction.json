@@ -1,7 +1,7 @@
 {
   "mode": "chain",
   "theme_name": "Chain Reaction",
-  "hook": "How many will pop?",
+  "hook": "Can one pop clear them all?",
   "palette": "Candy",
   "chain_balls": 70,
   "tier_emojis": ["🟡", "🔴", "🟢", "🔵", "🟣", "🟠", "⚪", "🟤", "⚫"]

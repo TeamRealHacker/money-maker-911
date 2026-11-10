@@ -43,9 +43,10 @@
 - **2026-11-09** · 🏁 Race (v0.16.0): `mode: race`, 2-12 pictures race down a peg field to a chequered finish line, first across wins (WINNER! + slow-mo, ~8 s); settings racers / rows / size / peg size / gravity; preset `race`, batch, CI smoke, tests
 - **2026-11-09** · 🔄 Gravity Flip (v0.17.0): `mode: flip`, balls tumble in a box and gravity flips direction (down/up/left/right) every 1.5 s, each flip a note higher, GRAVITY BROKEN! after the target flips (default 14, ~21 s); settings flips / interval / balls / size / gravity / texts; batch, GUI section, CI smoke, `tests/test_flip.py`.
 - **2026-11-10** · 🐍 Snake Grow (v0.18.0): `mode: snake`, a snake made of your Tiers pictures (head = last form, body tapers) glides with smooth turning toward food, each bite adds a segment and plays a higher note, LONGEST SNAKE! at the target (default 30 bites, ~35 s); settings food / speed / turning / segment + food size / spacing / texts; every seed wins (tested), batch, GUI section, CI smoke, `tests/test_snake.py`.
+- **2026-11-10** · 💥 Chain Reaction (v0.19.0): `mode: chain`, 70 pictures drift around the arena, one pops and every picture touching the blast pops too, each pop a higher note, CHAIN COMPLETE! when all are gone (a new spark lights a survivor if the chain dies, so every seed finishes); settings pictures / blast size / speed / size / texts; preset `chain_reaction`, batch, GUI section, CI smoke, `tests/test_chain.py`.
 
 ## 🔜 TODO (in order)
-1. New 2D: Chain Reaction, Countdown Survival, Color Sort, Voting
+1. New 2D: Countdown Survival, Color Sort, Voting
 2. ☁️ Colab rendering (google-colab-cli via WSL2)
 3. 3D modes: Wave, Marble Run, Ball Crush, Jelly, Cut Count, Magnet, then Hydraulic Press, Liquid Pour, Shatter, Coin Pusher
 4. YouTube upload queue
