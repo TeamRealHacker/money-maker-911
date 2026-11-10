@@ -1,0 +1,8 @@
+{
+  "mode": "countdown",
+  "theme_name": "Countdown Survival",
+  "hook": "Who survives the countdown?",
+  "palette": "Candy",
+  "countdown_balls": 30,
+  "tier_emojis": ["🟡", "🔴", "🟢", "🔵", "🟣", "🟠", "⚪", "🟤", "⚫"]
+}

@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_NAME = "Money Maker 911"
 CREDIT = "made by TeamRealHackers"
-VERSION = "0.19.0"
+VERSION = "0.20.0"
 
 # Soft, non-neon palettes. Each: background top, background bottom, container, text, tier colors
 PALETTES: dict[str, dict] = {
@@ -101,21 +101,21 @@ RANDOM_KNOBS = {
 DEFAULT_RANDOM_KNOBS = ["palette", "shape", "hook", "spin", "drop_interval"]
 
 
-MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythmic", "accumulate", "drawer", "tower", "battle", "weapon", "plinko", "race", "flip", "snake", "chain"]
+MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythmic", "accumulate", "drawer", "tower", "battle", "weapon", "plinko", "race", "flip", "snake", "chain", "countdown"]
 WEAPON_TYPES = ["sword", "spear", "mace", "mixed"]
 MODE_HOOKS = {"merge": "Will it reach the Final Form?", "escape": "Can it escape all 8 rings?",
               "breaker": "Can it break every brick?", "glass": "Will the glass hold?",
               "ghost": "Can the ghost escape the dark?", "rhythmic": "Can the ball play the whole song?",
               "accumulate": "Can it reach 100 balls?", "drawer": "Can it paint the whole picture?",
               "tower": "How many floors will break?", "battle": "Who wins the battle?",
-              "weapon": "Who survives?", "plinko": "Can it reach the jackpot?", "race": "Who wins the race?", "flip": "Can gravity survive?", "snake": "How long can it get?", "chain": "Can one pop clear them all?"}
+              "weapon": "Who survives?", "plinko": "Can it reach the jackpot?", "race": "Who wins the race?", "flip": "Can gravity survive?", "snake": "How long can it get?", "chain": "Can one pop clear them all?", "countdown": "Who survives the countdown?"}
 BREAKER_PATTERNS = ["full", "pyramid", "diamond", "heart", "checker", "stripes"]
 
 
 @dataclass
 class MergeConfig:
     """Settings for every mode (the name stays for old presets / imports). mode picks the game."""
-    mode: str = "merge"                # merge | escape | breaker | glass | ghost | rhythmic | accumulate | drawer | tower | battle | weapon | plinko | race | flip | snake | chain
+    mode: str = "merge"                # merge | escape | breaker | glass | ghost | rhythmic | accumulate | drawer | tower | battle | weapon | plinko | race | flip | snake | chain | countdown
     # video
     width: int = 1080
     height: int = 1920
@@ -364,6 +364,12 @@ class MergeConfig:
     chain_ball_radius: float = 24.0
     chain_counter_text: str = "{broken} / {total}"
     chain_final_text: str = "CHAIN COMPLETE!"
+    countdown_balls: int = 30          # pictures at the start
+    countdown_seconds: float = 20.0    # the countdown: one is out at every tick until one is left
+    countdown_speed: float = 170.0
+    countdown_ball_radius: float = 28.0
+    countdown_counter_text: str = "{left} LEFT"
+    countdown_final_text: str = "SURVIVOR!"
     flip_target: int = 14              # gravity flips to reach
     flip_interval: float = 1.5         # seconds between flips
     flip_balls: int = 6
@@ -605,6 +611,10 @@ class MergeConfig:
         self.race_peg_radius = max(3.0, min(20.0, float(self.race_peg_radius)))
         self.race_ball_radius = max(10.0, min(46.0, float(self.race_ball_radius)))
         self.race_gravity = max(400.0, min(5000.0, float(self.race_gravity)))
+        self.countdown_balls = max(2, min(200, int(self.countdown_balls)))
+        self.countdown_seconds = max(3.0, min(120.0, float(self.countdown_seconds)))
+        self.countdown_speed = max(60.0, min(1500.0, float(self.countdown_speed)))
+        self.countdown_ball_radius = max(8.0, min(70.0, float(self.countdown_ball_radius)))
         self.chain_balls = max(2, min(300, int(self.chain_balls)))
         self.chain_radius = max(60.0, min(500.0, float(self.chain_radius)))
         self.chain_speed = max(60.0, min(1500.0, float(self.chain_speed)))

@@ -54,6 +54,7 @@ jobs:
           python main.py render --preset presets/plinko_jackpot.json --seconds 4 --fps 30 --out output/plinko.mp4
           python main.py render --mode snake --seconds 4 --fps 30 --out output/snake.mp4
           python main.py render --mode chain --seconds 4 --fps 30 --out output/chain.mp4
+          python main.py render --mode countdown --seconds 4 --fps 30 --out output/countdown.mp4
           python main.py render --mode flip --seconds 4 --fps 30 --out output/flip.mp4
           python main.py render --preset presets/race.json --seconds 4 --fps 30 --out output/race.mp4
           python main.py dedupe --in output
