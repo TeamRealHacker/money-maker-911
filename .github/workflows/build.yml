@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  checks: write
 
 jobs:
   windows:
@@ -30,6 +31,13 @@ jobs:
         env:
           MM911_TEST_LOG: test-report.txt
         run: python -m pytest -q -rf
+
+      - name: Publish test report
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          POST_ANNOTATIONS: "1"
+        run: python .github/scripts/test_report.py test-report.txt --github-summary "$env:GITHUB_STEP_SUMMARY"
 
       - name: Upload test report
         if: always()
