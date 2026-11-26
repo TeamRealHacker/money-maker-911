@@ -94,7 +94,9 @@ def test_batch_is_found_even_without_pathext(monkeypatch, tmp_path):
     monkeypatch.setattr(colab, "_windows", lambda: True)
     monkeypatch.setenv("PATH", str(d) + os.pathsep + os.environ.get("PATH", ""))
     monkeypatch.setenv("PATHEXT", "")
-    assert colab._resolve("colab") == str(d / "colab.bat")
+    found = colab._resolve("colab")
+    # Windows returns the on-disk casing (colab.BAT), so compare case-insensitively there
+    assert found and (found == str(bat) or (os.name == "nt" and found.lower() == str(bat).lower()))
 
 
 def test_pack_job_rewrites_media_paths(tmp_path):
