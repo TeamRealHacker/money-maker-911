@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 
 from .config import MergeConfig, MODES
 from .config import (LENGTH_PRESETS, EMOJI_SETS, SHAPES, BG_MODES, PARTICLE_STYLES, RANDOM_KNOBS, MIN_TIERS,
@@ -160,6 +161,40 @@ def sounds_cmd(a) -> None:
             print(f"{s['name']}\t{s['path']}")
 
 
+def colab_cmd(a) -> None:
+    from . import colab as cl
+    if a.action == "check":
+        print(json.dumps(cl.check(), indent=2))
+    elif a.action == "quota":
+        print(json.dumps(cl.quota(), indent=2))
+    elif a.action == "pack":
+        cfg = MergeConfig.load(a.preset) if a.preset else MergeConfig()
+        out = a.out if str(a.out).endswith(".zip") else str(a.out).rstrip("/\\") + ".zip"
+        print(json.dumps(cl.pack_job(cfg, out, batch_count=a.count), indent=2))
+    elif a.action == "render":
+        cfg = MergeConfig.load(a.preset) if a.preset else MergeConfig()
+        apply_args(cfg, a)
+        print(json.dumps(cl.render_on_colab(cfg, a.out, gpu=a.gpu, session=a.session,
+                                            batch_count=a.count, keep_session=a.keep), indent=2))
+
+
+def publish_cmd(a) -> None:
+    from . import publish as pb
+    if a.action == "check":
+        print(json.dumps(pb.check_api(), indent=2))
+    elif a.action == "upload":
+        print(json.dumps(pb.upload_video(a.video, a.title or Path(a.video).stem, a.description or "",
+                                         [t.strip() for t in a.tags.split(",") if t.strip()] if a.tags else [],
+                                         a.privacy, a.publish_at, a.client_secret), indent=2))
+    elif a.action == "queue":
+        plan = pb.queue_plan(a.csv, folder=a.folder, spread_days=a.spread_days, times=a.times,
+                             privacy=a.privacy)
+        if a.dry_run:
+            print(json.dumps(plan, indent=2))
+            return
+        print(json.dumps(pb.upload_queue(plan, client_secret=a.client_secret), indent=2))
+
+
 def main(argv=None) -> None:
     p = argparse.ArgumentParser(prog="mm911", description="Money Maker 911 renderer")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -201,9 +236,36 @@ def main(argv=None) -> None:
     s.add_argument("--strategy", choices=["pitch_up", "sorted"], default="sorted")
     s.add_argument("--count", type=int, default=4)
     s.add_argument("--seed", type=int, default=1)
+    k = sub.add_parser("colab", help="Google Colab GPU rendering: check / quota / pack / render")
+    k.add_argument("action", choices=["check", "quota", "pack", "render"])
+    k.add_argument("--preset")
+    k.add_argument("--out", default="output")
+    k.add_argument("--gpu", default="T4", help="T4 (free) | L4 | A100 (Pro)")
+    k.add_argument("--session", default="mm911")
+    k.add_argument("--count", type=int, default=0, help="batch: render N videos on Colab")
+    k.add_argument("--keep", action="store_true", help="keep the Colab session running afterwards")
+    _add_look_args(k)
+    u = sub.add_parser("publish", help="YouTube uploads: check / upload / queue")
+    u.add_argument("action", choices=["check", "upload", "queue"])
+    u.add_argument("video", nargs="?", help="video file (upload)")
+    u.add_argument("--csv", help="titles.csv from the batch factory (queue)")
+    u.add_argument("--folder", default="", help="where the queue's videos live (default: next to the csv)")
+    u.add_argument("--title")
+    u.add_argument("--description", default="")
+    u.add_argument("--tags", default="", help="comma separated tags")
+    u.add_argument("--privacy", choices=["public", "unlisted", "private"], default="public")
+    u.add_argument("--publish-at", default="", help="ISO timestamp, e.g. 2026-01-01T10:00:00Z")
+    u.add_argument("--spread-days", type=int, default=1, help="queue: spread over N days")
+    u.add_argument("--times", default="10:00,17:30", help="queue: upload slots per day")
+    u.add_argument("--client-secret", default="client_secret.json")
+    u.add_argument("--dry-run", action="store_true", help="queue: print the plan, upload nothing")
     a = p.parse_args(argv)
     if a.cmd == "sounds":
         return sounds_cmd(a)
+    if a.cmd == "colab":
+        return colab_cmd(a)
+    if a.cmd == "publish":
+        return publish_cmd(a)
     if a.cmd == "dedupe":
         from .dedupe import scan_folder
         pairs = scan_folder(a.src, a.threshold)
