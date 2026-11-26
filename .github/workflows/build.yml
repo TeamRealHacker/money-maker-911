@@ -27,7 +27,17 @@ jobs:
           pip install -r requirements-ai.txt
 
       - name: Tests
-        run: python -m pytest -q
+        env:
+          MM911_TEST_LOG: test-report.txt
+        run: python -m pytest -q -rf
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-windows
+          path: test-report.txt
+          if-no-files-found: warn
       - name: Smoke test (render a 4s clip)
         run: python main.py render --preset presets/smoke_test.json --out output/smoke.mp4
 
