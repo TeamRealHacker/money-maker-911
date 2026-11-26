@@ -84,8 +84,14 @@
 | ⏳ Countdown Survival (v0.20.0) | ✅ Pictures drift, one is eliminated at every tick of the countdown (higher note each time), last one standing: SURVIVOR!<br><img src="docs/demo-countdown.gif" width="180"> |
 | 🎨 Color Sort (v0.21.0) | ✅ Pictures drift and curve into the goal ring that wears their own picture, each sorted one plays a higher note, SORTED!<br><img src="docs/demo-colorsort.gif" width="180"> |
 | 🗳️ Voting (v0.22.0) | ✅ Candidates with live vote counters, the one with the fewest votes is voted out each round, last one wins: WINNER!<br><img src="docs/demo-voting.gif" width="180"> |
-| 🎵 Other 2D modes | 🔜 One by one (3D modes next) |
-| ☁️ Colab rendering | 🔜 Planned |
+| 🎳 Bowling Strike (v0.23.0) | ✅ A pin triangle at the top of the lane, the ball is thrown (and re-thrown, hunting the nearest standing pin) until every pin is down, each pin a note higher, STRIKE! |
+| 🏗️ Tower Stack (v0.23.0) | ✅ A crane sways a block over the tower and drops it; real physics blocks land, settle and freeze, each one a note higher, TOWER KING! (sloppy drops can topple it: TOPPLED!) |
+| 🫧 Bubble Pop (v0.23.0) | ✅ Bubbles rise and wobble, your ball hunts them and pops them one by one, each pop a higher note, ALL POPPED! |
+| 🕳️ Hole Eater (v0.23.0) | ✅ A glowing hole glides around swallowing drifting balls and grows with every one, each swallow a higher note, ALL EATEN! |
+| ♾️ Infinite Zoom Physics Loop (v0.23.0) | ✅ The satisfying meme physics simulation: a raw PNG meme cutout bounces down glowing neon stairs in a pitch-black star space while the camera zooms in forever; every bounce plays a sound that is slower and deeper in pitch as the object grows, INFINITE! at the end |
+| 📤 YouTube uploader | ✅ `mm911/publish.py`: upload videos or schedule a whole titles.csv queue across days (YouTube Data API v3, resumable upload, OAuth token cache) |
+| 🎵 More 2D modes | 🔜 One by one (3D modes next) |
+| ☁️ Colab rendering (v0.23.0) | ✅ **Working**: `mm911/colab.py` + `colab/mm911_render.ipynb` — packs your project, rents a Colab GPU via `google-colab-cli` (WSL2 bridge on Windows), renders, downloads, stops the session |
 | 🔵 3D modes | 🔜 Planned |
 
 Full log: [docs/PROGRESS.md](docs/PROGRESS.md)
@@ -98,7 +104,7 @@ Money Maker 911 turns **one click into dozens of finished Shorts**. Pick a mode,
 
 Everything it can do in one place:
 
-- 🎮 **29+ simulation modes**: 17 classic ball-physics formats plus 12 new ones
+- 🎮 **34+ simulation modes**: 24 playable 2D formats (and the 3D set is on the roadmap)
 - 🖥️ **Render on your own PC** (CPU or NVIDIA/AMD/Intel GPU)
 - ☁️ **Or render in the cloud on Google Colab T4 / L4 / A100**, fully automatic
 - 🔁 **Batch factory**: queue 10, 50 or 100+ unique videos at once
@@ -136,21 +142,26 @@ Everything it can do in one place:
 | 17 | 🔢 **Countdown Survival** *(new)* | Last ball standing before the timer hits 0 | *"Will anyone survive 30s?"* |
 | 18 | 🧩 **Color Sort** *(new)* | Balls sort themselves into matching tubes | *"So satisfying…"* |
 | 19 | 🗳️ **Voting / Elimination** *(new)* | Viewers' picks battle in brackets | *"Comment who wins"* |
+| 20 | 🎳 **Bowling Strike** ✅ | A meme ball is thrown at a triangle of pins until every pin is down | *"Can it bowl a STRIKE?"* |
+| 21 | 🏗️ **Tower Stack** ✅ | A crane drops swinging blocks, the tower grows one note higher per block | *"How high can it go?"* |
+| 22 | 🫧 **Bubble Pop** ✅ | Your ball hunts rising bubbles and pops them one by one | *"Can it pop every bubble?"* |
+| 23 | 🕳️ **Hole Eater** ✅ | A glowing hole swallows drifting balls and grows with every bite | *"Can the hole eat them all?"* |
+| 24 | ♾️ **Infinite Zoom Physics Loop** ✅ | A meme cutout tumbles down neon stairs in a star space while the camera zooms forever — bounces get slower and deeper as it grows | *"How deep do the stairs go?"* |
 
 ### 🔵 3D Modes (best on an NVIDIA GPU or Colab)
 
 | # | Mode | What happens |
 |---|------|--------------|
-| 20 | 🌊 **Wave 3D** | Thousands of glowing spheres form a moving wave funnel |
-| 21 | 🎢 **Marble Run 3D** | A marble rolls down a procedurally built track |
-| 22 | 🏋️ **Ball Crush 3D** | Heavy weights crush piles of balls, with a kg counter |
-| 23 | 🍮 **Jelly 3D** | Soft-body jelly drops through layers, with a % solid meter |
-| 24 | 🔪 **Cut Count 3D** | Objects get sliced again and again, with a cut counter |
-| 25 | 🧲 **Magnet 3D** | A magnet pulls thousands of steel balls, power multiplier |
-| 26 | 🏗️ **Hydraulic Press 3D** *(new)* | Press vs everyday objects |
-| 27 | 🫧 **Liquid Pour 3D** *(new)* | Fluid fills shapes and containers |
-| 28 | 🧊 **Shatter 3D** *(new)* | Objects explode into physics fragments |
-| 29 | 🪙 **Coin Pusher 3D** *(new)* | Arcade coin pusher, will the stack fall? |
+| 25 | 🌊 **Wave 3D** | Thousands of glowing spheres form a moving wave funnel |
+| 26 | 🎢 **Marble Run 3D** | A marble rolls down a procedurally built track |
+| 27 | 🏋️ **Ball Crush 3D** | Heavy weights crush piles of balls, with a kg counter |
+| 28 | 🍮 **Jelly 3D** | Soft-body jelly drops through layers, with a % solid meter |
+| 29 | 🔪 **Cut Count 3D** | Objects get sliced again and again, with a cut counter |
+| 30 | 🧲 **Magnet 3D** | A magnet pulls thousands of steel balls, power multiplier |
+| 31 | 🏗️ **Hydraulic Press 3D** *(new)* | Press vs everyday objects |
+| 32 | 🫧 **Liquid Pour 3D** *(new)* | Fluid fills shapes and containers |
+| 33 | 🧊 **Shatter 3D** *(new)* | Objects explode into physics fragments |
+| 34 | 🪙 **Coin Pusher 3D** *(new)* | Arcade coin pusher, will the stack fall? |
 
 > All mechanics and visuals are built from scratch for Money Maker 911. No third-party app code or assets are copied.
 
@@ -228,10 +239,11 @@ pip install -r requirements-ai.txt   # only needed when running from source
 - Length presets: 15 s, 30 s, 45 s, 60 s, or "until finished"
 - Optional thumbnail frame export
 
-### 📤 Publishing (planned)
-- YouTube Data API upload with title, description, tags and schedule
-- Upload queue: spread videos across days automatically
-- Multi-channel profiles
+### 📤 Publishing (v0.23.0)
+- YouTube Data API v3 upload, resumable, with title, description and tags from your batch's `titles.csv`
+- Upload queue: `publish queue output/titles.csv --spread-days 3 --times "10:00,17:30"` schedules every video across days (`publishAt`)
+- OAuth token cache (`token.json`) — sign in once, then every upload is one command
+- Everything before the API call is offline-testable (`read_titles`, `video_metadata`, `plan_schedule`, `queue_plan`)
 
 ---
 
@@ -262,7 +274,22 @@ flowchart LR
 
 ## ☁️ Google Colab GPU Rendering
 
-Money Maker 911 uses the official **[Google Colab CLI](https://github.com/googlecolab/google-colab-cli)** (`google-colab-cli`) to rent a Colab GPU, render your batch, download the videos and shut the GPU down, all automatically.
+Money Maker 911 uses the official **[Google Colab CLI](https://github.com/googlecolab/google-colab-cli)** (`google-colab-cli`) to rent a Colab GPU, render your batch, download the videos and shut the GPU down, all automatically. Since v0.23.0 this is implemented: `mm911/colab.py` packs your project into a job zip and drives the whole session; `colab/mm911_render.ipynb` is the notebook that runs on the VM.
+
+```powershell
+:: is everything ready? (CLI found? WSL bridge? notebook present?)
+MoneyMaker911.exe colab check
+
+:: render one video on a T4 (or a batch: add --count 20)
+MoneyMaker911.exe colab render --preset presets\infinite_zoom_stairs.json --gpu T4 --out output
+MoneyMaker911.exe colab render --preset presets\fruit_candy.json --count 20 --gpu L4 --out output
+
+:: just pack the job zip (then upload it by hand if you prefer)
+MoneyMaker911.exe colab pack --preset presets\fruit_candy.json --out job.zip --count 10
+
+:: quota / compute units
+MoneyMaker911.exe colab quota
+```
 
 ### How it works
 1. You press **Render on Colab** and choose a GPU (T4 on free, L4/A100 on Pro).
@@ -346,7 +373,7 @@ MoneyMaker911.exe render --forms 12 --shape triangle --bg-colors "#1a1a40,#7a1fa
 MoneyMaker911.exe batch --count 20 --randomize palette,shape,background,particles,sound_keyword ^
   --sound-keywords "pop,bubble,boing,water drop" --out output
 ```
-New showcase presets: `neon_triangle_combo`, `space_planets_slowmo`, `custom_bowl_confetti`, `minimal_mono_15s`. Every setting in the app is a key in the preset `.json` (see `mm911/config.py`), so a preset can change anything.
+Showcase presets: `neon_triangle_combo`, `space_planets_slowmo`, `custom_bowl_confetti`, `minimal_mono_15s`, and the v0.23.0 set `bowling_strike`, `tower_stack`, `bubble_pop`, `hole_eater`, `infinite_zoom_stairs`. Every setting in the app is a key in the preset `.json` (see `mm911/config.py`), so a preset can change anything.
 
 Every video also gets a matching `.jpg` thumbnail (the Final Form moment). Tier image folders are read in name order, so call files `1.png, 2.png, 3.png…`.
 
@@ -362,6 +389,17 @@ python main.py render --preset presets/escape_rings.json --out output/escape.mp4
 python main.py render --mode breaker --set breaker_pattern=heart --out output/breaker.mp4   # 🧱 Breaker
 python main.py batch --mode escape --count 20 --dedupe-action flag --out output     # any mode in a batch
 python main.py dedupe --in output                                                   # find look-alikes
+
+:: ☁️ render on a Colab GPU (T4 free / L4 & A100 Pro), download, and stop the session
+python main.py colab check
+python main.py colab render --preset presets/infinite_zoom_stairs.json --gpu T4 --out output
+python main.py colab render --preset presets/fruit_candy.json --count 20 --gpu L4 --out output
+
+:: 📤 upload to YouTube (OAuth sign-in on the first run), or schedule a whole batch
+python main.py publish check
+python main.py publish upload output/merge.mp4 --title "Will it merge?" --tags "shorts,merge"
+python main.py publish queue output/titles.csv --spread-days 3 --times "10:00,17:30" --dry-run
+python main.py publish queue output/titles.csv --spread-days 3 --times "10:00,17:30"
 ```
 
 ### Using your PC for 3D
@@ -398,6 +436,8 @@ money-maker-911/
 │  ├─ dedupe.py         # duplicate checker (perceptual hashes)
 │  ├─ audio.py          # sound loading, pitch, mixing (SoundBank: per-tier sounds)
 │  ├─ sounds.py         # Myinstants search / cache / pitch analysis / auto low->high
+│  ├─ colab.py          # ☁️ Google Colab GPU rendering (google-colab-cli bridge, job packing)
+│  ├─ publish.py        # 📤 YouTube uploader (titles.csv queue, OAuth, resumable upload)
 │  ├─ batch.py          # batch factory + titles.csv
 │  ├─ modes/merge.py    # 🍉 Merge Evolution physics
 │  ├─ modes/escape.py   # 🌀 Escape physics
@@ -406,6 +446,7 @@ money-maker-911/
 │  ├─ gui/              # desktop app (splash, onboarding, studio)
 │  └─ assets/           # logo, fonts (Poppins, OFL)
 ├─ presets/             # ready-made looks
+├─ colab/               # ☁️ mm911_render.ipynb — the notebook that renders on the Colab VM
 ├─ docs/                # demo + progress log
 └─ .github/workflows/   # portable .exe build
 ```
@@ -419,11 +460,11 @@ money-maker-911/
 - [x] **Phase 2: 🍉 Merge Evolution** (first full mode + studio UI)
 - [x] **Phase 3: Batch factory** + title/hashtag CSV + anti-repeat rotation
 - [x] **Phase 4: AI cut-outs** + image/meme import
-- [ ] **Phase 5: Escape ✅, Breaker ✅, Glass Rush ✅, Ghost Escape ✅, Rhythmic ✅, Accumulate ✅**
-- [ ] **Phase 6: Battle modes** (Flag, Weapon) + remaining 2D modes
-- [ ] **Phase 7: ☁️ Colab GPU rendering** (WSL2 bridge)
+- [x] **Phase 5: Escape ✅, Breaker ✅, Glass Rush ✅, Ghost Escape ✅, Rhythmic ✅, Accumulate ✅**
+- [x] **Phase 6: Battle modes** (Flag, Weapon) + all 24 2D modes (Bowling, Tower Stack, Bubble Pop, Hole Eater, Infinite Zoom…)
+- [x] **Phase 7: ☁️ Colab GPU rendering** (`colab.py` + `colab/mm911_render.ipynb`, WSL2 bridge)
 - [ ] **Phase 8: 3D modes** (Wave, Marble Run, Ball Crush, Jelly, Cut Count, Magnet)
-- [ ] **Phase 9: New 3D modes** + YouTube auto-upload
+- [ ] **Phase 9: New 3D modes** + YouTube upload queue polish (uploader shipped in v0.23.0)
 - [x] Portable .exe via GitHub Actions
 - [ ] **Phase 10: Windows installer** + auto-update
 
