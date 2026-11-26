@@ -91,7 +91,9 @@
 | ♾️ Infinite Zoom Physics Loop (v0.23.0) | ✅ The satisfying meme physics simulation: a raw PNG meme cutout bounces down glowing neon stairs in a pitch-black star space while the camera zooms in forever; every bounce plays a sound that is slower and deeper in pitch as the object grows, INFINITE! at the end |
 | 📤 YouTube uploader | ✅ `mm911/publish.py`: upload videos or schedule a whole titles.csv queue across days (YouTube Data API v3, resumable upload, OAuth token cache) |
 | 🎵 More 2D modes | 🔜 One by one (3D modes next) |
-| ☁️ Colab rendering (v0.23.0) | ✅ **Working**: `mm911/colab.py` + `colab/mm911_render.ipynb` — packs your project, rents a Colab GPU via `google-colab-cli` (WSL2 bridge on Windows), renders, downloads, stops the session |
+| ☁️ Colab rendering (v0.23.0) | ✅ **Working**: `mm911/colab.py` + `colab/mm911_render.ipynb` — packs your project, rents a Colab GPU via `google-colab-cli` (WSL2 bridge on Windows), renders, downloads, stops the session. Since v0.25.0 it has its **own page in the app** (sidebar ▸ ☁️ Colab GPU): status, the setup commands, GPU choice, one button to render |
+| 🔎 Search everything (v0.25.0) | ✅ **⌘K / Ctrl+K palette** (`mm911/palette.py`): actions, pages, settings *and* videos in one box, plus `?` for the shortcut sheet |
+| 📤 One-click upload (v0.25.0) | ✅ Auto-upload toggle in *My videos* (green dot when armed) + **Upload new videos (N)** for everything not on YouTube yet |
 | 🔵 3D modes | 🔜 Planned |
 
 Full log: [docs/PROGRESS.md](docs/PROGRESS.md)
@@ -109,6 +111,8 @@ Everything it can do in one place:
 - ☁️ **Or render in the cloud on Google Colab T4 / L4 / A100**, fully automatic
 - 🔁 **Batch factory**: queue 10, 50 or 100+ unique videos at once
 - 🎨 **Your own look**: no neon presets forced, every color, shape, font and speed editable
+- 🔎 **⌘K search** over every action, page, setting and render
+- 📤 **One-click upload** (auto-upload after a batch, or upload everything that is new)
 - 🔊 **Drop-in sound** (Myinstants or any file): auto pitch per tier, per hit
 - 🖼️ **Clean meme cut-outs**: built-in AI background removal, no captions
 - 🧠 **Anti-repeat engine**: every video comes out different, so channels stay fresh
@@ -271,6 +275,39 @@ flowchart LR
 ```
 
 ---
+
+## 🔎 Search everything (⌘K)
+
+Press **⌘K** (macOS) or **Ctrl+K** (Windows / Linux) anywhere in the app — or click **Search…** in the
+top bar — and type. One box searches:
+
+| You type | It finds |
+| --- | --- |
+| `upload`, `batch`, `undo` | **Actions** — run them straight from the palette |
+| `library`, `colab`, `sounds` | **Pages** — jump to a page or a settings section |
+| `gravity`, `length` | **Settings** — any control, by the label you actually see on screen |
+| `fruit`, `meme_merge_001` | **Videos** — every render in the library, by title or file name |
+
+`↑` `↓` to move, `↵` to run, `Esc` to close, `?` for the full shortcut sheet.
+
+### ⌨️ Shortcuts
+
+| Keys | What |
+| --- | --- |
+| `⌘K` / `Ctrl+K` | Search everything (the palette) |
+| `Ctrl+R` / `Ctrl+Shift+R` | Render one video / a batch |
+| `Ctrl+P` | Upload the queue to YouTube |
+| `Ctrl+L` | My videos |
+| `Ctrl+Z` / `Ctrl+Shift+Z` / `Ctrl+Y` | Undo / redo |
+| `?` | Shortcut sheet |
+| `Esc` | Close whatever is open |
+
+## 📤 Uploading is one click
+
+Tick **Auto-upload after every batch** in *My videos* (or run the palette action) and new renders go to
+YouTube by themselves — off by default, private by default, and a video is never uploaded twice. Prefer
+to decide yourself? **📤 Upload new videos (N)** uploads everything that is not on YouTube yet, in one
+click, with progress and per-video results. Details in [Publish studio](#-publish-studio).
 
 ## ☁️ Google Colab GPU Rendering
 

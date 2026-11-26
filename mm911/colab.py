@@ -18,6 +18,8 @@ import sys
 import zipfile
 from pathlib import Path
 
+from .config import VERSION
+
 REPO_NOTEBOOK = Path(__file__).resolve().parent.parent / "colab" / "mm911_render.ipynb"
 SESSION_DEFAULT = "mm911"
 LOG = None
@@ -102,6 +104,28 @@ def check() -> dict:
     except (OSError, subprocess.TimeoutExpired) as e:
         out["note"] = f"Colab CLI did not answer: {e}"
     return out
+
+
+GPU_CHOICES = [
+    {"id": "T4", "label": "T4 · free tier", "note": "about as fast as a good laptop GPU"},
+    {"id": "L4", "label": "L4 · paid", "note": "~2x faster than T4"},
+    {"id": "A100", "label": "A100 · Pro only", "note": "fastest, needs Colab Pro"},
+]
+
+INSTALL_STEPS = [
+    "Install WSL2 + Ubuntu: <code>wsl --install -d Ubuntu</code> (Windows only, skip on Linux/macOS)",
+    "Inside Ubuntu: <code>pipx install google-colab-cli</code>",
+    "Sign in to Google once: <code>gcloud auth application-default login</code>",
+]
+
+
+def status() -> dict:
+    """Everything the app's Colab card needs, in one call (offline)."""
+    info = check()
+    return {**info, "gpus": GPU_CHOICES, "steps": INSTALL_STEPS,
+            "version": VERSION if "VERSION" in globals() else "",
+            "platform": "windows" if _windows() else sys.platform,
+            "wsl": info.get("wsl"), "hint": info.get("note", "")}
 
 
 def _argv(prefix: list[str], cmd: list[str]) -> list[str]:

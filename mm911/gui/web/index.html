@@ -12,8 +12,11 @@
     📚 <span>My videos</span><em id="libcount" hidden></em>
   </a>
   <div class="label" style="margin-top:8px">Publish</div>
-  <a href="#" class="pubnav" id="pubnav" onclick="mm.openPublish();return false">
+  <a href="#" class="pubnav" id="pubnav" onclick="mm.openPublish();return false" title="Publish studio">
     📤 <span>Publish studio</span><b id="pubdot" hidden></b>
+  </a>
+  <a href="#" class="pubnav" id="colabnav" onclick="mm.openColab();return false" title="Render a batch on a free Colab GPU">
+    ☁️ <span>Colab GPU</span><i class="dot" id="colabdot" hidden></i>
   </a>
   <div class="grow"></div>
   <div class="updatebox" id="updbox">
@@ -32,6 +35,7 @@
 <main class="stage">
   <div class="topbar">
     <div class="title"><span id="modetitle">Merge Evolution</span><em id="status">Live preview</em></div>
+    <button class="palhint" onclick="mm.openPalette()" title="Search everything (Ctrl+K)">🔎 Search… <kbd>⌘K</kbd></button>
     <div class="seg">
       <button class="ghost" id="undobtn" onclick="mm.undo()" title="Nothing to undo" disabled>↶ Undo</button>
       <button class="ghost" id="redobtn" onclick="mm.redo()" title="Nothing to redo" disabled>↷ Redo</button>
@@ -481,6 +485,17 @@
     </select>
     <span class="hint" id="libstats"></span>
   </div>
+  <div class="libbar upload">
+    <button class="primary sm" id="libuploadbtn" onclick="mm.uploadNew()" title="Upload every video that is not on YouTube yet">
+      📤 Upload new videos <em id="libuploadcount" hidden></em>
+    </button>
+    <label class="libauto" title="After every batch, upload the new videos automatically">
+      <input type="checkbox" id="libauto" onchange="mm.autoUploadFromLibrary(this.checked)">
+      <span>Auto-upload after every batch</span>
+    </label>
+    <span class="hint" id="libautohint"></span>
+    <div class="prog slim" id="libprog" hidden><div class="track"><i id="libbar"></i></div><span id="libptext"></span></div>
+  </div>
   <div class="libgrid" id="libgrid"></div>
 </div>
 
@@ -524,6 +539,56 @@
       <div class="row"><span>Spread over (days)</span><input type="number" id="pubdays" min="1" max="30" value="1" onchange="mm.savePublish()"></div>
       <div class="row col"><span>Posting times <em class="hint">24h clock, comma separated</em></span><input type="text" id="pubtimes" value="10:00,17:30" onchange="mm.savePublish()"></div>
       <div class="hint">Scheduled uploads start private and go public at the time you set. A video is never uploaded twice, even if you re-run the batch.</div>
+    </section>
+  </div>
+</div>
+
+<div class="palette" id="palette" hidden>
+  <div class="palbox">
+    <input type="text" id="palq" placeholder="Search anything — render, upload, gravity, a video…" autocomplete="off"
+           oninput="mm.paletteSearch()" onkeydown="mm.paletteKey(event)">
+    <div class="pallist" id="pallist"></div>
+    <div class="palfoot"><span id="palhint">↑↓ to move · ↵ to run · Esc to close</span>
+      <button class="link xs" onclick="mm.showShortcuts()">All shortcuts</button></div>
+  </div>
+</div>
+
+<div class="studio" id="shortcuts" hidden>
+  <div class="studiohead">
+    <div><b>⌨️ Keyboard shortcuts</b><em>Everything is one keystroke away</em></div>
+    <button class="ghost" onclick="mm.closeShortcuts()">Done</button>
+  </div>
+  <div class="keyscard" id="keyslist"></div>
+</div>
+
+<div class="studio" id="colabpage" hidden>
+  <div class="studiohead">
+    <div><b>☁️ Colab GPU rendering</b><em>Rent a Colab GPU for a batch — your PC stays free</em></div>
+    <div class="seg">
+      <button class="ghost" onclick="mm.refreshColab()">↻ Re-check</button>
+      <button class="ghost" onclick="mm.closeColab()">Done</button>
+    </div>
+  </div>
+  <div class="studiobody">
+    <section class="studioCard">
+      <h3>1 · Connect Colab</h3>
+      <div class="hint" id="colabstatus">Checking…</div>
+      <ol class="steps" id="colabsteps"></ol>
+      <div class="studioActs" id="colabacts"></div>
+    </section>
+    <section class="studioCard">
+      <h3>2 · Render on the GPU</h3>
+      <div class="row"><span>GPU</span><select id="colabgpu"></select></div>
+      <div class="row"><span>Videos</span><input type="number" id="colabcount" min="0" max="500" value="0" title="0 = one video"></div>
+      <div class="row"><span>Keep the session after</span><input type="checkbox" id="colabkeep"></div>
+      <div class="hint" id="colabquota">Compute units: not checked yet.</div>
+      <div class="studioActs">
+        <button class="primary" id="colabgo" onclick="mm.startColab()">Render on Colab</button>
+        <button class="ghost" onclick="mm.colabQuota()">Check quota</button>
+      </div>
+      <div class="prog" id="colabprog" hidden><div class="track"><i id="colabbar"></i></div><span id="colabptext"></span></div>
+      <div id="colabresults" class="pubresults"></div>
+      <div class="hint">Your project (code, preset, pictures, sounds) is packed into a job zip and sent to a fresh Colab VM. The videos come back into your output folder.</div>
     </section>
   </div>
 </div>
