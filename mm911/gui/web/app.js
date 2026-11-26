@@ -1,10 +1,12 @@
 const MODES = [
   ["🍉 Merge Evolution", "merge"], ["🌀 Escape", "escape"], ["🧱 Breaker", "breaker"], ["🥛 Glass Rush", "glass"], ["👻 Ghost Escape", "ghost"], ["🎵 Rhythmic", "rhythmic"], ["➕ Accumulate", "accumulate"], ["✏️ Drawer", "drawer"], ["🏢 Glass Tower", "tower"], ["🚩 Flag Battle", "battle"],
   ["⚔️ Weapon Battle", "weapon"],
+  ["🎳 Bowling Strike", "bowling"], ["🏗️ Tower Stack", "stacker"], ["🫧 Bubble Pop", "bubble"], ["🕳️ Hole Eater", "hole"], ["♾️ Infinite Zoom", "zoom"],
   ["🏁 Race", "race"], ["🔄 Gravity Flip", "flip"], ["🐍 Snake Grow", "snake"], ["💥 Chain Reaction", "chain"], ["⏳ Countdown Survival", "countdown"], ["🎨 Color Sort", "colorsort"], ["🗳️ Voting", "voting"], ["🎯 Plinko", "plinko"], ["🌊 Wave 3D"], ["🎢 Marble Run 3D"], ["🧲 Magnet 3D"],
 ];
 const MODE_HOOKS = { merge: "Will it reach the Final Form?", escape: "Can it escape all 8 rings?",
-  breaker: "Can it break every brick?", glass: "Will the glass hold?", ghost: "Can the ghost escape the dark?", rhythmic: "Can the ball play the whole song?", accumulate: "Can it reach 100 balls?", drawer: "Can it paint the whole picture?", tower: "How many floors will break?", battle: "Who wins the battle?", weapon: "Who survives?", plinko: "Can it reach the jackpot?", race: "Who wins the race?", flip: "Can gravity survive?", snake: "How long can it get?", chain: "Can one pop clear them all?", countdown: "Who survives the countdown?", colorsort: "Can it sort every colour?", voting: "Who gets your vote?" };
+  breaker: "Can it break every brick?", glass: "Will the glass hold?", ghost: "Can the ghost escape the dark?", rhythmic: "Can the ball play the whole song?", accumulate: "Can it reach 100 balls?", drawer: "Can it paint the whole picture?", tower: "How many floors will break?", battle: "Who wins the battle?", weapon: "Who survives?", plinko: "Can it reach the jackpot?", race: "Who wins the race?", flip: "Can gravity survive?", snake: "How long can it get?", chain: "Can one pop clear them all?", countdown: "Who survives the countdown?", colorsort: "Can it sort every colour?", voting: "Who gets your vote?",
+  bowling: "Can it bowl a STRIKE?", stacker: "How high can the tower go?", bubble: "Can it pop every bubble?", hole: "Can the hole eat them all?", zoom: "How deep do the stairs go?" };
 const $ = (s) => document.querySelector(s);
 let state = {};
 let booted = false;
@@ -356,6 +358,85 @@ function lengths() {
     `<button class="${Math.abs(cur - v) < 0.5 ? "on" : ""}" onclick="mm.set({max_seconds:${v}})">${k}</button>`).join("");
 }
 
+// ---- v0.23.0 mode sections (bowling, stacker, bubble, hole, zoom) ----
+const MODE_SECTIONS_V023 = `
+  <details open data-modes="bowling"><summary>🎳 Bowling Strike</summary>
+    <div class="row"><span>Pins</span><input type="range" data-k="bowling_pins" min="1" max="15"></div>
+    <div class="row"><span>Rows</span><input type="range" data-k="bowling_rows" min="1" max="8"></div>
+    <div class="row"><span>Pin size</span><input type="range" data-k="bowling_pin_radius" min="8" max="40"></div>
+    <div class="row"><span>Pin toughness</span><input type="range" data-k="bowling_pin_hp" min="1" max="3"></div>
+    <div class="row"><span>Pin spread</span><input type="range" data-k="bowling_pin_spread" min="0.8" max="2" step="0.1"></div>
+    <div class="row"><span>Ball size</span><input type="range" data-k="bowling_ball_radius" min="14" max="60"></div>
+    <div class="row"><span>Throw speed</span><input type="range" data-k="bowling_speed" min="400" max="2500" step="25"></div>
+    <div class="row"><span>Max throws</span><input type="range" data-k="bowling_max_throws" min="1" max="30"></div>
+    <div class="row col"><span>Counter <em class="hint">{broken} {total}</em></span><input type="text" data-k="bowling_counter_text"></div>
+    <div class="row col"><span>Ending text</span><input type="text" data-k="bowling_final_text"></div>
+    <div class="hint">The ball is thrown from the bottom and re-thrown until every pin is down.</div>
+  </details>
+  <details open data-modes="stacker"><summary>🏗️ Tower Stack</summary>
+    <div class="row"><span>Blocks to stack</span><input type="range" data-k="stacker_target" min="2" max="40"></div>
+    <div class="row"><span>Block width</span><input type="range" data-k="stacker_block_w" min="60" max="300" step="5"></div>
+    <div class="row"><span>Block height</span><input type="range" data-k="stacker_block_h" min="20" max="110" step="2"></div>
+    <div class="row"><span>Clean-drop window</span><input type="range" data-k="stacker_tolerance" min="0.15" max="1.2" step="0.05"></div>
+    <div class="row"><span>Sloppy drops before topple</span><input type="range" data-k="stacker_miss_limit" min="1" max="10"></div>
+    <div class="row"><span>Crane sway</span><input type="range" data-k="stacker_swing" min="0" max="1.2" step="0.05"></div>
+    <div class="row"><span>Sway period</span><input type="range" data-k="stacker_swing_period" min="1" max="10" step="0.2"></div>
+    <div class="row"><span>Seconds between blocks</span><input type="range" data-k="stacker_interval" min="0.25" max="5" step="0.05"></div>
+    <div class="row col"><span>Counter <em class="hint">{broken} {total}</em></span><input type="text" data-k="stacker_counter_text"></div>
+    <div class="row col"><span>Ending text</span><input type="text" data-k="stacker_final_text"></div>
+    <div class="hint">Blocks are real physics: they land, settle and freeze into the tower.</div>
+  </details>
+  <details open data-modes="bubble"><summary>🫧 Bubble Pop</summary>
+    <div class="row"><span>Bubbles to pop</span><input type="range" data-k="bubble_target" min="5" max="200"></div>
+    <div class="row"><span>Spawn every (s)</span><input type="range" data-k="bubble_spawn_interval" min="0.05" max="3" step="0.05"></div>
+    <div class="row"><span>Bubble size</span><input type="range" data-k="bubble_radius" min="14" max="80"></div>
+    <div class="row"><span>Rise speed</span><input type="range" data-k="bubble_speed" min="40" max="500" step="10"></div>
+    <div class="row"><span>Wobble</span><input type="range" data-k="bubble_wobble" min="0" max="100"></div>
+    <div class="row"><span>Ball size</span><input type="range" data-k="bubble_ball_radius" min="10" max="60"></div>
+    <div class="row"><span>Ball speed</span><input type="range" data-k="bubble_ball_speed" min="300" max="2000" step="25"></div>
+    <div class="row col"><span>Counter <em class="hint">{broken} {total}</em></span><input type="text" data-k="bubble_counter_text"></div>
+    <div class="row col"><span>Ending text</span><input type="text" data-k="bubble_final_text"></div>
+    <div class="hint">Bubbles rise from the bottom; your ball hunts them down.</div>
+  </details>
+  <details open data-modes="hole"><summary>🕳️ Hole Eater</summary>
+    <div class="row"><span>Balls</span><input type="range" data-k="hole_balls" min="2" max="120"></div>
+    <div class="row"><span>Hole size</span><input type="range" data-k="hole_radius" min="20" max="140"></div>
+    <div class="row"><span>Growth per ball</span><input type="range" data-k="hole_growth" min="0" max="0.2" step="0.005"></div>
+    <div class="row"><span>Hole speed</span><input type="range" data-k="hole_speed" min="60" max="900" step="10"></div>
+    <div class="row"><span>Ball drift</span><input type="range" data-k="hole_drift" min="50" max="800" step="10"></div>
+    <div class="row"><span>Ball size</span><input type="range" data-k="hole_ball_radius" min="10" max="60"></div>
+    <div class="row"><span>Balls flee</span><input type="range" data-k="hole_flee" min="0" max="1" step="0.05"></div>
+    <div class="row col"><span>Counter <em class="hint">{broken} {total}</em></span><input type="text" data-k="hole_counter_text"></div>
+    <div class="row col"><span>Ending text</span><input type="text" data-k="hole_final_text"></div>
+    <div class="hint">The hole always catches up. Balls wear your Tiers pictures.</div>
+  </details>
+  <details open data-modes="zoom"><summary>♾️ Infinite Zoom</summary>
+    <div class="row"><span>Stairs</span><input type="range" data-k="zoom_target" min="3" max="60"></div>
+    <div class="row"><span>Zoom per step</span><input type="range" data-k="zoom_growth" min="1.1" max="2" step="0.02"></div>
+    <div class="row"><span>First step (s)</span><input type="range" data-k="zoom_step_time" min="0.3" max="2" step="0.05"></div>
+    <div class="row"><span>Slower every step</span><input type="range" data-k="zoom_slow" min="1" max="1.2" step="0.01"></div>
+    <div class="row"><span>Platform width</span><input type="range" data-k="zoom_platform_w" min="0.35" max="0.9" step="0.05"></div>
+    <div class="row"><span>Line glow</span><input type="range" data-k="zoom_glow" min="0" max="1" step="0.05"></div>
+    <div class="row"><span>Stars</span><input type="range" data-k="zoom_stars" min="0" max="600" step="10"></div>
+    <div class="row"><span>Star twinkle</span><input type="range" data-k="zoom_star_twinkle" min="0" max="1" step="0.05"></div>
+    <div class="row"><span>Spin</span><input type="range" data-k="zoom_ball_spin" min="0" max="8" step="0.2"></div>
+    <div class="row"><span>First bounce pitch</span><input type="range" data-k="zoom_pitch_start" min="-6" max="12" step="0.5"></div>
+    <div class="row"><span>Deeper per step</span><input type="range" data-k="zoom_pitch_drop" min="0" max="2" step="0.05"></div>
+    <div class="row col"><span>Line colour</span><span><input type="color" data-k="zoom_line_color" data-def="#35C8FF"><button class="link" onclick="mm.set({zoom_line_color:'#35C8FF'})">reset</button></span></div>
+    <div class="row col"><span>Counter <em class="hint">{broken} {total}</em></span><input type="text" data-k="zoom_counter_text"></div>
+    <div class="row col"><span>Ending text</span><input type="text" data-k="zoom_final_text"></div>
+    <div class="hint">Dark-mode neon stairs in a star space; the camera zooms forever and every bounce sounds deeper.</div>
+  </details>
+`;
+
+function injectModeSections() {
+  const anchor = document.querySelector('[data-modes="battle weapon"]');
+  if (anchor && !document.querySelector('[data-modes="zoom"]')) {
+    anchor.insertAdjacentHTML("beforebegin", MODE_SECTIONS_V023);
+    // boot() runs bindInputs() right after modeNav(), which wires these fresh controls
+  }
+}
+
 function modeNav() {
   const cur = (state.config && state.config.mode) || "merge";
   $("#modes").innerHTML = MODES.map(([n, key]) => key
@@ -369,7 +450,7 @@ function fill() {
   document.querySelectorAll("#modes a[data-mode]").forEach((a) => a.classList.toggle("on", a.dataset.mode === mode));
   const mt = MODES.find((m) => m[1] === mode);
   if ($("#modetitle") && mt) $("#modetitle").textContent = mt[0].replace(/^\S+\s/, "");
-  if ($("#winslabel")) $("#winslabel").textContent = { merge: "Only Final Form wins", escape: "Only full escapes", breaker: "Only cleared walls", glass: "Only fully shattered", ghost: "Only full escapes", rhythmic: "Only full escapes", accumulate: "Only reached target", drawer: "Only fully painted", tower: "Only fully shattered", battle: "Only a clear winner", weapon: "Only a clear winner", plinko: "Only reached the jackpot", race: "Only a clear winner", flip: "Only reached target", snake: "Only reached target", chain: "Only full chains", countdown: "Only one survivor", colorsort: "Only fully sorted", voting: "Only a clear winner" }[mode] || "Only wins";
+  if ($("#winslabel")) $("#winslabel").textContent = { merge: "Only Final Form wins", escape: "Only full escapes", breaker: "Only cleared walls", glass: "Only fully shattered", ghost: "Only full escapes", rhythmic: "Only full escapes", accumulate: "Only reached target", drawer: "Only fully painted", tower: "Only fully shattered", battle: "Only a clear winner", weapon: "Only a clear winner", plinko: "Only reached the jackpot", race: "Only a clear winner", flip: "Only reached target", snake: "Only reached target", chain: "Only full chains", countdown: "Only one survivor", colorsort: "Only fully sorted", voting: "Only a clear winner", bowling: "Only a STRIKE", stacker: "Only full towers", bubble: "Only all popped", hole: "Only all eaten", zoom: "Only reached INFINITE" }[mode] || "Only wins";
   document.querySelectorAll("[data-k]").forEach((el) => {
     if (el === document.activeElement && el.type === "text") return;   // don't fight the user's typing
     const v = c[el.dataset.k];
@@ -499,6 +580,7 @@ async function boot() {
   }
   $("#ver").textContent = "v" + state.version;
   modeNav();
+  injectModeSections();
   $("#shapes").innerHTML = state.shapes.map((s) => `<option>${s}</option>`).join("");
   $("#hooks").innerHTML = state.hooks.map((h) => `<option value="${esc(h)}">`).join("");
   $("#emojiset").innerHTML += Object.entries(state.emoji_sets).map(([k, v]) => `<option value="${k}">${v.slice(0, 3).join("")} ${k}</option>`).join("");

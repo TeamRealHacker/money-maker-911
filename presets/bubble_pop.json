@@ -1,0 +1,22 @@
+{
+  "mode": "bubble",
+  "theme_name": "Bubble Pop",
+  "hook": "Can it pop every bubble?",
+  "palette": "Ocean",
+  "bg_mode": "gradient",
+  "bg_colors": ["#0B2545", "#13315C", "#081A33"],
+  "bg_angle": 90,
+  "bubble_target": 30,
+  "bubble_spawn_interval": 0.35,
+  "bubble_radius": 34,
+  "bubble_speed": 170,
+  "bubble_ball_radius": 26,
+  "bubble_ball_speed": 700,
+  "tier_emojis": ["🐟", "🐠", "🦈", "🐙", "🐬", "🐳"],
+  "particle_style": "sparks",
+  "particle_amount": 1.2,
+  "shake_strength": 4,
+  "watermark": "@yourchannel",
+  "max_seconds": 43,
+  "seed": 2
+}

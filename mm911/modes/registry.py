@@ -23,6 +23,11 @@ MODES = {
     "countdown": "⏳ Countdown Survival",
     "colorsort": "🎨 Color Sort",
     "voting": "🗳️ Voting",
+    "bowling": "🎳 Bowling Strike",
+    "stacker": "🏗️ Tower Stack",
+    "bubble": "🫧 Bubble Pop",
+    "hole": "🕳️ Hole Eater",
+    "zoom": "♾️ Infinite Zoom",
 }
 
 
@@ -82,6 +87,21 @@ def sim_for(cfg):
     if m == "glass":
         from .glass import GlassSim
         return GlassSim(cfg)
+    if m == "zoom":
+        from .zoom import ZoomSim
+        return ZoomSim(cfg)
+    if m == "bowling":
+        from .bowling import BowlingSim
+        return BowlingSim(cfg)
+    if m == "stacker":
+        from .stacker import StackerSim
+        return StackerSim(cfg)
+    if m == "bubble":
+        from .bubble import BubbleSim
+        return BubbleSim(cfg)
+    if m == "hole":
+        from .hole import HoleSim
+        return HoleSim(cfg)
     from .merge import MergeSim
     return MergeSim(cfg)
 
@@ -133,5 +153,20 @@ def renderer_for(cfg, scale: float = 1.0):
     if m == "glass":
         from ..render_modes import GlassRenderer
         return GlassRenderer(cfg, scale)
+    if m == "zoom":
+        from ..render_new import ZoomRenderer
+        return ZoomRenderer(cfg, scale)
+    if m == "bowling":
+        from ..render_new import BowlingRenderer
+        return BowlingRenderer(cfg, scale)
+    if m == "stacker":
+        from ..render_new import StackerRenderer
+        return StackerRenderer(cfg, scale)
+    if m == "bubble":
+        from ..render_new import BubbleRenderer
+        return BubbleRenderer(cfg, scale)
+    if m == "hole":
+        from ..render_new import HoleRenderer
+        return HoleRenderer(cfg, scale)
     from ..render import Renderer
     return Renderer(cfg, scale)
