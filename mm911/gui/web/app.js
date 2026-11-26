@@ -470,7 +470,10 @@ const mm = {
     if (el) el.hidden = false;
     const rows = (state.palIndex && state.palIndex.shortcuts) || [];
     if (box && rows.length) {
-      box.innerHTML = rows.map((r) => `<div class="keysrow"><span>${esc(r.what)}</span><kbd>${esc(r.keys)}</kbd></div>`).join("");
+      const groups = [...new Set(rows.map((r) => r.group || "Keys"))];
+      box.innerHTML = groups.map((g) => `<div class="keysgroup">${esc(g)}</div>` + rows
+        .filter((r) => (r.group || "Keys") === g)
+        .map((r) => `<div class="keysrow"><span>${esc(r.what)}</span><kbd>${esc(r.keys)}</kbd></div>`).join("")).join("");
     } else if (box) {
       box.innerHTML = `<div class="keysrow"><span>Search everything</span><kbd>⌘K / Ctrl+K</kbd></div>`;
     }
@@ -484,33 +487,156 @@ const mm = {
     await mm.refreshColab();
   },
   closeColab() { const el = $("#colabpage"); if (el) el.hidden = true; },
+
+  // The card is data-driven: each step is done / next / later, so the user always sees the one
+  // thing left to do. Windows gets the WSL2 path spelled out instead of a failing button.
   async refreshColab() {
     let r = null;
     try { r = await call("colab_status"); } catch (e) { return; }
     state.colab = r;
     const sel = $("#colabgpu");
-    if (sel) sel.innerHTML = (r.gpus || []).map((g) => `<option value="${esc(g.id)}" title="${esc(g.note || "")}">${esc(g.label || g.id)}</option>`).join("");
-    const steps = $("#colabsteps"), status = $("#colabstatus"), acts = $("#colabacts"), go = $("#colabgo");
-    if (status) status.textContent = r.ready ? "Colab is ready" : (r.wsl === false && r.platform === "windows"
-      ? "Needs WSL2 + the Colab CLI (Windows cannot run it directly)" : (r.hint || "Not ready yet"));
+    if (sel) {
+      sel.innerHTML = (r.gpus || []).map((g) => `<option value="${esc(g.id)}" title="${esc(g.note || "")}">${esc(g.label || g.id)}</option>`).join("");
+      if (state.colabGpu && (r.gpus || []).some((g) => g.id === state.colabGpu)) sel.value = state.colabGpu;
+    }
+    const status = $("#colabstatus"), steps = $("#colabsteps"), acts = $("#colabacts"), go = $("#colabgo");
+    if (status) {
+      status.textContent = r.ready ? "✓ Colab is ready"
+        : r.needs_login ? "Installed — sign-in needed"
+        : (r.hint || "Not installed yet");
+      status.className = "hint" + (r.ready ? " good" : "");
+    }
     if (steps) {
-      const rows = (r.steps || []).map((t) => t);
-      const done = [r.cli, r.cli, r.ready];
-      let firstOpen = true;
-      steps.innerHTML = rows.map((t, i) => {
-        const d = !!done[i];
-        const cls = d ? "done" : (firstOpen ? "now" : "");
-        if (!d) firstOpen = false;
-        return `<li class="${cls}"><span class="n">${d ? "✓" : i + 1}</span><span>${t}</span></li>`;
-      }).join("") + (r.notebook ? "" : `<li><span class="n">!</span><span>The render notebook is missing from this build.</span></li>`);
+      const done = { wsl: r.platform !== "windows" ? true : !!r.wsl, pipx: !!r.cli, cli: !!r.cli, login: !!r.ready };
+      const skipped = { wsl: r.platform !== "windows" };
+      let firstOpen = false;
+      steps.innerHTML = (r.steps || []).map((st) => {
+        const d = !!done[st.id];
+        const isNext = !d && !firstOpen && (firstOpen = true);
+        const cls = [d ? "done" : "", isNext ? "now" : "", skipped[st.id] ? "skip" : ""].join(" ");
+        const cmd = st.cmd ? `<br><code>${esc(st.cmd)}</code>` : "";
+        return `<li class="${cls}"><span class="n">${d ? "✓" : isNext ? "→" : "·"}</span>
+          <span><b>${esc(st.title)}</b>${st.note ? ` <em class="hint">${esc(st.note)}</em>` : ""}${d ? "" : cmd}</span></li>`;
+      }).join("");
     }
     if (acts) {
-      acts.innerHTML = r.ready
-        ? `<span class="hint">GPU: ${(r.gpus || []).map((g) => esc(g.id)).join(" · ")}</span>`
-        : `<button class="ghost sm" onclick="mm.colabSetup()">Setup guide</button>`;
+      const manual = (r.manual || {});
+      const cmds = [...(manual.powershell || []), ...(manual.bash || [])];
+      if (r.ready) {
+        acts.innerHTML = `<button class="ghost sm" onclick="mm.colabQuota()">Check compute units</button>
+          <span class="hint">${esc((r.gpus || []).map((g) => g.id).join(" · "))}</span>`;
+      } else {
+        const install = r.can_install
+          ? `<button class="primary sm" onclick="mm.colabInstall()">⚡ Install for me (one click)</button>` : "";
+        const login = r.cli && !r.ready
+          ? `<button class="dark sm" onclick="mm.colabLogin()">Sign in to Google</button>` : "";
+        acts.innerHTML = install + login +
+          `<button class="ghost sm" onclick="mm.colabManual()">Show the commands</button>`;
+        mm.colabManualCmds = cmds;
+      }
     }
     if (go) go.disabled = !r.ready;
+    mm.colabPreflight();
   },
+
+  // Preview the install: what one click would run, before anything runs.
+  async colabInstall() {
+    if (state.colabInstalling) return;
+    let plan = null;
+    try { plan = await call("colab_install_plan"); } catch (e) { return; }
+    const box = $("#colabinstall"), list = $("#colabinstallsteps"), log = $("#colabinstalllog"), title = $("#colabinstalltitle");
+    if (box) box.hidden = false;
+    if (log) log.textContent = "";
+    if (title) title.textContent = "Installing Colab (one click)…";
+    if (list) {
+      list.innerHTML = (plan.steps || []).map((st, i) => `
+        <div class="installstep" data-i="${i}">
+          <span class="ico">·</span>
+          <span><b>${esc(st.title)}</b><br><code>${esc(st.cmd)}</code>
+          ${st.note ? `<br><em class="hint">${esc(st.note)}</em>` : ""}</span>
+        </div>`).join("");
+    }
+    state.colabInstalling = true;
+    let r = null;
+    try { r = await call("colab_install", true); } catch (e) { state.colabInstalling = false; return; }
+    if (!r || r.ok === false) {
+      state.colabInstalling = false;
+      toast((r && r.error) || "Install could not start");
+    }
+  },
+  colabInstallProgress(m) {
+    const list = $("#colabinstallsteps"), log = $("#colabinstalllog"), title = $("#colabinstalltitle");
+    if (m.state === "install") {
+      const el = list && list.querySelector(`[data-i="${m.i}"]`);
+      if (el) {
+        el.className = "installstep " + (m.step === "start" ? "run" : m.step === "done" ? "done" : "err");
+        const ico = el.querySelector(".ico");
+        if (ico) ico.textContent = m.step === "start" ? "◐" : m.step === "done" ? "✓" : "✗";
+      }
+      if (title) title.textContent = m.note || m.title;
+      if (log && m.output) log.textContent = m.output;
+      return;
+    }
+    state.colabInstalling = false;
+    if (m.state === "installed") {
+      if (title) title.textContent = "✓ Installed — one more step: sign in to Google";
+      toast("Colab installed — now sign in");
+      mm.refreshColab();
+      return;
+    }
+    if (m.state === "error") {
+      if (title) title.textContent = "✗ Install did not finish";
+      if (log && m.manual) {
+        const cmds = [...(m.manual.powershell || []), ...(m.manual.bash || [])];
+        log.textContent = (m.error || "") + "\n\nDo this by hand:\n" + cmds.join("\n");
+      }
+      toast(m.error || "Install failed");
+      mm.refreshColab();
+    }
+  },
+  closeInstall() { const b = $("#colabinstall"); if (b) b.hidden = true; },
+  colabManual() {
+    const cmds = mm.colabManualCmds || [];
+    call("set_text", cmds.join("\n\n")).then((ok) => { if (!ok) mm.copyText(cmds.join("\n\n")); }).catch(() => {});
+    toast("Commands copied — paste them in PowerShell");
+    const box = $("#colabinstall"), log = $("#colabinstalllog"), list = $("#colabinstallsteps"), title = $("#colabinstalltitle");
+    if (box) box.hidden = false;
+    if (title) title.textContent = "Paste these in PowerShell (run as administrator)";
+    if (list) list.innerHTML = "";
+    if (log) log.textContent = cmds.join("\n\n");
+  },
+
+  async colabLogin() {
+    let r = null;
+    try { r = await call("colab_login"); } catch (e) { return; }
+    if (!r || r.ok === false) return toast((r && r.error) || "Sign-in could not start");
+    const box = $("#colablogin"), text = $("#colablogintext"), input = $("#colabloginurl");
+    if (box) box.hidden = false;
+    if (text) text.textContent = "Waiting for Google… approve the sign-in in your browser.";
+    if (input && r.url) input.value = r.url;
+  },
+  colabLoginUrl(url) {
+    const box = $("#colablogin"), input = $("#colabloginurl"), text = $("#colablogintext");
+    if (box) box.hidden = false;
+    if (input) input.value = url;
+    if (text) text.textContent = "Open this link and approve it (a browser tab should have opened by itself):";
+  },
+  copyLogin() { const v = (($("#colabloginurl") || {}).value) || ""; if (v) mm.copyText(v); },
+  openLogin() { const v = (($("#colabloginurl") || {}).value) || ""; if (v) call("open_url", v).catch(() => {}); },
+
+  async colabPreflight() {
+    const gpu = (($("#colabgpu") || {}).value) || "T4";
+    state.colabGpu = gpu;
+    let r = null;
+    try { r = await call("colab_preflight", gpu); } catch (e) { return; }
+    const box = $("#colabpf");
+    if (!box) return;
+    const items = (r.items || []).filter((i) => i.state !== "ok");
+    box.hidden = !items.length;
+    box.innerHTML = items.map((i) => `<div class="pf ${i.state}"><b>${i.state === "warn" ? "!" : "✗"}</b>
+      <span>${esc(i.title)}: ${esc(i.detail)}${i.fix ? ` — <b>${esc(i.fix)}</b>` : ""}</span></div>`).join("");
+  },
+
   colabSetup() { call("colab_open_setup"); },
   async refreshColabDot() {
     let r = null;
@@ -518,8 +644,9 @@ const mm = {
     const dot = $("#colabdot");
     if (dot) {
       dot.hidden = false;
-      dot.style.background = r.ready ? "#2ECC71" : "#D9D9DE";
-      $("#colabnav").title = r.ready ? "Colab ready — render on a GPU" : "Colab GPU rendering (needs setup)";
+      dot.style.background = r.ready ? "#2ECC71" : r.needs_login ? "#F5A623" : "#D9D9DE";
+      $("#colabnav").title = r.ready ? "Colab ready — render on a GPU"
+        : r.needs_login ? "Colab installed — sign in needed" : "Colab GPU rendering (needs setup)";
     }
   },
   async colabQuota() {
@@ -536,14 +663,34 @@ const mm = {
     const r = await call("colab_render", gpu, count, keep);
     if (!r || r.ok === false) {
       toast((r && r.error) || "Colab could not start");
-      if (r && r.setup) return mm.refreshColab();
+      if (r && r.preflight) {
+        const box = $("#colabpf");
+        if (box) {
+          box.hidden = false;
+          box.innerHTML = (r.preflight.items || []).filter((i) => i.state !== "ok")
+            .map((i) => `<div class="pf ${i.state}"><b>✗</b><span>${esc(i.title)}: ${esc(i.detail)}${i.fix ? ` — <b>${esc(i.fix)}</b>` : ""}</span></div>`).join("");
+        }
+      }
+      if (r && r.setup) await mm.refreshColab();
       return;
     }
     const prog = $("#colabprog"); if (prog) prog.hidden = false;
   },
   colabProgress(m) {
-    const prog = $("#colabprog"), bar = $("#colabbar"), text = $("#colabptext"), res = $("#colabresults");
-    if (m.state === "packing") { if (prog) prog.hidden = false; if (text) text.textContent = m.note; return; }
+    if (m.state === "install" || m.state === "installed") return mm.colabInstallProgress(m);
+    if (m.state === "login_url") return mm.colabLoginUrl(m.url);
+    if (m.state === "logged_in" || m.state === "login_done") {
+      const box = $("#colablogin"); if (box) box.hidden = true;
+      toast(m.note || "Signed in");
+      if (m.status) state.colab = m.status;
+      return mm.refreshColab();
+    }
+    const prog = $("#colabprog"), text = $("#colabptext"), res = $("#colabresults");
+    if (m.state === "packing" || m.state === "uploading") {
+      if (prog) prog.hidden = false;
+      if (text) text.textContent = m.note;
+      return;
+    }
     if (prog) prog.hidden = true;
     if (m.state === "error") {
       if (res) res.innerHTML = `<div class="bad">✗ ${esc(m.error)}</div>`;
@@ -556,6 +703,7 @@ const mm = {
         : `<span class="hint">${esc(m.note || "No videos came back.")}</span>`;
       toast(m.note || "Colab render finished");
       if (state.lib) mm.refreshLibrary();
+      mm.refreshColab();
     }
   },
 
@@ -1208,7 +1356,7 @@ function paintPreflight() {
     const box = $("#preflight"), sum = $("#pfsum"), icon = $("#pficon"), list = $("#pflist");
     if (!box || !r) return;
     state.preflight = r;
-    const errs = r.items.filter((i) => i.level === "error");
+    const errs = (r.items || []).filter((i) => i.level === "error");
     const warns = r.items.filter((i) => i.level === "warning");
     const show = errs.length + warns.length > 0;
     box.hidden = !show;
@@ -1375,7 +1523,11 @@ async function boot() {
     const mod = e.ctrlKey || e.metaKey;
     if (mod && e.key.toLowerCase() === "k") { e.preventDefault(); return mm.openPalette(); }
     if (mod && e.key.toLowerCase() === "r") { e.preventDefault(); return e.shiftKey ? mm.renderBatch() : mm.renderOne(); }
-    if (mod && e.key.toLowerCase() === "p") { e.preventDefault(); return mm.openPublish().then(() => mm.startUpload()); }
+    if (mod && e.key.toLowerCase() === "p") {
+      e.preventDefault();
+      if (e.shiftKey) { const el = $("#setsearch"); if (el) el.focus(); return; }
+      return mm.openPublish().then(() => mm.startUpload());
+    }
     if (mod && e.key.toLowerCase() === "l") { e.preventDefault(); return mm.openLibrary(); }
     if (mod && e.key.toLowerCase() === "z") {
       e.preventDefault();

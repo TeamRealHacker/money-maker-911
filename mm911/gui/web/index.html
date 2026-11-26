@@ -5,9 +5,12 @@
 <body>
 <aside class="side">
   <div class="brand"><img src="logo.png" alt=""><div><b>Money Maker 911</b><small>Shorts Studio</small></div></div>
-  <div class="label">Modes</div>
-  <nav id="modes"></nav>
-  <div class="label" style="margin-top:8px">Library</div>
+  <div class="sidescroll">
+    <div class="label">Modes</div>
+    <nav id="modes"></nav>
+  </div>
+  <div class="sidefoot">
+  <div class="label">Library</div>
   <a href="#" class="pubnav" id="libnav" onclick="mm.openLibrary();return false">
     📚 <span>My videos</span><em id="libcount" hidden></em>
   </a>
@@ -18,7 +21,7 @@
   <a href="#" class="pubnav" id="colabnav" onclick="mm.openColab();return false" title="Render a batch on a free Colab GPU">
     ☁️ <span>Colab GPU</span><i class="dot" id="colabdot" hidden></i>
   </a>
-  <div class="grow"></div>
+  </div>
   <div class="updatebox" id="updbox">
     <button class="updbtn" id="updbtn" onclick="mm.openUpdate()">
       <span id="updicon">🔄</span><span id="updlabel">Check for updates</span><b id="upddot" hidden></b>
@@ -573,15 +576,29 @@
     <section class="studioCard">
       <h3>1 · Connect Colab</h3>
       <div class="hint" id="colabstatus">Checking…</div>
+      <div class="colabacts" id="colabacts"></div>
       <ol class="steps" id="colabsteps"></ol>
-      <div class="studioActs" id="colabacts"></div>
+      <div class="installbox" id="colabinstall" hidden>
+        <div class="installhead"><b id="colabinstalltitle">Installing…</b>
+          <button class="link xs" onclick="mm.closeInstall()">×</button></div>
+        <div class="installsteps" id="colabinstallsteps"></div>
+        <pre class="installlog" id="colabinstalllog"></pre>
+      </div>
+      <div class="loginbox" id="colablogin" hidden>
+        <div class="hint" id="colablogintext">Waiting for Google…</div>
+        <div class="row"><input type="text" id="colabloginurl" readonly placeholder="the sign-in link appears here">
+          <button class="ghost sm" onclick="mm.copyLogin()">Copy</button>
+          <button class="ghost sm" onclick="mm.openLogin()">Open</button></div>
+      </div>
+      <div class="hint">Windows is fine: the installer sets up WSL2 + Ubuntu, then the Colab CLI inside it — one button, no terminal.</div>
     </section>
     <section class="studioCard">
       <h3>2 · Render on the GPU</h3>
-      <div class="row"><span>GPU</span><select id="colabgpu"></select></div>
+      <div class="row"><span>GPU</span><select id="colabgpu" onchange="mm.colabPreflight()"></select></div>
       <div class="row"><span>Videos</span><input type="number" id="colabcount" min="0" max="500" value="0" title="0 = one video"></div>
       <div class="row"><span>Keep the session after</span><input type="checkbox" id="colabkeep"></div>
       <div class="hint" id="colabquota">Compute units: not checked yet.</div>
+      <div class="colabpf" id="colabpf" hidden></div>
       <div class="studioActs">
         <button class="primary" id="colabgo" onclick="mm.startColab()">Render on Colab</button>
         <button class="ghost" onclick="mm.colabQuota()">Check quota</button>

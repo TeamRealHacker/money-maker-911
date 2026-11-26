@@ -35,7 +35,17 @@ function bridge() {
       case "palette_run": return PALRUN[a[1]] || { error: "unknown" };
       case "colab_status": return COLAB;
       case "colab_quota": return { output: "compute units: 42.5" };
-      case "colab_render": return { ok: false, setup: true, error: "Colab is not connected yet" };
+      case "colab_render": return { ok: false, setup: true, error: "Colab is not connected yet",
+                                    preflight: { ok: false, items: [{ state: "error", title: "Colab CLI", detail: "not installed", fix: "press Install" }] } };
+      case "colab_preflight": return { ok: false, items: [{ state: "ok", title: "Render notebook", detail: "bundled", fix: "" },
+                                                          { state: "error", title: "Colab CLI", detail: "not installed", fix: "press Install (one click)" }] };
+      case "colab_install_plan": return { ok: false, dry_run: true, steps: [
+        { title: "Install WSL2 + Ubuntu", cmd: "wsl --install -d Ubuntu", note: "may ask to reboot" },
+        { title: "Install pipx and the Colab CLI inside Ubuntu", cmd: "wsl -d Ubuntu -- bash -lc \"pipx install google-colab-cli\"" }] };
+      case "colab_install": return { ok: true, started: true };
+      case "colab_login": return { ok: true, started: true, url: "" };
+      case "set_text": return true;
+      case "open_url": return null;
       case "auto_upload_state": return { ...UPLOAD, enabled: uploadOn };
       case "auto_upload_set": uploadOn = !!a[0]; return { ...UPLOAD, enabled: uploadOn };
       case "publish_upload": return true;
@@ -136,6 +146,8 @@ w.mm.closeShortcuts();
 w.mm.showShortcuts();
 ok("shortcuts sheet opens", !$("#shortcuts").hidden);
 ok("shortcuts sheet lists keys", /Ctrl\+Z/.test($("#keyslist").textContent));
+ok("shortcuts sheet is grouped", $$("#keyslist .keysgroup").length >= 2);
+ok("the sheet documents the new keys", /Ctrl\+Shift\+P/.test($("#keyslist").textContent));
 w.mm.closeShortcuts();
 ok("shortcuts sheet closes", $("#shortcuts").hidden);
 
@@ -159,6 +171,35 @@ w.mm.colabProgress({ state: "error", error: "no quota left" });
 ok("colab reports an error", /no quota left/.test($("#colabresults").textContent));
 w.mm.closeColab();
 ok("colab closes", $("#colabpage").hidden);
+
+// ---- one-click install / sign-in ----
+await w.mm.openColab();
+await wait(100);
+ok("colab offers a one-click install", /one click/i.test($("#colabacts").textContent));
+ok("colab offers the manual commands too", /commands/i.test($("#colabacts").textContent));
+ok("colab preflight lists what blocks a render", !$("#colabpf").hidden && /not installed/.test($("#colabpf").textContent));
+ok("colab install steps are shown with statuses", $$("#colabsteps li").length >= 4);
+ok("the WSL2 path is explained", /WSL2|Ubuntu/.test($("#colabsteps").textContent));
+await w.mm.colabInstall();
+ok("install shows the commands before running them", !$("#colabinstall").hidden &&
+   /wsl --install/.test($("#colabinstallsteps").textContent));
+w.mm.colabInstallProgress({ state: "install", i: 0, title: "Install WSL2 + Ubuntu", step: "start" });
+ok("the running step is marked", /installstep run/.test($("#colabinstallsteps").innerHTML));
+w.mm.colabInstallProgress({ state: "install", i: 0, title: "Install WSL2 + Ubuntu", step: "done", output: "ok" });
+ok("the finished step is marked", /installstep done/.test($("#colabinstallsteps").innerHTML));
+ok("install output is visible", /ok/.test($("#colabinstalllog").textContent));
+w.mm.colabInstallProgress({ state: "installed", note: "installed" });
+ok("install completion is reported", /sign in/i.test($("#colabinstalltitle").textContent));
+await w.mm.colabLogin();
+ok("sign-in starts and shows its panel", !$("#colablogin").hidden);
+w.mm.colabLoginUrl("https://accounts.google.com/o/oauth2/auth?x=1");
+ok("the consent link is put in the box", /accounts\.google\.com/.test($("#colabloginurl").value));
+ok("the link can be copied or opened", /Copy/.test($("#colablogin").textContent) && /Open/.test($("#colablogin").textContent));
+ok("signing in refreshes the status card", typeof w.mm.refreshColab === "function");
+await w.mm.startColab();
+ok("render refuses with the preflight reason", /Colab CLI/.test($("#colabpf").textContent));
+w.mm.closeInstall();
+ok("the install log can be dismissed", $("#colabinstall").hidden);
 ok("colab has a sidebar entry", !!$("#colabnav"));
 
 // ---------------------------------------------------------------- one-click upload
@@ -224,6 +265,13 @@ await w.mm.openLibrary();
 await w.mm.openColab();
 w.document.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
 ok("Esc closes every overlay", $("#palette").hidden && $("#library").hidden && $("#colabpage").hidden);
+
+// ---------------------------------------------------------------- layout rails
+ok("the sidebar has a scrolling mode list", !!$(".sidescroll") && !!$(".sidescroll #modes"));
+ok("Library / Publish / Colab sit in a pinned footer", !!$(".sidefoot #libnav") && !!$(".sidefoot #colabnav"));
+ok("the sidebar footer is outside the scroll area", !$(".sidescroll").contains($("#colabnav")));
+ok("the inspector is its own scroll container", /inspector/.test(w.document.body.innerHTML) &&
+   w.document.querySelectorAll(".inspector details").length > 5);
 
 // ---------------------------------------------------------------- done
 ok("no JS errors after exercising the new UI", errors.length === 0, JSON.stringify(errors));

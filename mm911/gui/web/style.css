@@ -306,3 +306,60 @@ button.primary.sm em{font-style:normal;background:rgba(255,255,255,.25);border-r
 .prog.slim .track{height:6px}
 .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#2ECC71;margin-left:6px;vertical-align:middle}
 .pubnav .dot{box-shadow:0 0 0 3px rgba(46,204,113,.18)}
+
+/* ---------- rails that stay put (the sidebar used to scroll away with the mode list) ---------- */
+body{height:100vh}
+.side{height:100vh;overflow:hidden;padding-bottom:10px}
+.sidescroll{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:#D6D6DC transparent;margin-right:-6px;padding-right:6px}
+.sidescroll::-webkit-scrollbar{width:8px}
+.sidescroll::-webkit-scrollbar-thumb{background:#D9D9DF;border-radius:8px}
+.sidescroll::-webkit-scrollbar-thumb:hover{background:#C4C4CC}
+.sidescroll::-webkit-scrollbar-track{background:transparent}
+.sidefoot{flex:0 0 auto;padding-top:6px;border-top:1px solid rgba(0,0,0,.05)}
+.sidefoot .label{margin-top:6px}
+.credit{flex:0 0 auto}
+.inspector{height:100vh;overscroll-behavior:contain}
+.stage{height:100vh;overflow:hidden}
+/* thin, quiet scrollbars everywhere else too */
+.inspector,.pallist,.libgrid,.studiobody{scrollbar-width:thin;scrollbar-color:#D6D6DC transparent}
+.inspector::-webkit-scrollbar,.pallist::-webkit-scrollbar,
+.libgrid::-webkit-scrollbar,.studiobody::-webkit-scrollbar{width:9px}
+.inspector::-webkit-scrollbar-thumb,.pallist::-webkit-scrollbar-thumb,
+.libgrid::-webkit-scrollbar-thumb,.studiobody::-webkit-scrollbar-thumb{background:#DBDBE1;border-radius:8px}
+.inspector::-webkit-scrollbar-thumb:hover{background:#C6C6CE}
+
+/* ---------- Colab: one-click install + sign-in ---------- */
+.colabacts{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 12px}
+.colabacts button{margin:0}
+button.primary.xl{padding:12px 20px;font-size:14px}
+.installbox,.loginbox{background:#FBFBFD;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:8px 0}
+.installhead{display:flex;justify-content:space-between;align-items:center;font-size:12.5px}
+.installsteps{display:flex;flex-direction:column;gap:6px;margin:8px 0}
+.installstep{display:flex;gap:8px;align-items:flex-start;font-size:12px;color:var(--mute)}
+.installstep b{color:var(--ink);font-weight:600}
+.installstep .ico{width:16px;text-align:center}
+.installstep.run .ico{color:var(--accent)}
+.installstep.done .ico{color:#2ECC71}
+.installstep.err .ico{color:#D64550}
+.installlog{max-height:150px;overflow:auto;background:#1D1D1F;color:#E8E8ED;border-radius:8px;
+  padding:8px 10px;font:11px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-all;margin:6px 0 0}
+.loginbox .row{gap:6px}
+.loginbox input{flex:1;min-width:0;font-size:11.5px}
+.colabpf{display:flex;flex-direction:column;gap:4px;margin:6px 0}
+.colabpf .pf{border-radius:8px;padding:6px 9px;font-size:12px;display:flex;gap:8px;align-items:flex-start}
+.colabpf .pf.ok{background:#F2FBF5;color:#1E7B45}
+.colabpf .pf.warn{background:#FFF8E8;color:#8A5B00}
+.colabpf .pf.error{background:#FFF0F1;color:#B0293A}
+.steps li{display:flex;gap:8px;font-size:12.5px;padding:5px 0;align-items:flex-start;color:#3a3a3c}
+.steps li .n{flex:0 0 18px;height:18px;border-radius:50%;border:1.5px solid var(--line);display:flex;
+  align-items:center;justify-content:center;font-size:10.5px;color:var(--mute)}
+.steps li.done{color:var(--mute)}
+.steps li.done .n{border-color:#2ECC71;color:#2ECC71}
+.steps li.now .n{border-color:var(--accent);color:var(--accent)}
+.steps li.skip{opacity:.45}
+.steps li code{background:#F0F0F3;border-radius:5px;padding:1px 5px;font-size:11.5px}
+.keysgroup{font-size:10.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--mute);
+  padding:12px 0 4px}
+.keysgroup:first-child{padding-top:4px}
+.hint.good{color:#1E7B45}

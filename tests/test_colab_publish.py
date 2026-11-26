@@ -189,3 +189,144 @@ def test_upload_queue_dry_run(tmp_path, capsys):
 def test_check_api_reports_what_is_missing():
     out = publish.check_api()
     assert set(out) == {"deps", "client_secret", "token", "pip"}
+
+
+# ---------- one-click install / sign-in (the Windows path included) ----------
+def test_status_guides_a_fresh_machine(monkeypatch):
+    monkeypatch.setattr(colab, "colab_cmd", lambda: None)
+    st = colab.status()
+    ids = [s["id"] for s in st["steps"]]
+    assert ids == ["wsl", "pipx", "cli", "login"]      # pipx, not system pip (PEP 668)
+    assert st["manual"]["note"] and st["manual"]               # paste-able fallback always present
+    assert st["can_install"] is True                            # a shell exists to run it with
+    assert [g["id"] for g in st["gpus"]] == ["T4", "L4", "A100"]
+
+
+def test_install_plan_shows_every_command_before_running(monkeypatch):
+    plan = colab.install(dry_run=True)
+    assert plan["dry_run"] is True and plan["steps"]
+    assert all(s["cmd"] for s in plan["steps"])
+
+
+def test_install_runs_the_steps_and_reports_them(monkeypatch, tmp_path):
+    ran = []
+
+    def fake_run(argv, **kw):
+        ran.append(argv[-1])
+
+        class R:
+            returncode = 0
+            stdout = "Successfully installed google-colab-cli"
+            stderr = ""
+        return R()
+
+    monkeypatch.setattr(colab, "_runner", lambda: ["bash", "-lc"])
+    monkeypatch.setattr(colab.subprocess, "run", fake_run)
+    seen = []
+    res = colab.install(on_step=lambda i, t, state, out: seen.append((i, state)))
+    assert res["ok"] is True and res["needs_login"] is True
+    assert [s for s in ran if "google-colab-cli" in s]
+    assert seen[0] == (0, "start") and (0, "done") in seen       # live per-step status
+
+
+def test_install_treats_already_installed_as_success(monkeypatch):
+    class R:
+        returncode = 1
+        stdout = ""
+        stderr = "pipx: 'google-colab-cli' is already installed"
+    monkeypatch.setattr(colab, "_runner", lambda: ["bash", "-lc"])
+    monkeypatch.setattr(colab.subprocess, "run", lambda *a, **k: R())
+    assert colab.install()["ok"] is True
+
+
+def test_install_reports_a_failure_with_manual_steps(monkeypatch):
+    class R:
+        returncode = 1
+        stdout = ""
+        stderr = "sudo: a password is required"
+    monkeypatch.setattr(colab, "_runner", lambda: ["bash", "-lc"])
+    monkeypatch.setattr(colab.subprocess, "run", lambda *a, **k: R())
+    res = colab.install()
+    assert res["ok"] is False and "step failed" in res["error"]
+    assert "password" in res["steps"][0]["output"]      # the real reason is never hidden
+    assert res["manual"]["note"]
+
+
+def test_install_without_a_shell_says_so(monkeypatch):
+    monkeypatch.setattr(colab, "_runner", lambda: None)
+    res = colab.install()
+    assert res["ok"] is False and "No shell" in res["error"]
+
+
+def test_login_refuses_before_the_cli_exists(monkeypatch):
+    monkeypatch.setattr(colab, "colab_cmd", lambda: None)
+    res = colab.login_start()
+    assert res["needs_install"] is True and res["manual"]
+
+
+def test_login_picks_the_consent_url_out_of_the_cli_output(monkeypatch):
+    import io
+
+    class FakeProc:
+        def __init__(self):
+            self.stdout = io.StringIO("visit https://accounts.google.com/o/oauth2/auth?client=1 now\n")
+            self._done = False
+
+        def poll(self):
+            return 0                          # the CLI exits once the consent page is printed
+        
+    monkeypatch.setattr(colab, "colab_cmd", lambda: ["/usr/bin/colab"])
+    got = []
+    res = colab.login_watch(FakeProc(), on_url=got.append)
+    assert res["url"].startswith("https://accounts.google.com/")
+    assert got == [res["url"]]
+
+
+def test_find_url_ignores_plain_text():
+    assert colab.find_url("no link here") == ""
+    assert colab.find_url("see (https://colab.example/x).").startswith("https://colab.example/x")
+
+
+def test_windows_install_goes_through_wsl(monkeypatch):
+    monkeypatch.setattr(colab, "_windows", lambda: True)
+    steps = colab.install_commands()
+    assert steps[0]["cmd"].startswith("wsl --install")
+    assert any("wsl -d Ubuntu" in s["cmd"] and "pipx" in s["cmd"] for s in steps)
+    manual = colab.manual_commands()
+    assert manual["powershell"][0].startswith("wsl --install")
+
+
+def test_preflight_says_what_to_fix(monkeypatch):
+    monkeypatch.setattr(colab, "colab_cmd", lambda: None)
+    pf = colab.preflight("T4")
+    assert pf["ok"] is False and pf["errors"] >= 1
+    assert "Install" in pf["fix"]
+    titles = [i["title"] for i in pf["items"]]
+    assert "Colab CLI" in titles and "Render notebook" in titles
+
+
+def test_preflight_is_green_when_everything_is_there(monkeypatch):
+    monkeypatch.setattr(colab, "colab_cmd", lambda: ["/usr/bin/colab"])
+    monkeypatch.setattr(colab, "check", lambda: {"cli": True, "wsl": True, "notebook": True,
+                                                 "gpu": None, "ready": True, "needs_login": False,
+                                                 "note": "ok", "version": "colab 0.5"})
+    pf = colab.preflight("L4")
+    assert pf["ok"] is True and pf["errors"] == 0
+    assert "L4" in [i["detail"] for i in pf["items"]]
+
+
+def test_render_uploads_with_the_real_cli_syntax(stub_colab, tmp_path):
+    """The CLI takes `upload LOCAL REMOTE` and `download REMOTE LOCAL` (no --path flag), and only
+    the videos from this run are reported back."""
+    cfg = MergeConfig(mode="merge", max_seconds=2, fps=15, export_resolution="720p")
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "older.mp4").write_bytes(b"old")            # an earlier render must not be reported
+    res = colab.render_on_colab(cfg, str(out), gpu="T4", batch_count=0)
+    calls = [c for c in stub_colab.read_text(encoding="utf-8").splitlines() if c.strip()]
+    ups = [c for c in calls if c.startswith("upload")]
+    downs = [c for c in calls if c.startswith("download")]
+    assert ups and all("--path" not in c for c in ups)
+    assert ups[0].split()[1] == "-s" and ups[0].split()[3].endswith("job.zip")
+    assert downs and downs[0].split()[1] == "-s" and "--path" not in downs[0]
+    assert res["videos"] == []

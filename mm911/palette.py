@@ -56,18 +56,10 @@ PAGES = [
     ("sec-batch", "Settings · Batch", "Settings"),
 ]
 
-SHORTCUTS = [
-    ("⌘K / Ctrl+K", "Search everything (this palette)"),
-    ("/", "Focus the settings search"),
-    ("Ctrl+Z", "Undo"),
-    ("Ctrl+Shift+Z", "Redo"),
-    ("Ctrl+R", "Render video"),
-    ("Ctrl+Shift+R", "Render a batch"),
-    ("Ctrl+P", "Upload the queue to YouTube"),
-    ("Ctrl+L", "My videos"),
-    ("Esc", "Close the palette / a page"),
-    ("?", "Keyboard shortcuts"),
-]
+# one keyboard table for the palette, the shortcut sheet and the tests (mm911/keymap.py)
+from .keymap import SHORTCUTS as _KEYS           # noqa: E402  (kept below the data tables)
+
+SHORTCUTS = [(k, w) for k, w, _g in _KEYS]
 
 
 def _norm(text: str) -> str:
@@ -130,7 +122,7 @@ def build(settings_labels: dict | None = None, videos: list | None = None) -> di
                      "group": "Video", "keywords": name, "kind": "video",
                      "meta": f"{v.get('mb', 0)} MB · {v.get('when', '')}"})
     return {"actions": actions, "pages": pages, "settings": settings, "videos": vids,
-            "shortcuts": [{"keys": k, "what": w} for k, w in SHORTCUTS]}
+            "shortcuts": [{"keys": k, "what": w, "group": g} for k, w, g in _KEYS]}
 
 
 def search(index: dict, query: str, limit: int = 12) -> list[dict]:
