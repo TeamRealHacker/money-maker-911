@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_NAME = "Money Maker 911"
 CREDIT = "made by TeamRealHackers"
-VERSION = "0.22.0"
+VERSION = "0.23.0"
 
 # Soft, non-neon palettes. Each: background top, background bottom, container, text, tier colors
 PALETTES: dict[str, dict] = {
@@ -101,21 +101,23 @@ RANDOM_KNOBS = {
 DEFAULT_RANDOM_KNOBS = ["palette", "shape", "hook", "spin", "drop_interval"]
 
 
-MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythmic", "accumulate", "drawer", "tower", "battle", "weapon", "plinko", "race", "flip", "snake", "chain", "countdown", "colorsort", "voting"]
+MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythmic", "accumulate", "drawer", "tower", "battle", "weapon", "plinko", "race", "flip", "snake", "chain", "countdown", "colorsort", "voting",
+         "bowling", "stacker", "bubble", "hole", "zoom"]
 WEAPON_TYPES = ["sword", "spear", "mace", "mixed"]
 MODE_HOOKS = {"merge": "Will it reach the Final Form?", "escape": "Can it escape all 8 rings?",
               "breaker": "Can it break every brick?", "glass": "Will the glass hold?",
               "ghost": "Can the ghost escape the dark?", "rhythmic": "Can the ball play the whole song?",
               "accumulate": "Can it reach 100 balls?", "drawer": "Can it paint the whole picture?",
               "tower": "How many floors will break?", "battle": "Who wins the battle?",
-              "weapon": "Who survives?", "plinko": "Can it reach the jackpot?", "race": "Who wins the race?", "flip": "Can gravity survive?", "snake": "How long can it get?", "chain": "Can one pop clear them all?", "countdown": "Who survives the countdown?", "colorsort": "Can it sort every colour?", "voting": "Who gets your vote?"}
+              "weapon": "Who survives?", "plinko": "Can it reach the jackpot?", "race": "Who wins the race?", "flip": "Can gravity survive?", "snake": "How long can it get?", "chain": "Can one pop clear them all?", "countdown": "Who survives the countdown?", "colorsort": "Can it sort every colour?", "voting": "Who gets your vote?",
+              "bowling": "Can it bowl a STRIKE?", "stacker": "How high can the tower go?", "bubble": "Can it pop every bubble?", "hole": "Can the hole eat them all?", "zoom": "How deep do the stairs go?"}
 BREAKER_PATTERNS = ["full", "pyramid", "diamond", "heart", "checker", "stripes"]
 
 
 @dataclass
 class MergeConfig:
     """Settings for every mode (the name stays for old presets / imports). mode picks the game."""
-    mode: str = "merge"                # merge | escape | breaker | glass | ghost | rhythmic | accumulate | drawer | tower | battle | weapon | plinko | race | flip | snake | chain | countdown | colorsort
+    mode: str = "merge"                # merge | escape | breaker | glass | ghost | rhythmic | accumulate | drawer | tower | battle | weapon | plinko | race | flip | snake | chain | countdown | colorsort | bowling | stacker | bubble | hole | zoom
     # video
     width: int = 1080
     height: int = 1920
@@ -384,6 +386,75 @@ class MergeConfig:
     voting_ball_radius: float = 80.0
     voting_counter_text: str = "{left} LEFT"
     voting_final_text: str = "WINNER!"
+    # 🎳 Bowling Strike (v0.23.0): pins in a triangle at the top of the lane, the ball is thrown
+    # from the bottom and knocked pins fly; every pin down is a note higher, STRIKE! when all fall
+    bowling_pins: int = 10             # pins standing (triangle rows are filled first)
+    bowling_rows: int = 4              # rows of the pin triangle (1+2+3+4 = 10)
+    bowling_ball_radius: float = 30.0
+    bowling_speed: float = 1250.0      # throw speed px/s
+    bowling_pin_radius: float = 22.0
+    bowling_pin_hp: int = 1            # hits a pin takes (2 = the back rows need two hits)
+    bowling_pin_spread: float = 1.0    # spacing multiplier of the triangle
+    bowling_max_throws: int = 12       # throws before the run gives up (safety cap)
+    bowling_counter_text: str = "{broken} / {total} PINS"
+    bowling_final_text: str = "STRIKE!"
+    # 🏗️ Tower Stack (v0.23.0): a crane swings a block over the tower and drops it; every block
+    # placed is a note higher; enough sloppy drops in a row topple the tower (TOPPLED!)
+    stacker_target: int = 10           # blocks to stack
+    stacker_block_w: float = 150.0
+    stacker_block_h: float = 52.0
+    stacker_tolerance: float = 0.62    # |offset| (x block width) that still counts as a clean drop
+    stacker_miss_limit: int = 3        # sloppy drops in a row before the tower topples
+    stacker_swing: float = 0.55        # crane sway amplitude (x half width)
+    stacker_swing_period: float = 3.2  # seconds per sway
+    stacker_drop_height: float = 0.10  # spawn height, fraction of the arena
+    stacker_interval: float = 0.6      # seconds between blocks
+    stacker_counter_text: str = "{broken} HIGH"
+    stacker_final_text: str = "TOWER KING!"
+    # 🫧 Bubble Pop (v0.23.0): bubbles rise from the bottom, your ball pops them one by one
+    bubble_target: int = 30
+    bubble_spawn_interval: float = 0.35
+    bubble_radius: float = 34.0
+    bubble_speed: float = 170.0        # rise speed px/s
+    bubble_wobble: float = 26.0        # sideways sway px
+    bubble_wobble_speed: float = 2.2
+    bubble_ball_radius: float = 26.0
+    bubble_ball_speed: float = 700.0
+    bubble_counter_text: str = "{broken} / {total}"
+    bubble_final_text: str = "ALL POPPED!"
+    # 🕳️ Hole Eater (v0.23.0): a hungry hole glides around swallowing drifting balls and grows
+    hole_balls: int = 40
+    hole_radius: float = 46.0
+    hole_growth: float = 0.045         # hole grows this much (x its radius) per ball eaten
+    hole_speed: float = 230.0
+    hole_eat_radius: float = 0.72      # a ball is eaten inside this (x hole radius)
+    hole_ball_radius: float = 24.0
+    hole_drift: float = 170.0
+    hole_flee: float = 0.55            # 0 = balls never flee, 1 = they dodge hard
+    hole_counter_text: str = "{broken} / {total}"
+    hole_final_text: str = "ALL EATEN!"
+    # ♾️ Infinite Zoom Physics Loop (v0.23.0): a meme cutout tumbles down neon stairs in a dark star
+    # space while the camera zooms forever; every bounce sounds deeper as the object grows
+    zoom_target: int = 20              # stairs to descend
+    zoom_growth: float = 1.42          # camera zoom per step (the endless-zoom illusion)
+    zoom_step_time: float = 0.8        # seconds for the first step
+    zoom_slow: float = 1.04            # every next step takes this much longer (slower + deeper)
+    zoom_platform_w: float = 0.60      # platform width, fraction of the screen
+    zoom_platform_th: float = 10.0     # platform line thickness at scale 1
+    zoom_ball_size: float = 0.085      # ball radius, fraction of the platform width
+    zoom_ball_spin: float = 2.6        # tumble turns per second
+    zoom_line_color: str = "#35C8FF"   # glowing blue stair lines
+    zoom_line_color2: str = "#1B6FA8"  # risers / dimmer lines
+    zoom_glow: float = 0.85            # 0..1 neon glow strength
+    zoom_stars: int = 240              # stars in the background (0 = off)
+    zoom_star_twinkle: float = 0.5     # 0..1 how much the stars twinkle
+    zoom_star_layers: int = 3          # parallax depth layers
+    zoom_pitch_start: float = 2.0      # semitones of the first bounce
+    zoom_pitch_drop: float = 0.85      # semitones deeper per step
+    zoom_bounce_pitch: float = -4.0    # hops on a platform, relative to the step pitch
+    zoom_shake: float = 1.0            # landing shake multiplier (0 = off)
+    zoom_counter_text: str = "STEP {broken}/{total}"
+    zoom_final_text: str = "INFINITE!"
     flip_target: int = 14              # gravity flips to reach
     flip_interval: float = 1.5         # seconds between flips
     flip_balls: int = 6
@@ -655,6 +726,54 @@ class MergeConfig:
         self.snake_food_size = max(16.0, min(70.0, float(self.snake_food_size)))
         self.snake_gap = max(0.6, min(2.0, float(self.snake_gap)))
         if self.weapon_type not in WEAPON_TYPES: self.weapon_type = "mixed"
+        self.bowling_pins = max(1, min(60, int(self.bowling_pins)))
+        self.bowling_rows = max(1, min(8, int(self.bowling_rows)))
+        self.bowling_ball_radius = max(10.0, min(60.0, float(self.bowling_ball_radius)))
+        self.bowling_speed = max(300.0, min(3000.0, float(self.bowling_speed)))
+        self.bowling_pin_radius = max(6.0, min(40.0, float(self.bowling_pin_radius)))
+        self.bowling_pin_hp = max(1, min(4, int(self.bowling_pin_hp)))
+        self.bowling_pin_spread = max(0.5, min(2.5, float(self.bowling_pin_spread)))
+        self.bowling_max_throws = max(1, min(60, int(self.bowling_max_throws)))
+        self.stacker_target = max(2, min(60, int(self.stacker_target)))
+        self.stacker_block_w = max(50.0, min(300.0, float(self.stacker_block_w)))
+        self.stacker_block_h = max(16.0, min(120.0, float(self.stacker_block_h)))
+        self.stacker_tolerance = max(0.1, min(1.4, float(self.stacker_tolerance)))
+        self.stacker_miss_limit = max(1, min(10, int(self.stacker_miss_limit)))
+        self.stacker_swing = max(0.0, min(1.4, float(self.stacker_swing)))
+        self.stacker_swing_period = max(0.8, min(12.0, float(self.stacker_swing_period)))
+        self.stacker_drop_height = max(0.04, min(0.4, float(self.stacker_drop_height)))
+        self.stacker_interval = max(0.2, min(6.0, float(self.stacker_interval)))
+        self.bubble_target = max(2, min(400, int(self.bubble_target)))
+        self.bubble_spawn_interval = max(0.05, min(5.0, float(self.bubble_spawn_interval)))
+        self.bubble_radius = max(10.0, min(80.0, float(self.bubble_radius)))
+        self.bubble_speed = max(20.0, min(600.0, float(self.bubble_speed)))
+        self.bubble_wobble = max(0.0, min(120.0, float(self.bubble_wobble)))
+        self.bubble_wobble_speed = max(0.3, min(10.0, float(self.bubble_wobble_speed)))
+        self.bubble_ball_radius = max(8.0, min(60.0, float(self.bubble_ball_radius)))
+        self.bubble_ball_speed = max(200.0, min(2500.0, float(self.bubble_ball_speed)))
+        self.hole_balls = max(2, min(200, int(self.hole_balls)))
+        self.hole_radius = max(16.0, min(160.0, float(self.hole_radius)))
+        self.hole_growth = max(0.0, min(0.3, float(self.hole_growth)))
+        self.hole_speed = max(40.0, min(1200.0, float(self.hole_speed)))
+        self.hole_eat_radius = max(0.3, min(1.5, float(self.hole_eat_radius)))
+        self.hole_ball_radius = max(8.0, min(60.0, float(self.hole_ball_radius)))
+        self.hole_drift = max(40.0, min(1200.0, float(self.hole_drift)))
+        self.hole_flee = max(0.0, min(1.0, float(self.hole_flee)))
+        self.zoom_target = max(3, min(80, int(self.zoom_target)))
+        self.zoom_growth = max(1.05, min(2.2, float(self.zoom_growth)))
+        self.zoom_step_time = max(0.25, min(3.0, float(self.zoom_step_time)))
+        self.zoom_slow = max(1.0, min(1.3, float(self.zoom_slow)))
+        self.zoom_platform_w = max(0.3, min(0.95, float(self.zoom_platform_w)))
+        self.zoom_platform_th = max(2.0, min(30.0, float(self.zoom_platform_th)))
+        self.zoom_ball_size = max(0.02, min(0.3, float(self.zoom_ball_size)))
+        self.zoom_ball_spin = max(0.0, min(12.0, float(self.zoom_ball_spin)))
+        self.zoom_glow = max(0.0, min(1.0, float(self.zoom_glow)))
+        self.zoom_stars = max(0, min(1200, int(self.zoom_stars)))
+        self.zoom_star_twinkle = max(0.0, min(1.0, float(self.zoom_star_twinkle)))
+        self.zoom_star_layers = max(1, min(5, int(self.zoom_star_layers)))
+        self.zoom_pitch_start = max(-12.0, min(24.0, float(self.zoom_pitch_start)))
+        self.zoom_pitch_drop = max(0.0, min(3.0, float(self.zoom_pitch_drop)))
+        self.zoom_bounce_pitch = max(-12.0, min(12.0, float(self.zoom_bounce_pitch)))
         self.weapon_length = max(0.5, min(2.0, float(self.weapon_length)))
         self.weapon_spin = max(0.2, min(3.0, float(self.weapon_spin)))
         self.battle_radius = max(10.0, min(120.0, float(self.battle_radius)))
