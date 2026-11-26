@@ -7,6 +7,10 @@
   <div class="brand"><img src="logo.png" alt=""><div><b>Money Maker 911</b><small>Shorts Studio</small></div></div>
   <div class="label">Modes</div>
   <nav id="modes"></nav>
+  <div class="label" style="margin-top:8px">Library</div>
+  <a href="#" class="pubnav" id="libnav" onclick="mm.openLibrary();return false">
+    📚 <span>My videos</span><em id="libcount" hidden></em>
+  </a>
   <div class="label" style="margin-top:8px">Publish</div>
   <a href="#" class="pubnav" id="pubnav" onclick="mm.openPublish();return false">
     📤 <span>Publish studio</span><b id="pubdot" hidden></b>
@@ -29,6 +33,8 @@
   <div class="topbar">
     <div class="title"><span id="modetitle">Merge Evolution</span><em id="status">Live preview</em></div>
     <div class="seg">
+      <button class="ghost" id="undobtn" onclick="mm.undo()" title="Nothing to undo" disabled>↶ Undo</button>
+      <button class="ghost" id="redobtn" onclick="mm.redo()" title="Nothing to redo" disabled>↷ Redo</button>
       <button class="ghost" onclick="mm.restart()">↻ New run</button>
       <button class="ghost" onclick="mm.thumb()">Save thumbnail</button>
       <button class="ghost" onclick="pywebview.api.open_output()">Open folder</button>
@@ -455,6 +461,28 @@
   </details>
   <button class="link reset" onclick="mm.reset()">Reset to defaults</button>
 </section>
+
+<div class="studio" id="library" hidden>
+  <div class="studiohead">
+    <div><b>📚 My videos</b><em id="libsub">Everything this app has rendered, newest first</em></div>
+    <div class="seg">
+      <button class="ghost" onclick="mm.refreshLibrary()">↻ Refresh</button>
+      <button class="ghost" onclick="pywebview.api.open_output()">Open folder</button>
+      <button class="ghost" onclick="mm.closeLibrary()">Done</button>
+    </div>
+  </div>
+  <div class="libbar">
+    <input type="search" id="libsearch" placeholder="Search title, mode or file…" oninput="mm.paintLibrary()">
+    <select id="libfilter" onchange="mm.paintLibrary()">
+      <option value="">All videos</option>
+      <option value="won">Final Form only</option>
+      <option value="uploaded">Uploaded</option>
+      <option value="notuploaded">Not uploaded</option>
+    </select>
+    <span class="hint" id="libstats"></span>
+  </div>
+  <div class="libgrid" id="libgrid"></div>
+</div>
 
 <div class="studio" id="studio" hidden>
   <div class="studiohead">
