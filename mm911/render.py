@@ -797,7 +797,7 @@ def build_audio(cfg: MergeConfig, sim: MergeSim, seconds: float) -> AudioTrack:
     last_t = -1.0
     for ev in sim.events:
         at = getattr(ev, "vt", None)
-        if at is None:
+        if at is None or at < 0:            # SoundEvent.vt defaults to -1.0 = "not set"
             at = ev.t / max(0.05, cfg.speed)
         if ev.kind == "drop":
             if not cfg.drop_sounds or at - last_t < 0.05:

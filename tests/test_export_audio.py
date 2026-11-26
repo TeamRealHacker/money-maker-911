@@ -83,6 +83,13 @@ def test_broken_sound_falls_back(tmp_path):
     assert "Audio: aac" in _probe(m["file"])
 
 
+def _video_t(ev, speed: float) -> float:
+    """Where build_audio places this event: the VIDEO time (ev.vt) when the sim set it,
+    else the ev.t/speed fallback. Slow motion and the near-miss pause make vt drift
+    ahead of t/speed, so the two are not interchangeable."""
+    return ev.vt if ev.vt is not None and ev.vt >= 0 else ev.t / max(0.05, speed)
+
+
 def test_audio_in_sync_with_speed():
     cfg = MergeConfig(speed=2.0, max_seconds=8, end_hold_seconds=0)
     sim = MergeSim(cfg)
@@ -95,7 +102,7 @@ def test_audio_in_sync_with_speed():
         frames += 1
     seconds = frames / cfg.fps
     tr = build_audio(cfg, sim, seconds).mixed(seconds)
-    last_ev = max(e.t for e in sim.events) / cfg.speed
+    last_ev = max(_video_t(e, cfg.speed) for e in sim.events)
     # the last pop must land inside the video, near where it happens on screen
     assert last_ev <= seconds + 0.05
     assert np.abs(tr[int(last_ev * audio.SR): int((last_ev + 0.1) * audio.SR)]).max() > 0.01
