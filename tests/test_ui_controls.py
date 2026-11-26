@@ -33,6 +33,8 @@ def _mock(onboarded=True):
       if(["pick_file","pick_folder","export_theme","save_thumbnail","preview_sound"].includes(k))return "";
       if(["import_theme","sound_auto_fill","sound_use","pick_sound_for","clear_sound","sound_search"].includes(k))return obj();
       if(k==="prep_status")return {busy:false,note:""}; if(k==="prepare_images")return {images:0,skipped:[],cut:0,errors:[],status:{}};
+      if(k==="preflight")return {items:[],errors:0,warnings:0,ready:true,summary:"Ready to render"};
+      if(k==="update_check")return {current:"0.23.0",latest:"0.23.0",newer:false,notes:[],error:"",url:"",assets:[]};
       if(k==="finish_onboarding"){B.onboarded=true;return true}
       if(k==="sound_sample")return a[0]==="music"&&!B.config.music_path?"":"WAV_PLACEHOLDER";
       if(k==="get_frame")return null; return true}})};""" % json.dumps(b)

@@ -8,6 +8,16 @@
   <div class="label">Modes</div>
   <nav id="modes"></nav>
   <div class="grow"></div>
+  <div class="updatebox" id="updbox">
+    <button class="updbtn" id="updbtn" onclick="mm.openUpdate()">
+      <span id="updicon">🔄</span><span id="updlabel">Check for updates</span><b id="upddot" hidden></b>
+    </button>
+    <div class="updpanel" id="updpanel" hidden>
+      <div class="updhead"><b id="updtitle">Updates</b><button class="link xs" onclick="mm.closeUpdate()">×</button></div>
+      <div class="updbody" id="updbody"><span class="hint">Not checked yet.</span></div>
+      <div class="updacts" id="updacts"></div>
+    </div>
+  </div>
   <div class="credit">made by TeamRealHackers · <span id="ver"></span></div>
 </aside>
 
@@ -21,6 +31,12 @@
     </div>
   </div>
   <div class="phone"><img id="frame" alt=""><div class="hud"><span id="tier">Tier 1</span><span id="time">0.0s</span></div></div>
+  <div class="preflight" id="preflight" hidden>
+    <button class="pfhead" onclick="mm.togglePreflight()" aria-expanded="false">
+      <span id="pficon">✓</span><span id="pfsum">Checking your settings…</span><i class="caret">›</i>
+    </button>
+    <ul id="pflist" hidden></ul>
+  </div>
   <div class="dock">
     <button class="primary" onclick="mm.renderOne()">Render video</button>
     <div class="batch">
@@ -34,7 +50,12 @@
 </main>
 
 <section class="inspector" id="inspector">
-  <details open><summary>Themes</summary>
+  <div class="searchbar">
+    <input type="search" id="setsearch" placeholder="Search settings…  (press /)" autocomplete="off">
+    <button class="link sm" id="clearsearch" onclick="mm.clearSearch()" hidden>clear</button>
+  </div>
+  <div class="searchinfo" id="searchinfo" hidden></div>
+  <details open id="sec-themes" data-sec="palette theme shape"><summary>Themes</summary>
     <div class="row"><select id="themes"><option value="">Saved themes…</option></select><button class="ghost sm" onclick="mm.loadTheme()">Load</button><button class="link" onclick="mm.deleteTheme()">delete</button></div>
     <div class="row"><input type="text" id="themename" placeholder="Theme name"><button class="ghost sm" onclick="mm.saveTheme()">Save</button></div>
     <div class="row"><span>Share</span><span><button class="ghost sm" onclick="mm.importTheme()">Import…</button> <button class="ghost sm" onclick="mm.exportTheme()">Export…</button></span></div>
@@ -344,7 +365,7 @@
     <div class="row"><span>Last brick pitch</span><input type="range" data-k="breaker_pitch_high" min="-6" max="24" step="0.5"></div>
     <div class="hint">Balls wear your Tiers pictures / emoji (ball 1 = picture 1…).</div>
   </details>
-  <details open><summary>Gameplay</summary>
+  <details open id="sec-gameplay" data-sec="mode length max_seconds until_finished"><summary>Gameplay</summary>
     <div class="row"><span>Forms</span><span><input type="range" data-k="tiers" min="3" max="15" style="width:110px"> <input class="num" type="number" data-k="tiers" min="3" max="15"></span></div>
     <div class="row" data-modes="merge"><span>Drop every</span><input type="range" data-k="spawn_interval" min="0.05" max="0.8" step="0.01"></div>
     <div class="row" data-modes="merge"><span>Drop randomness</span><input type="range" data-k="spawn_jitter" min="0" max="0.8" step="0.05"></div>
@@ -359,7 +380,7 @@
     <div class="row"><span>Custom seconds</span><input type="number" data-k="max_seconds" min="5" max="180" step="1"></div>
     <div class="row"><span>Until Final Form</span><input type="checkbox" data-k="until_finished"></div>
   </details>
-  <details open><summary>Tiers</summary>
+  <details open id="sec-tiers" data-sec="tiers tier_images tier_image_folder pictures forms"><summary>Tiers</summary>
     <div class="row"><span>Emoji set</span><select id="emojiset"><option value="">None (numbers)</option></select></div>
     <div class="row"><span>Images</span><span><button class="ghost sm" onclick="mm.pickImageFolder()">Folder…</button> <button class="ghost sm" onclick="mm.pickImages()">Files…</button></span></div>
     <div class="hint" id="imgcount">Pick one image per tier, smallest first.</div>
@@ -373,7 +394,7 @@
     <div id="tierlist" class="tierlist"></div>
     <button class="link" onclick="mm.clearTiers()">Clear tier names, colours, emoji and images</button>
   </details>
-  <details open><summary>Sounds · Myinstants</summary>
+  <details open id="sec-sounds" data-sec="sound music tier_sounds"><summary>Sounds · Myinstants</summary>
     <div class="row search"><input type="text" id="sq" placeholder="pop, bubble, boing, vine boom…"><button class="ghost sm" onclick="mm.soundSearch()">Search</button></div>
     <div class="chips" id="kwchips"></div>
     <div class="hint" id="smsg"></div>
@@ -413,7 +434,7 @@
     <div class="row"><span>Look-alike</span><select data-k="dedupe_action"><option value="skip">Re-render with a new seed</option><option value="flag">Keep, mark in titles.csv</option></select></div>
     <div class="hint">Compares sampled frames (perceptual hash) with every video already in the output folder.</div>
   </details>
-  <details open><summary>Export</summary>
+  <details open id="sec-export" data-sec="export fps resolution codec encoder output output_dir"><summary>Export</summary>
     <div class="row"><span>FPS</span><select data-k="fps"><option value="24">24 (film)</option><option value="25">25</option><option value="30">30</option><option value="48">48</option><option value="50">50</option><option value="60">60 (smooth)</option><option value="90">90</option><option value="120">120</option></select></div>
     <div class="row"><span>Resolution</span><select data-k="export_resolution"><option value="720p">720p · 720×1280</option><option value="1080p">1080p · 1080×1920</option><option value="1440p">2K · 1440×2560</option><option value="4k">4K · 2160×3840</option></select></div>
     <div class="row"><span>Quality</span><select data-k="export_quality"><option value="max">Max</option><option value="high">High</option><option value="balanced">Balanced</option><option value="small">Small file</option></select></div>

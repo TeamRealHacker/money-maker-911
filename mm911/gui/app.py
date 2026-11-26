@@ -6,6 +6,7 @@ import copy
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -361,15 +362,88 @@ class Api:
         return self._settings.get("output_dir", "")
 
     def open_output(self) -> None:
-        out = Path(self._settings.get("output_dir"))
+        self._open_path(Path(self._settings.get("output_dir")))
+
+    def _open_path(self, path: Path) -> None:
         try:
-            out.mkdir(parents=True, exist_ok=True)
+            path.mkdir(parents=True, exist_ok=True)
             if os.name == "nt":
-                os.startfile(str(out))  # type: ignore[attr-defined]
+                os.startfile(str(path))  # type: ignore[attr-defined]
             else:
-                subprocess.Popen(["xdg-open", str(out)])
+                subprocess.Popen(["xdg-open", str(path)])
         except Exception as e:
             LOG.error("open folder failed: %s", e)
+
+    # ---------- preflight (would this render fail?) ----------
+    def preflight(self) -> dict:
+        """Offline check of the current settings; the app shows it above the Render button."""
+        from .. import preflight as _pf
+        from ..ffmpeg import ffmpeg_exe
+        try:
+            ff_ok = bool(ffmpeg_exe())
+        except Exception:
+            ff_ok = False
+        try:
+            res = _pf.check(self._cfg, self._settings.get("output_dir", ""), ffmpeg_ok=ff_ok)
+        except Exception as e:                       # never let a check block rendering
+            LOG.error("preflight failed: %s", e)
+            return {"items": [], "errors": 0, "warnings": 0, "ready": True, "summary": ""}
+        res["summary"] = _pf.summary(res)
+        return res
+
+    # ---------- update center ----------
+    def update_check(self) -> dict:
+        """Is a newer build out? Runs on its own thread from JS (never blocks the UI)."""
+        from .. import updates
+        try:
+            res = updates.check()
+        except Exception as e:
+            LOG.error("update check failed: %s", e)
+            res = {"current": VERSION, "latest": "", "newer": False, "error": str(e)}
+        res["notes"] = updates.changelog(res.get("notes", ""))
+        return res
+
+    def update_download(self) -> dict:
+        """Fetch the newest .exe into the app folder (returns the path for update_install)."""
+        from .. import updates
+        info = updates.check()
+        if info.get("error") or not info.get("newer"):
+            return {"error": info.get("error") or "already up to date"}
+        asset = next((a for a in info.get("assets") or [] if a["name"].lower().endswith(".exe")), None)
+        if not asset:
+            if info.get("url"):
+                self._open_url(info["url"])
+            return {"error": "this release has no .exe - opening the release page"}
+        dest = app_dir() / "updates" / asset["name"]
+        got = updates.download(asset["url"], str(dest))
+        if got.get("error"):
+            return got
+        return {"file": got["file"], "size": got["size"], "version": info.get("latest", "")}
+
+    def update_install(self, file: str = "") -> dict:
+        """Swap the running .exe for the downloaded one and restart the app."""
+        from .. import updates
+        res = updates.install(file) if file else {"error": "download the update first"}
+        if res.get("ok"):
+            if self._window is not None:
+                try:
+                    self._window.destroy()
+                except Exception:
+                    pass
+        return res
+
+    def open_url(self, url: str) -> None:
+        self._open_url(str(url or ""))
+
+    def _open_url(self, url: str) -> None:
+        """Open a link in the user's browser (only http/https, never a local path)."""
+        if not re.match(r"^https?://", url or "", re.I):
+            return
+        try:
+            import webbrowser
+            webbrowser.open(url)
+        except Exception as e:
+            LOG.error("open url failed: %s", e)
 
     # ---------- sounds (Myinstants) ----------
     def sound_search(self, query: str) -> dict:
