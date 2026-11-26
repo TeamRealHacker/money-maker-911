@@ -13,16 +13,34 @@ from mm911.config import MergeConfig
 
 @pytest.fixture()
 def stub_colab(tmp_path, monkeypatch):
-    """A fake `colab` executable that logs its calls, so no network is needed."""
+    """A fake `colab` executable that logs its calls, so no network is needed.
+    Windows needs a .bat (shutil.which only finds PATHEXT extensions, and only
+    cmd.exe can run batch files); everything else gets a #!/bin/sh script."""
     log = tmp_path / "calls.log"
-    stub = tmp_path / "bin" / "colab"
+    win = os.name == "nt"
+    stub = tmp_path / "bin" / ("colab.bat" if win else "colab")
     stub.parent.mkdir()
-    stub.write_text(
-        "#!/bin/sh\n"
-        f'echo "$@" >> "{log}"\n'
-        'case "$1" in new) echo "session created";; upload) echo uploaded;; exec) echo executed;;'
-        ' download) echo downloaded;; stop) echo stopped;; usage) echo "compute units: 42.5";;'
-        ' config) echo "project: test";; esac\n')
+    if win:
+        body = "\r\n".join([
+            "@echo off",
+            f'>>"{log}" echo %*',
+            'if /i "%~1"=="new" echo session created',
+            'if /i "%~1"=="upload" echo uploaded',
+            'if /i "%~1"=="exec" echo executed',
+            'if /i "%~1"=="download" echo downloaded',
+            'if /i "%~1"=="stop" echo stopped',
+            'if /i "%~1"=="usage" echo compute units: 42.5',
+            'if /i "%~1"=="config" echo project: test',
+            "",
+        ])
+    else:
+        body = (
+            "#!/bin/sh\n"
+            f'echo "$@" >> "{log}"\n'
+            'case "$1" in new) echo "session created";; upload) echo uploaded;; exec) echo executed;;'
+            ' download) echo downloaded;; stop) echo stopped;; usage) echo "compute units: 42.5";;'
+            ' config) echo "project: test";; esac\n')
+    stub.write_text(body, encoding="utf-8", newline="")
     stub.chmod(0o755)
     monkeypatch.setenv("PATH", str(stub.parent) + os.pathsep + os.environ.get("PATH", ""))
     return log
@@ -42,6 +60,41 @@ def test_check_without_cli(monkeypatch):
 def test_quota_uses_the_cli(stub_colab):
     out = colab.quota()
     assert "compute units" in out.get("output", "")
+
+
+def test_cli_is_resolved_to_a_full_path(stub_colab):
+    """The prefix must be the resolved path, not the bare name: on Windows a bare name only
+    resolves through PATH for .exe, so a .bat/.cmd console script would never be launched."""
+    prefix = colab.colab_cmd()
+    assert prefix and prefix[0] == colab._resolve("colab")
+    assert os.path.isabs(prefix[0]) and Path(prefix[0]).exists()
+
+
+def test_windows_batch_cli_runs_through_cmd(monkeypatch):
+    """.bat/.cmd wrappers can only be started by cmd.exe, so they get a `cmd /c` argv."""
+    monkeypatch.setattr(colab, "_windows", lambda: True)
+    argv = colab._argv([r"C:\tools\colab.bat"], ["colab", "usage"])
+    assert argv == ["cmd", "/c", r"C:\tools\colab.bat", "usage"]
+
+
+def test_posix_cli_runs_directly(monkeypatch, tmp_path):
+    """On POSIX the resolved path replaces the bare program name, and no shell is involved."""
+    monkeypatch.setattr(colab, "_windows", lambda: False)
+    argv = colab._argv([str(tmp_path / "colab")], ["colab", "usage"])
+    assert argv == [str(tmp_path / "colab"), "usage"]
+
+
+def test_batch_is_found_even_without_pathext(monkeypatch, tmp_path):
+    """A stripped PATHEXT makes shutil.which ignore .bat/.cmd (the Windows console script)."""
+    d = tmp_path / "bin"
+    d.mkdir()
+    bat = d / "colab.bat"
+    bat.write_text("@echo off\n", encoding="utf-8", newline="")
+    bat.chmod(0o755)          # POSIX `which` also requires X_OK (Windows ignores it)
+    monkeypatch.setattr(colab, "_windows", lambda: True)
+    monkeypatch.setenv("PATH", str(d) + os.pathsep + os.environ.get("PATH", ""))
+    monkeypatch.setenv("PATHEXT", "")
+    assert colab._resolve("colab") == str(d / "colab.bat")
 
 
 def test_pack_job_rewrites_media_paths(tmp_path):

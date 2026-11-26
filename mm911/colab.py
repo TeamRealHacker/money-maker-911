@@ -43,10 +43,30 @@ def _wsl_available() -> bool:
         return False
 
 
+def _resolve(name: str) -> str | None:
+    """Full path of an executable, honouring PATHEXT even when the environment lost it.
+    A stripped PATHEXT (some CI runners / launchers) makes shutil.which ignore .bat and .cmd,
+    which is exactly how the console-script wrappers are shipped on Windows."""
+    found = shutil.which(name)
+    if found or not _windows():
+        return found
+    exts = os.environ.get("PATHEXT") or ".COM;.EXE;.BAT;.CMD"
+    for ext in exts.split(os.pathsep if os.pathsep in exts else ";"):
+        ext = ext.strip().lower()
+        if ext:
+            found = shutil.which(name + ext)
+            if found:
+                return found
+    return None
+
+
 def colab_cmd() -> list[str] | None:
-    """The command prefix that runs `colab` on this machine (None when it is not installed)."""
-    if shutil.which("colab"):
-        return ["colab"]
+    """The command prefix that runs `colab` on this machine (None when it is not installed).
+    The resolved path is returned, not the bare name: on Windows only .exe resolves through
+    PATH for a bare name, while shutil.which also finds .bat/.cmd wrappers."""
+    exe = _resolve("colab")
+    if exe:
+        return [exe]
     if _windows() and _wsl_available():
         try:
             r = subprocess.run(["wsl", "-e", "bash", "-lc", "command -v colab"],
@@ -85,12 +105,16 @@ def check() -> dict:
 
 
 def _argv(prefix: list[str], cmd: list[str]) -> list[str]:
-    """Build the argv for a colab command (through WSL bash on Windows)."""
+    """Build the argv for a colab command (through WSL bash on Windows).
+    `cmd` starts with the program name; the direct prefix replaces it with the resolved path.
+    A .bat/.cmd wrapper (pipx / pip console scripts on Windows) can only be launched by
+    cmd.exe, so it is run through `cmd /c` instead of being handed to CreateProcess."""
     if prefix and prefix[0] == "wsl":
         return prefix[:-1] + ["-lc", " ".join(cmd)]
-    if prefix and prefix[0] == "colab":
-        return cmd
-    return prefix + cmd
+    exe = prefix[0]
+    if _windows() and exe.lower().endswith((".bat", ".cmd")):
+        return ["cmd", "/c", exe] + list(cmd[1:])
+    return [exe] + list(cmd[1:])
 
 
 def quota() -> dict:
