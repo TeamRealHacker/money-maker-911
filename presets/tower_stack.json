@@ -1,0 +1,21 @@
+{
+  "mode": "stacker",
+  "theme_name": "Tower Stack",
+  "hook": "How high can the tower go?",
+  "palette": "Forest",
+  "bg_mode": "gradient",
+  "bg_colors": ["#12241A", "#1E3D2A", "#0C150F"],
+  "bg_angle": 90,
+  "stacker_target": 12,
+  "stacker_block_w": 150,
+  "stacker_block_h": 52,
+  "stacker_swing": 0.55,
+  "stacker_interval": 0.6,
+  "tier_emojis": ["🟩", "🧱", "📦", "🏗️", "🏢", "🏙️"],
+  "particle_style": "sparks",
+  "particle_amount": 1.0,
+  "shake_strength": 6,
+  "watermark": "@yourchannel",
+  "max_seconds": 45,
+  "seed": 3
+}

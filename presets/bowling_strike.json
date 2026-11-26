@@ -1,0 +1,21 @@
+{
+  "mode": "bowling",
+  "theme_name": "Bowling Strike",
+  "hook": "Can it bowl a STRIKE?",
+  "palette": "Mono",
+  "bg_mode": "gradient",
+  "bg_colors": ["#101418", "#1E2A32", "#0B0E12"],
+  "bg_angle": 90,
+  "bowling_pins": 10,
+  "bowling_rows": 4,
+  "bowling_pin_hp": 1,
+  "bowling_ball_radius": 34,
+  "bowling_speed": 1400,
+  "tier_emojis": ["🎳", "🔥", "💥", "⚡", "👑"],
+  "particle_style": "sparks",
+  "particle_amount": 1.1,
+  "shake_strength": 9,
+  "watermark": "@yourchannel",
+  "max_seconds": 43,
+  "seed": 2
+}

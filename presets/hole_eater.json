@@ -1,0 +1,21 @@
+{
+  "mode": "hole",
+  "theme_name": "Hole Eater",
+  "hook": "Can the hole eat them all?",
+  "palette": "Sunset",
+  "bg_mode": "gradient",
+  "bg_colors": ["#1A0F2E", "#3D2C8D", "#0F0A1E"],
+  "bg_angle": 90,
+  "hole_balls": 40,
+  "hole_radius": 46,
+  "hole_growth": 0.045,
+  "hole_speed": 230,
+  "hole_flee": 0.55,
+  "tier_emojis": ["🍇", "🫐", "🔮", "🌌", "🌀"],
+  "particle_style": "sparks",
+  "particle_amount": 0.8,
+  "shake_strength": 5,
+  "watermark": "@yourchannel",
+  "max_seconds": 43,
+  "seed": 4
+}
