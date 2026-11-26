@@ -1,5 +1,14 @@
 # Progress log
 
+- **2026-11-26** · 📤 v0.24.0 UI pass 2 - Publish studio: YouTube in the app (branch `arena/8f06d7ac-money-maker-911`):
+  - **Publish studio** page (sidebar ▸ Publish studio): a three-step wizard that shows only the next thing to do - install the Google libraries, add the OAuth client, sign in - then the upload queue, then the auto-upload policy. Each step is data-driven from `publish_status()`, so it never tells you to do something you already did.
+  - **Sign-in in the app** (`publish.sign_in`): Google's installed-app flow driven from the GUI - the browser opens, the URL is printed so it can be copied when the browser does not open, the token is cached in `%APPDATA%\MoneyMaker911\token.json` (never the repo), and the card greets you with your own channel name (`account_info`). Signing out revokes the token with Google when it can and deletes it either way. Scopes are now upload **+ read-only**, so the channel name can be shown.
+  - **Upload queue**: the batch's `titles.csv` (or the rendered files) as editable rows - title inline, per-video visibility, the scheduled publish time - then one button to upload, with the same progress bar as renders and per-video results (link to the new video, or why it failed; one failure never stops the queue).
+  - **Auto-upload after a batch** (`mm911/autoupload.py`): off by default, private by default, optional "only the winners", spread over N days at fixed times. **A video is never uploaded twice**: uploads are recorded in `.mm911_uploads.json` in the output folder, so re-running a batch cannot spam the channel. Scheduled uploads are forced private (YouTube requirement).
+  - **Real quota, not a guess**: YouTube gives 10,000 API units/day and an upload costs 1,600, so ~6 uploads/day; the studio shows a bar for today's usage (from the receipts) and warns when the queue is bigger than what is left.
+  - CLI: `publish signin|signout|whoami|auto` (`auto --folder out --enable on --only-wins --dry-run`).
+  - Tests: `tests/test_publish_studio.py` (29 offline tests - settings coercion, planning, `only_wins`, receipts and no-double-upload, broken receipts, sign-out, account info incl. a revoked token, sign-in without a secret, quota maths, CLI) plus 58 jsdom UI checks over the wizard, queue and results.
+
 ## ✅ Done
 - **2026-11-07** · Core engine: pymunk physics, pygame offscreen renderer (supersampled, anti-aliased), FFmpeg export with auto hardware encoder (NVENC / QSV / AMF → x264 fallback)
 - **2026-11-07** · 🍉 Merge Evolution v1: 6 palettes, 6 container shapes (circle, hexagon, octagon, square, heart, star), container spin, tier strip, pop-in + particle bursts, FINAL FORM ending, "So close…" ending

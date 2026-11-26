@@ -7,6 +7,10 @@
   <div class="brand"><img src="logo.png" alt=""><div><b>Money Maker 911</b><small>Shorts Studio</small></div></div>
   <div class="label">Modes</div>
   <nav id="modes"></nav>
+  <div class="label" style="margin-top:8px">Publish</div>
+  <a href="#" class="pubnav" id="pubnav" onclick="mm.openPublish();return false">
+    📤 <span>Publish studio</span><b id="pubdot" hidden></b>
+  </a>
   <div class="grow"></div>
   <div class="updatebox" id="updbox">
     <button class="updbtn" id="updbtn" onclick="mm.openUpdate()">
@@ -451,6 +455,50 @@
   </details>
   <button class="link reset" onclick="mm.reset()">Reset to defaults</button>
 </section>
+
+<div class="studio" id="studio" hidden>
+  <div class="studiohead">
+    <div><b>📤 Publish studio</b><em>Render → review → upload to YouTube, without leaving the app</em></div>
+    <div class="seg">
+      <button class="ghost" onclick="mm.refreshPlan()">↻ Refresh queue</button>
+      <button class="ghost" onclick="mm.closePublish()">Done</button>
+    </div>
+  </div>
+  <div class="studiobody">
+    <section class="studioCard" id="pubsetup">
+      <h3>1 · Connect YouTube</h3>
+      <div id="pubstatus" class="hint">Checking…</div>
+      <ol class="steps" id="pubsteps"></ol>
+      <div class="studioActs" id="pubacts"></div>
+    </section>
+
+    <section class="studioCard">
+      <h3>2 · Upload queue</h3>
+      <div class="hint" id="pubplansum">Nothing rendered yet.</div>
+      <div class="quotabar" id="pubquota" hidden></div>
+      <div class="pubqueue" id="pubqueue"></div>
+      <div class="studioActs">
+        <button class="primary" id="pubgo" onclick="mm.startUpload()" disabled>Upload queue</button>
+        <label class="chk"><input type="checkbox" id="pubdry"> Dry run (no upload)</label>
+      </div>
+      <div class="prog" id="pubprog" hidden><div class="track"><i id="pubbar"></i></div><span id="pubptext"></span></div>
+      <div id="pubresults" class="pubresults"></div>
+    </section>
+
+    <section class="studioCard">
+      <h3>3 · Auto-upload after a batch</h3>
+      <div class="row"><span>Upload new videos automatically</span><input type="checkbox" id="pubauto" onchange="mm.savePublish()"></div>
+      <div class="row"><span>Only the Final Form / winners</span><input type="checkbox" id="pubonlywins" onchange="mm.savePublish()"></div>
+      <div class="row"><span>Visibility</span><select id="pubprivacy" onchange="mm.savePublish()">
+        <option value="private">Private (review first)</option>
+        <option value="unlisted">Unlisted</option>
+        <option value="public">Public</option></select></div>
+      <div class="row"><span>Spread over (days)</span><input type="number" id="pubdays" min="1" max="30" value="1" onchange="mm.savePublish()"></div>
+      <div class="row col"><span>Posting times <em class="hint">24h clock, comma separated</em></span><input type="text" id="pubtimes" value="10:00,17:30" onchange="mm.savePublish()"></div>
+      <div class="hint">Scheduled uploads start private and go public at the time you set. A video is never uploaded twice, even if you re-run the batch.</div>
+    </section>
+  </div>
+</div>
 
 <div class="onboard" id="onboard" hidden>
   <div class="card">

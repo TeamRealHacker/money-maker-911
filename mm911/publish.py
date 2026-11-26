@@ -18,10 +18,13 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+# upload + read-only, so the studio can greet you with your own channel name after sign-in
+SCOPES = ["https://www.googleapis.com/auth/youtube.upload",
+          "https://www.googleapis.com/auth/youtube.readonly"]
 CLIENT_SECRET_CANDIDATES = ("client_secret.json", "client_secret_*.json")
 
 
@@ -124,6 +127,65 @@ def _google_imports():
     return InstalledAppFlow, Request, Credentials, build, MediaFileUpload
 
 
+def token_file() -> Path:
+    """Where the OAuth token lives (the app's own folder, never the repo)."""
+    return _app_dir() / "token.json"
+
+
+def _app_dir() -> Path:
+    base = Path(os.environ.get("APPDATA", Path.home() / ".config")) / "MoneyMaker911"
+    try:
+        base.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        base = Path.home() / ".mm911"
+        base.mkdir(parents=True, exist_ok=True)
+    return base
+
+
+def sign_out(token_path: str = "") -> dict:
+    """Forget the cached token (and tell Google to revoke it when we can)."""
+    path = Path(token_path) if token_path else token_file()
+    revoked = False
+    try:
+        if path.exists():
+            try:
+                from google.oauth2.credentials import Credentials
+                from google.auth.transport.requests import Request
+                Credentials.from_authorized_user_file(str(path), SCOPES).revoke(Request())
+                revoked = True
+            except Exception:
+                pass                     # offline / no deps: deleting the file is enough
+            path.unlink()
+    except OSError as e:
+        return {"error": f"could not delete the token ({e})"}
+    return {"ok": True, "revoked": revoked}
+
+
+def account_info(service=None, client_secret: str = "", token_path: str = "") -> dict:
+    """Who is signed in: the channel name / thumbnail (best effort, offline-safe)."""
+    info = {"signed_in": False, "channel": "", "thumb": "", "error": ""}
+    path = Path(token_path) if token_path else token_file()
+    if not path.exists():
+        return info
+    if not has_google_deps():
+        info["error"] = "google-api-python-client is not installed"
+        return info
+    try:
+        svc = service or youtube_service(client_secret or find_client_secret() or "client_secret.json",
+                                        str(path))
+        res = svc.channels().list(part="snippet", mine=True).execute()
+        items = res.get("items") or []
+        if items:
+            snip = items[0].get("snippet", {}) or {}
+            info.update(signed_in=True, channel=snip.get("title", ""),
+                        thumb=((snip.get("thumbnails") or {}).get("default") or {}).get("url", ""))
+        else:
+            info["signed_in"] = True
+    except Exception as e:                  # network / expired token / revoked: just report it
+        info["error"] = str(e)[:300]
+    return info
+
+
 def get_credentials(client_secret: str = "client_secret.json", token_path: str = "token.json"):
     """OAuth installed-app flow; the token is cached in token.json (next runs are silent)."""
     InstalledAppFlow, Request, Credentials, _build, _media = _google_imports()
@@ -142,6 +204,55 @@ def get_credentials(client_secret: str = "client_secret.json", token_path: str =
         creds = flow.run_local_server(port=0)
         Path(token_path).write_text(creds.to_json(), encoding="utf-8")
     return creds
+
+
+def sign_in(client_secret: str = "", token_path: str = "", on_url=None,
+            open_browser: bool = True, timeout: int = 300):
+    """Sign in from the app: run Google's installed-app flow with console + local server disabled.
+
+    We print Google's URL via `on_url` so the UI can show (and copy) it, then wait for the
+    redirect on a fixed loopback port. The token is cached in the app folder, so the next
+    sign-in - and every upload - is silent.
+    """
+    InstalledAppFlow, _Request, Credentials, _build, _media = _google_imports()
+    secret = client_secret or find_client_secret()
+    if not secret:
+        raise SystemExit(
+            "No client_secret.json yet. Create one in Google Cloud Console: "
+            "APIs & Services ▸ Credentials ▸ Create credentials ▸ OAuth client ID ▸ Desktop app, "
+            "then use 'Add client secret…' in the Publish studio.")
+    flow = InstalledAppFlow.from_client_secrets_file(secret, SCOPES)
+    auth_url, _state = flow.authorization_url(prompt="consent", access_type="offline")
+    if on_url:
+        try:
+            on_url(auth_url)
+        except Exception:
+            pass
+    if open_browser:
+        try:
+            import webbrowser
+            webbrowser.open(auth_url)
+        except Exception:
+            pass
+    creds = flow.run_local_server(port=0, timeout_seconds=timeout,
+                                 authorization_prompt_message="Finish sign-in in your browser…",
+                                 success_message="Signed in - you can close this tab.")
+    path = Path(token_path) if token_path else token_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(creds.to_json(), encoding="utf-8")
+    return creds
+
+
+def find_client_secret() -> str:
+    """The OAuth client secret: next to the app, in the app folder, or in the current folder."""
+    for cand in (Path.cwd() / CLIENT_SECRET_CANDIDATES[0], _app_dir() / CLIENT_SECRET_CANDIDATES[0]):
+        if cand.exists():
+            return str(cand)
+    for folder in (Path.cwd(), _app_dir()):
+        hits = sorted(folder.glob(CLIENT_SECRET_CANDIDATES[1]))
+        if hits:
+            return str(hits[0])
+    return ""
 
 
 def youtube_service(client_secret: str = "client_secret.json", token_path: str = "token.json"):
@@ -191,6 +302,30 @@ def upload_queue(plan: list[dict], client_secret: str = "client_secret.json",
                                        item.get("tags"), item.get("privacy", "public"),
                                        item.get("publish_at", ""), client_secret, token_path)})
     return results
+
+
+# YouTube Data API v3: the free daily allowance, and what one upload costs (1,600 units),
+# which means about 6 uploads per day before the API refuses until the quota resets at midnight PT.
+DAILY_QUOTA_UNITS = 10000
+UPLOAD_COST_UNITS = 1600
+UPLOADS_PER_DAY = DAILY_QUOTA_UNITS // UPLOAD_COST_UNITS
+
+
+def quota(daily_uploads: int = 0) -> dict:
+    """How many uploads today's quota still allows (best effort: Google does not expose usage)."""
+    used = max(0, min(DAILY_QUOTA_UNITS, int(daily_uploads) * UPLOAD_COST_UNITS))
+    return {"per_day": UPLOADS_PER_DAY, "used": int(daily_uploads), "limit": UPLOADS_PER_DAY,
+            "left": max(0, (DAILY_QUOTA_UNITS - used) // UPLOAD_COST_UNITS)}
+
+
+def has_google_deps() -> bool:
+    """Are the optional Google client libraries importable?"""
+    try:
+        import googleapiclient  # noqa: F401
+        import google_auth_oauthlib  # noqa: F401
+        return True
+    except ImportError:
+        return False
 
 
 def check_api() -> dict:
