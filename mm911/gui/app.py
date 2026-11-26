@@ -77,6 +77,9 @@ class Api:
         self._settings = self._load_settings()
         self._cfg = MergeConfig.from_dict(self._settings.get("config", {}))
         self._preview_on = False
+        self._signin = {"running": False, "url": "", "error": "", "done": False}
+        self._uploading = False
+        self._plan_edits = {}
         self._preview_dirty = True
         self._busy = False
         self._stop = False
@@ -591,6 +594,190 @@ class Api:
             LOG.warning("sound preview failed: %s", e)
             return ""
 
+    # ---------- 📤 publish studio (YouTube) ----------
+    def _publish_settings(self) -> dict:
+        from .. import autoupload
+        return autoupload.settings(self._settings.get("publish"))
+
+    def _set_publish_settings(self, patch: dict) -> dict:
+        from .. import autoupload
+        cur = dict(self._settings.get("publish") or {})
+        cur.update(patch or {})
+        self._settings["publish"] = autoupload.settings(cur)
+        self._save()
+        return self._settings["publish"]
+
+    def publish_status(self) -> dict:
+        """Everything the studio card needs: deps, client secret, sign-in, auto-upload."""
+        from .. import publish as pb
+        deps = pb.has_google_deps()
+        secret = pb.find_client_secret()
+        token = pb.token_file()
+        st = self._publish_settings()
+        out = {"deps": deps, "client_secret": secret, "signed_in": token.exists(),
+               "channel": "", "thumb": "", "error": "",
+               "settings": st, "pip": "pip install google-api-python-client google-auth-oauthlib",
+               "console_url": "https://console.cloud.google.com/apis/credentials",
+               "folder": self._settings.get("output_dir", "")}
+        if deps and out["signed_in"]:
+            acc = pb.account_info(token_path=str(token))
+            out.update(channel=acc.get("channel", ""), thumb=acc.get("thumb", ""),
+                       error=acc.get("error", ""), signed_in=acc.get("signed_in", out["signed_in"]))
+        return out
+
+    def publish_add_secret(self) -> dict:
+        """Copy the user's client_secret*.json into the app folder (never the repo)."""
+        from .. import publish as pb
+        res = self._window.create_file_dialog(webview.FileDialog.OPEN,
+                                              file_types=("JSON (*.json)", "All files (*.*)"))
+        if not res:
+            return {"cancelled": True}
+        src = Path(res[0] if isinstance(res, (list, tuple)) else res)
+        try:
+            if src.suffix.lower() != ".json" or src.stat().st_size > 512 * 1024:
+                return {"error": "pick the client_secret .json Google gave you"}
+            dest = pb._app_dir() / "client_secret.json"
+            shutil.copyfile(src, dest)
+            return {"file": str(dest)}
+        except OSError as e:
+            return {"error": f"could not read that file ({e})"}
+
+    def publish_sign_in(self) -> dict:
+        """Start Google sign-in on a worker thread; JS polls publish_signin_progress()."""
+        from .. import publish as pb
+        if self._signin["running"]:
+            return {"running": True}
+        if not pb.has_google_deps():
+            return {"error": "install the Google libraries first",
+                    "pip": pb.check_api().get("pip", "")}
+        if not pb.find_client_secret():
+            return {"error": "add your client_secret.json first"}
+        self._signin.update(running=True, url="", error="", done=False)
+
+        def work():
+            try:
+                pb.sign_in(on_url=lambda u: self._signin.update(url=u))
+                self._signin["done"] = True
+            except BaseException as e:       # SystemExit from the Google libs included
+                self._signin["error"] = str(e)[:400]
+            finally:
+                self._signin["running"] = False
+        threading.Thread(target=work, daemon=True).start()
+        return {"running": True}
+
+    def publish_signin_progress(self) -> dict:
+        return dict(self._signin)
+
+    def publish_sign_out(self) -> dict:
+        from .. import publish as pb
+        return pb.sign_out()
+
+    def publish_plan(self) -> dict:
+        """What would be uploaded from the output folder right now (never uploads)."""
+        from .. import publish as pb
+        from .. import autoupload
+        folder = self._settings.get("output_dir", "")
+        rows = autoupload.rows_from_folder(folder)
+        if not rows:
+            return {"plan": [], "summary": "Nothing rendered yet", "todo": 0, "skipped": []}
+        st = self._publish_settings()
+        csv_path = Path(folder) / "titles.csv"
+        if csv_path.exists():
+            plan = pb.queue_plan(str(csv_path), folder=folder, spread_days=int(st["spread_days"]),
+                                 times=str(st["times"]), privacy=str(st["privacy"]))
+        else:
+            plan = autoupload.after_render(folder, {**st, "enabled": True})["plan"]
+        for item in plan:                     # never offer an already-uploaded video again
+            item["uploaded"] = autoupload.already_uploaded(folder, item.get("video", ""))
+        todo = [p for p in plan if not p["uploaded"]]
+        q = pb.quota(autoupload.uploaded_today(folder))
+        summary = f"{len(todo)} ready to upload"
+        if len(todo) > q["left"]:
+            summary += f" · only {q['left']} fit in today's YouTube quota"
+        return {"plan": plan, "summary": summary, "folder": folder,
+                "skipped": [], "todo": len(todo), "quota": q}
+
+    def publish_update_plan(self, index: int, patch: dict) -> dict:
+        """Edit one row of the plan (title / description / privacy / publish time)."""
+        edits = getattr(self, "_plan_edits", None) or {}
+        row = edits.setdefault(int(index), {})
+        for k in ("title", "description", "privacy", "publish_at", "tags"):
+            if k in (patch or {}):
+                v = patch[k]
+                row[k] = [t.strip() for t in str(v).split(",") if t.strip()] if k == "tags" else str(v)
+        self._plan_edits = edits
+        return {"ok": True}
+
+    def publish_upload(self, plan: list | None = None) -> bool:
+        """Upload the plan on a worker thread; progress goes to the normal progress bar."""
+        from .. import publish as pb
+        from .. import autoupload
+        if self._uploading:
+            return False
+        if not pb.has_google_deps():
+            self._emit({"pubdone": True, "error": "install the Google libraries first"})
+            return False
+        if not pb.token_file().exists():
+            self._emit({"pubdone": True, "error": "sign in to YouTube first"})
+            return False
+        items = plan if plan else self.publish_plan()["plan"]
+        edits = getattr(self, "_plan_edits", None) or {}
+        queue = []
+        for i, item in enumerate(items):
+            if item.get("uploaded"):
+                continue
+            merged = dict(item)
+            merged.update(edits.get(i, {}))
+            if merged.get("publish_at"):
+                merged["privacy"] = "private"      # scheduled uploads must start private
+            queue.append(merged)
+        if not queue:
+            self._emit({"pubdone": True, "results": [], "note": "nothing to upload"})
+            return False
+        self._uploading = True
+        folder = self._settings.get("output_dir", "")
+
+        def work():
+            n, results = len(queue), []
+            try:
+                for i, item in enumerate(queue):
+                    self._emit({"pub": True, "i": i, "n": n, "p": 0, "title": item.get("title", "")})
+                    try:
+                        res = pb.upload_video(item["video"], item.get("title", ""),
+                                              item.get("description", ""), item.get("tags"),
+                                              item.get("privacy", "private"),
+                                              item.get("publish_at", ""),
+                                              client_secret=pb.find_client_secret() or "client_secret.json",
+                                              token_path=str(pb.token_file()))
+                        autoupload.save_receipt(folder, item["video"], res)
+                        results.append({**res, "video": item["video"], "title": item.get("title", "")})
+                        self._emit({"pub": True, "i": i, "n": n, "p": 1})
+                    except BaseException as e:      # one bad video must not stop the queue
+                        LOG.exception("upload failed")
+                        results.append({"video": item.get("video", ""), "error": str(e)[:300]})
+                self._emit({"pubdone": True, "results": results,
+                            "note": f"{len([r for r in results if not r.get('error')])} uploaded"})
+            finally:
+                self._uploading = False
+        threading.Thread(target=work, daemon=True).start()
+        return True
+
+    def publish_open_url(self, url: str) -> None:
+        self._open_url(url)
+
+    def _auto_upload_after_batch(self) -> None:
+        """Called when a batch finishes: queue the new videos if the user asked for that."""
+        from .. import autoupload
+        st = self._publish_settings()
+        if not st.get("enabled") or not st.get("after_batch"):
+            return
+        folder = self._settings.get("output_dir", "")
+        plan = autoupload.after_render(folder, st)
+        self._emit({"autoupload": {"queued": len(plan["plan"]),
+                                   "note": autoupload.summary(plan)}})
+        if plan["plan"]:
+            self.publish_upload(plan["plan"])
+
     # ---------- themes: save / load / import / export ----------
     def _themes_dir(self) -> Path:
         d = app_dir() / "themes"
@@ -800,6 +987,7 @@ class Api:
                 self._emit({"done": True, "results": res})
                 if self._cfg.open_folder_after:
                     self.open_output()
+                self._auto_upload_after_batch()
             except Exception as e:  # pragma: no cover
                 LOG.exception("render failed")
                 self._emit({"error": str(e)})

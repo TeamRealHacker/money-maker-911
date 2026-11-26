@@ -111,6 +111,9 @@ const mm = {
     $("#time").textContent = t.toFixed(1) + "s";
   },
   progress(m) {
+    if (m.pub) return mm.pubProgress(m);
+    if (m.pubdone) return mm.pubDone(m);
+    if (m.autoupload) { toast("Auto-upload: " + m.autoupload.note); if (m.autoupload.queued) mm.refreshPlan(); return; }
     const p = $("#prog");
     p.hidden = false;
     if (m.error) { $("#ptext").textContent = "Error: " + m.error; return; }
@@ -248,6 +251,180 @@ const mm = {
   async folder() { state.output_dir = await pywebview.api.pick_folder(); fill(); },
   restart() { pywebview.api.restart_preview(); },
   async reset() { state.config = await pywebview.api.reset_config(); fill(); paintPreflight(); },
+  // ---- 📤 publish studio ----
+  async openPublish() {
+    const st = $("#studio");
+    if (st) st.hidden = false;
+    await mm.refreshPublish();
+    mm.refreshPlan();
+  },
+  closePublish() { const st = $("#studio"); if (st) st.hidden = true; },
+
+  async refreshPublish() {
+    let r = null;
+    try { r = await call("publish_status"); } catch (e) { return; }
+    state.pub = r;
+    if (r.deps) $("#pubdot").title = r.signed_in ? "YouTube connected" : "YouTube not connected";
+    const set = (id, v) => { const el = $(id); if (el) el.checked = !!v; };
+    const s = r.settings || {};
+    set("#pubauto", s.enabled); set("#pubonlywins", s.only_wins);
+    if ($("#pubprivacy")) $("#pubprivacy").value = s.privacy || "private";
+    if ($("#pubdays")) $("#pubdays").value = s.spread_days || 1;
+    if ($("#pubtimes")) $("#pubtimes").value = s.times || "10:00,17:30";
+    const dot = $("#pubdot"); if (dot) dot.hidden = !!r.signed_in;
+    mm.renderSetup(r);
+  },
+
+  // The wizard is data-driven: each step is done / now / later, so the user always sees the
+  // one thing to do next instead of a wall of instructions.
+  renderSetup(r) {
+    const steps = $("#pubsteps"), acts = $("#pubacts"), stat = $("#pubstatus");
+    if (!steps) return;
+    const okDeps = r.deps, okSecret = !!r.client_secret, okAuth = !!r.signed_in;
+    const items = [
+      { done: okDeps, title: "Google libraries",
+        body: okDeps ? "installed" : `install once: <code>${esc(r.pip)}</code>`,
+        act: okDeps ? "" : `<button class="link" onclick="mm.copyText('${esc(r.pip)}')">copy</button>` },
+      { done: okSecret, title: "OAuth client (client_secret.json)",
+        body: okSecret ? esc(String(r.client_secret).split(/[\\/]/).pop())
+                       : `Google Cloud Console ▸ APIs &amp; Services ▸ Credentials ▸ Create credentials ▸ OAuth client ID ▸ <b>Desktop app</b>`,
+        act: (okSecret ? "" : `<button class="link" onclick="mm.openConsole()">open console</button> `)
+             + `<button class="link" onclick="mm.addSecret()">Add client secret…</button>` },
+      { done: okAuth, title: "Sign in to YouTube",
+        body: okAuth ? (r.channel ? `signed in as <b>${esc(r.channel)}</b>` : "signed in")
+                     : "opens your browser; the app waits for Google to hand back the token",
+        act: okAuth ? `<button class="link" onclick="mm.signOut()">sign out</button>`
+                    : `<button class="link" onclick="mm.signIn()">Sign in with Google</button>` },
+    ];
+    let firstOpen = true;
+    steps.innerHTML = items.map((s, i) => {
+      const cls = s.done ? "done" : (firstOpen ? "now" : "");
+      if (!s.done) firstOpen = false;
+      return `<li class="${cls}"><span class="n">${s.done ? "✓" : i + 1}</span>
+        <span><b>${esc(s.title)}</b><br>${s.body} ${s.act || ""}</span></li>`;
+    }).join("");
+    if (stat) {
+      stat.textContent = r.error ? r.error
+        : okAuth ? "Ready to upload" : okSecret ? "Next: sign in" : "Next: add your client secret";
+      stat.className = r.error ? "hint bad" : "hint";
+    }
+    if (acts) acts.innerHTML = okAuth && r.channel
+      ? `<img class="th" src="${esc(r.thumb)}" alt="" style="width:26px;height:26px;border-radius:6px">
+         <span class="hint">${esc(r.channel)}</span>`
+      : "";
+  },
+
+  async addSecret() {
+    const r = await call("publish_add_secret");
+    if (r.cancelled) return;
+    if (r.error) return toast(r.error);
+    toast("Client secret added ✓");
+    mm.refreshPublish();
+  },
+  openConsole() { const r = state.pub || {}; call("publish_open_url", r.console_url || "https://console.cloud.google.com/apis/credentials"); },
+  async signIn() {
+    const r = await call("publish_sign_in");
+    if (r.error) return toast(r.error + (r.pip ? " — " + r.pip : ""));
+    toast("Finish sign-in in your browser…");
+    const t0 = Date.now();
+    const poll = setInterval(async () => {
+      let p = null;
+      try { p = await pywebview.api.publish_signin_progress(); } catch (e) { clearInterval(poll); return; }
+      const steps = $("#pubsteps");
+      if (p.url && steps && !document.querySelector(".authurl")) {
+        const d = document.createElement("div");
+        d.className = "authurl";
+        d.innerHTML = `Browser didn't open? <a href="#" onclick="mm.copyText('${esc(p.url)}');return false">copy this link</a>`;
+        steps.append(d);
+      }
+      if (p.done) { clearInterval(poll); toast("Signed in ✓"); mm.refreshPublish(); }
+      else if (p.error) { clearInterval(poll); toast(p.error); mm.refreshPublish(); }
+      else if (!p.running && Date.now() - t0 > 4000) { clearInterval(poll); mm.refreshPublish(); }
+    }, 1200);
+  },
+  async signOut() {
+    const r = await call("publish_sign_out");
+    toast(r.error || "Signed out");
+    mm.refreshPublish();
+  },
+  copyText(t) {
+    if (navigator.clipboard) navigator.clipboard.writeText(t).then(() => toast("Copied ✓")).catch(() => toast(t));
+    else toast(t);
+  },
+  async savePublish() {
+    const patch = {
+      enabled: !!($("#pubauto") || {}).checked,
+      only_wins: !!($("#pubonlywins") || {}).checked,
+      privacy: ($("#pubprivacy") || {}).value || "private",
+      spread_days: Math.max(1, Math.min(30, parseInt(($("#pubdays") || {}).value || "1") || 1)),
+      times: ($("#pubtimes") || {}).value || "10:00,17:30",
+    };
+    try { await call("_set_publish_settings", patch); } catch (e) { /* toast shown */ }
+    toast(patch.enabled ? "Auto-upload on" : "Auto-upload off");
+    mm.refreshPlan();
+  },
+  paintQuota(q) {
+    const box = $("#pubquota");
+    if (!box) return;
+    if (!q) { box.hidden = true; return; }
+    box.hidden = false;
+    const over = q.left < 6;
+    box.className = "quotabar" + (over ? " low" : "");
+    const pct = Math.max(0, Math.min(100, (q.used / Math.max(1, q.limit)) * 100));
+    box.innerHTML = `<span>${q.used} of ${q.limit} uploads used today</span>
+      <i><b style="width:${pct}%"></b></i>
+      <span>${q.left} left · resets 00:00 PT</span>`;
+  },
+  async refreshPlan() {
+    let r = null;
+    try { r = await call("publish_plan"); } catch (e) { return; }
+    state.plan = r;
+    const sum = $("#pubplansum"), box = $("#pubqueue"), go = $("#pubgo");
+    if (sum) sum.textContent = r.summary || "";
+    mm.paintQuota(r.quota);
+    if (box) {
+      box.innerHTML = (r.plan || []).map((p, i) => `
+        <div class="pubrow ${p.uploaded ? "up" : ""}">
+          <div class="t">
+            <input value="${esc(p.title)}" title="Title" onchange="mm.editPlan(${i},{title:this.value})">
+            <small>${esc(String(p.video || "").split(/[\\/]/).pop())}${p.publish_at ? " · " + esc(p.publish_at.replace("T", " ").replace("Z", "")) : ""}</small>
+          </div>
+          <select onchange="mm.editPlan(${i},{privacy:this.value})" ${p.uploaded ? "disabled" : ""}>
+            ${["private", "unlisted", "public"].map((v) => `<option value="${v}" ${v === p.privacy ? "selected" : ""}>${v}</option>`).join("")}
+          </select>
+          ${p.uploaded ? `<span class="pubbadge" title="already uploaded">✓</span>` : `<span></span>`}
+        </div>`).join("") || `<div class="hint">Render a video (or a batch) and it shows up here.</div>`;
+    }
+    if (go) go.disabled = !(r.todo > 0);
+  },
+  editPlan(i, patch) { call("publish_update_plan", i, patch).catch(() => {}); },
+  async startUpload() {
+    if ($("#pubdry") && $("#pubdry").checked) return toast("Dry run: nothing is uploaded");
+    const ok = await call("publish_upload", null);
+    if (!ok) return toast("Already uploading, or nothing to upload");
+    const prog = $("#pubprog"); if (prog) prog.hidden = false;
+  },
+  // progress frames from Python (pub / pubdone) are pushed with the render progress
+  pubProgress(m) {
+    const prog = $("#pubprog"), bar = $("#pubbar"), text = $("#pubptext");
+    if (prog) prog.hidden = false;
+    if (bar) bar.style.width = (m.n ? ((m.i + (m.p || 0)) / m.n) * 100 : 0).toFixed(1) + "%";
+    if (text) text.textContent = `Uploading ${m.i + 1} of ${m.n}${m.title ? " · " + m.title : ""}`;
+  },
+  pubDone(m) {
+    const prog = $("#pubprog"); if (prog) prog.hidden = true;
+    const box = $("#pubresults");
+    if (m.error) { toast(m.error); return; }
+    const rows = (m.results || []).map((r) => r.error
+      ? `<div class="bad">✗ ${esc(String(r.video || "").split(/[\\/]/).pop())} — ${esc(r.error)}</div>`
+      : `<div>✓ <a href="#" onclick="mm.openVideo('${esc(r.url || "")}');return false">${esc(r.title || String(r.video).split(/[\\/]/).pop())}</a>
+           ${r.publish_at ? `<span class="hint">scheduled ${esc(r.publish_at.replace("T", " ").replace("Z", ""))}</span>` : ""}</div>`).join("");
+    if (box) box.innerHTML = rows || `<div class="hint">${esc(m.note || "Nothing uploaded")}</div>`;
+    toast(m.note || "Upload finished");
+    mm.refreshPlan();
+  },
+  openVideo(url) { if (url) call("publish_open_url", url); },
+
   // ---- preflight: what would stop this render (checked in Python, offline) ----
   togglePreflight() {
     const list = $("#pflist"), head = $(".pfhead");

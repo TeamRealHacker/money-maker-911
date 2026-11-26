@@ -224,7 +224,31 @@ def preflight_cmd(a) -> None:
 
 def publish_cmd(a) -> None:
     from . import publish as pb
-    if a.action == "check":
+    from . import autoupload
+    if a.action == "signin":
+        pb.sign_in(on_url=lambda u: print(f"Open this link to sign in:\n  {u}\n"))
+        print(json.dumps(pb.account_info(), indent=2))
+    elif a.action == "signout":
+        print(json.dumps(pb.sign_out(), indent=2))
+    elif a.action == "whoami":
+        print(json.dumps(pb.account_info(), indent=2))
+    elif a.action == "auto":
+        folder = a.folder or "output"
+        cur = autoupload.settings()
+        if a.enable:
+            cur["enabled"] = a.enable == "on"
+        cur["only_wins"] = bool(a.only_wins)
+        plan = autoupload.after_render(folder, cur, only_wins=a.only_wins,
+                                       schedule=not a.dry_run)
+        print(json.dumps({**plan, "summary": autoupload.summary(plan)}, indent=2))
+        if a.dry_run or not plan["plan"]:
+            return
+        results = pb.upload_queue(plan["plan"])
+        for item in results:
+            if not item.get("error"):
+                autoupload.save_receipt(folder, item.get("video", ""), item)
+        print(json.dumps(results, indent=2))
+    elif a.action == "check":
         print(json.dumps(pb.check_api(), indent=2))
     elif a.action == "upload":
         print(json.dumps(pb.upload_video(a.video, a.title or Path(a.video).stem, a.description or "",
@@ -297,7 +321,7 @@ def main(argv=None) -> None:
     k.add_argument("--keep", action="store_true", help="keep the Colab session running afterwards")
     _add_look_args(k)
     u = sub.add_parser("publish", help="YouTube uploads: check / upload / queue")
-    u.add_argument("action", choices=["check", "upload", "queue"])
+    u.add_argument("action", choices=["check", "upload", "queue", "signin", "signout", "whoami", "auto"])
     u.add_argument("video", nargs="?", help="video file (upload)")
     u.add_argument("--csv", help="titles.csv from the batch factory (queue)")
     u.add_argument("--folder", default="", help="where the queue's videos live (default: next to the csv)")
@@ -310,6 +334,8 @@ def main(argv=None) -> None:
     u.add_argument("--times", default="10:00,17:30", help="queue: upload slots per day")
     u.add_argument("--client-secret", default="client_secret.json")
     u.add_argument("--dry-run", action="store_true", help="queue: print the plan, upload nothing")
+    u.add_argument("--only-wins", action="store_true", help="auto: skip videos without a win in titles.csv")
+    u.add_argument("--enable", choices=["on", "off"], help="auto: turn auto-upload after a batch on/off")
     a = p.parse_args(argv)
     if a.cmd == "sounds":
         return sounds_cmd(a)
