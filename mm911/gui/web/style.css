@@ -239,3 +239,29 @@ details.searching>summary{opacity:.55}
 .quotabar i{display:block;height:5px;background:#EEEFF2;border-radius:5px;overflow:hidden}
 .quotabar i b{display:block;height:100%;background:linear-gradient(90deg,var(--accent2),var(--accent))}
 .quotabar.low{border-color:#F5C451;background:#FFFBF0}
+
+/* ---------- 📚 library ---------- */
+.libbar{display:flex;gap:10px;align-items:center;max-width:1080px;width:100%;margin:0 auto 14px;flex-wrap:wrap}
+.libbar input,.libbar select{border:1px solid var(--line);border-radius:9px;padding:8px 10px;font:inherit;background:#fff}
+.libbar input{flex:1;min-width:220px}
+.libgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px;
+  max-width:1080px;width:100%;margin:0 auto}
+.libcard{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;
+  box-shadow:0 6px 18px rgba(0,0,0,.04);display:flex;flex-direction:column}
+.libthumb{position:relative;aspect-ratio:16/9;background:#F0F0F3 center/cover no-repeat;display:flex;
+  align-items:center;justify-content:center;color:#B0B0B5;font-size:11px}
+.libthumb img{width:100%;height:100%;object-fit:cover;display:block}
+.libthumb .badge{position:absolute;top:7px;left:7px;background:rgba(0,0,0,.55);color:#fff;font-size:10px;
+  padding:2px 7px;border-radius:20px;backdrop-filter:blur(6px)}
+.libthumb .badge.won{background:rgba(46,125,50,.9)}
+.libthumb .badge.up{background:rgba(232,50,63,.9);left:auto;right:7px}
+.libbody{padding:9px 11px;display:flex;flex-direction:column;gap:5px;flex:1}
+.libbody b{font-size:12.5px;font-weight:600;display:block;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;letter-spacing:-.1px}
+.libbody small{color:var(--mute);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.libacts{display:flex;gap:4px;margin-top:auto;padding-top:6px;border-top:1px solid #F2F2F5;flex-wrap:wrap}
+.libacts button{background:none;border:none;color:var(--accent);font:inherit;font-size:11.5px;padding:3px 5px;
+  border-radius:6px;cursor:pointer}
+.libacts button:hover{background:#FFF0F1}
+.libacts button.muted{color:var(--mute)}
+.libempty{grid-column:1/-1;text-align:center;color:var(--mute);font-size:13px;padding:60px 0}

@@ -9,6 +9,12 @@
   - CLI: `publish signin|signout|whoami|auto` (`auto --folder out --enable on --only-wins --dry-run`).
   - Tests: `tests/test_publish_studio.py` (29 offline tests - settings coercion, planning, `only_wins`, receipts and no-double-upload, broken receipts, sign-out, account info incl. a revoked token, sign-in without a secret, quota maths, CLI) plus 58 jsdom UI checks over the wizard, queue and results.
 
+- **2026-11-26** · 📚 v0.24.0 UI pass 3 - Studio comfort: library + undo (branch `arena/8f06d7ac-money-maker-911`):
+  - **My videos** page (`mm911/library.py`): a gallery of everything rendered in the output folder - thumbnail, title, size, date, seed, mode, palette, shape, a 🏆 badge for the Final Form and a ✓ badge for already-uploaded videos. Search by title/mode/file, filter to winners / uploaded / not uploaded, ▶ play in your own player, 📁 reveal in Explorer, 🗑 delete (only ever inside the output folder: `../` and nested paths are refused). Thumbnails reach the web view as data URLs because it cannot read arbitrary file paths.
+  - **Use this look**: every render now records the look that made it (`looks.json` - mode, palette, shape, tiers, seed, colours, sounds, export). Any video in the library can re-apply that look to the editor in one click, so a good result is never lost if you forgot to save a theme.
+  - **Undo / redo**: a bounded history over the whole config (60 steps, identical states collapsed so a slider drag is one step). Buttons in the top bar with live counts, `Ctrl+Z` / `Ctrl+Shift+Z` / `Ctrl+Y`, and a status the app polls after every change. A bad slider is no longer permanent.
+  - Tests: `tests/test_library.py` (18 offline tests - metadata from `titles.csv`, newest first, upload badges, corrupt metadata never breaks the page, looks, delete sandbox + refusal outside the folder, history undo/redo/bounded/collapse/redo-clearing) plus 17 more jsdom UI checks (52 total in the harness).
+
 ## ✅ Done
 - **2026-11-07** · Core engine: pymunk physics, pygame offscreen renderer (supersampled, anti-aliased), FFmpeg export with auto hardware encoder (NVENC / QSV / AMF → x264 fallback)
 - **2026-11-07** · 🍉 Merge Evolution v1: 6 palettes, 6 container shapes (circle, hexagon, octagon, square, heart, star), container spin, tier strip, pop-in + particle bursts, FINAL FORM ending, "So close…" ending

@@ -80,6 +80,9 @@ class Api:
         self._signin = {"running": False, "url": "", "error": "", "done": False}
         self._uploading = False
         self._plan_edits = {}
+        from ..library import History
+        self._history = History()
+        self._history_lock = threading.Lock()
         self._preview_dirty = True
         self._busy = False
         self._stop = False
@@ -146,6 +149,8 @@ class Api:
         return True
 
     def set_config(self, patch: dict) -> dict:
+        if patch:
+            self._push_history(", ".join(sorted(patch))[:60])
         names = {f.name: f.type for f in fields(MergeConfig)}
         for k, v in (patch or {}).items():
             if k in names:
@@ -594,6 +599,103 @@ class Api:
             LOG.warning("sound preview failed: %s", e)
             return ""
 
+    # ---------- 📚 library + undo ----------
+    def _push_history(self, label: str = "") -> None:
+        try:
+            self._history.push(self._cfg.to_dict(), label)
+        except Exception as e:                 # history must never break an edit
+            LOG.error("history push failed: %s", e)
+
+    def history_status(self) -> dict:
+        return self._history.status()
+
+    def undo(self) -> dict:
+        with self._history_lock:
+            snap = self._history.undo(self._cfg.to_dict())
+        if snap is None:
+            return {"done": False, **self._history.status()}
+        self._cfg = MergeConfig.from_dict(snap)
+        self._save()
+        return {"done": True, "label": "undo", **self._history.status()}
+
+    def redo(self) -> dict:
+        with self._history_lock:
+            snap = self._history.redo(self._cfg.to_dict())
+        if snap is None:
+            return {"done": False, **self._history.status()}
+        self._cfg = MergeConfig.from_dict(snap)
+        self._save()
+        return {"done": True, "label": "redo", **self._history.status()}
+
+    def library(self) -> dict:
+        """Every rendered video in the output folder (with thumbnails and metadata)."""
+        from .. import library as lib
+        try:
+            return lib.library(self._settings.get("output_dir", ""))
+        except Exception as e:
+            LOG.exception("library failed")
+            return {"folder": self._settings.get("output_dir", ""), "videos": [], "count": 0,
+                    "total_mb": 0.0, "error": str(e)[:200]}
+
+    def library_thumb(self, path: str) -> str:
+        """A thumbnail as a data URL (the web view cannot read arbitrary file:// paths)."""
+        try:
+            p = Path(path)
+            if not p.exists() or p.stat().st_size > 6 * 1024 * 1024:
+                return ""
+            data = base64.b64encode(p.read_bytes()).decode()
+            kind = "png" if p.suffix.lower() == ".png" else "jpeg"
+            return f"data:image/{kind};base64,{data}"
+        except OSError:
+            return ""
+
+    def library_delete(self, name: str) -> dict:
+        from .. import library as lib
+        return lib.delete_video(self._settings.get("output_dir", ""), name)
+
+    def library_reveal(self, name: str = "") -> None:
+        """Open the output folder (or select one file in it)."""
+        folder = Path(self._settings.get("output_dir", ""))
+        try:
+            if name and os.name == "nt":
+                subprocess.Popen(["explorer", "/select,", str(folder / Path(name).name)])
+                return
+            self._open_path(folder)
+        except Exception as e:
+            LOG.error("reveal failed: %s", e)
+
+    def library_play(self, name: str) -> None:
+        """Play a render in the user's own video player."""
+        target = Path(self._settings.get("output_dir", "")) / Path(name).name
+        try:
+            if os.name == "nt":
+                os.startfile(str(target))  # type: ignore[attr-defined]
+            else:
+                subprocess.Popen(["xdg-open", str(target)])
+        except Exception as e:
+            LOG.error("play failed: %s", e)
+
+    def look_of(self, name: str) -> dict:
+        from .. import library as lib
+        return lib.look_of(self._settings.get("output_dir", ""), name)
+
+    def apply_look(self, name: str, vary: bool = False) -> dict:
+        """Re-apply the look a video was made with (optionally with a brand-new seed)."""
+        from .. import library as lib
+        from dataclasses import replace
+        look = lib.look_of(self._settings.get("output_dir", ""), name)
+        if not look:
+            return {"error": "this video was rendered before looks were recorded"}
+        self._push_history("apply look")
+        cfg = MergeConfig.from_dict({**self._cfg.to_dict(), **look})
+        if vary:
+            import random
+            cfg = replace(cfg, seed=random.randint(1, 10_000_000))
+        self._cfg = cfg
+        self._preview_dirty = True
+        self._save()
+        return {"config": self._cfg.to_dict()}
+
     # ---------- 📤 publish studio (YouTube) ----------
     def _publish_settings(self) -> dict:
         from .. import autoupload
@@ -984,6 +1086,10 @@ class Api:
                                 randomize, only_wins,
                                 progress=lambda i, n, p: self._emit({"i": i, "n": n, "p": p}),
                                 stop=lambda: self._stop, lock=GFX_LOCK)
+                from .. import library as lib
+                for item in res or []:
+                    if item.get("file"):
+                        lib.save_look(self._settings["output_dir"], item["file"], self._cfg.to_dict())
                 self._emit({"done": True, "results": res})
                 if self._cfg.open_folder_after:
                     self.open_output()

@@ -137,7 +137,7 @@ const mm = {
     return mm.set(patch);
   },
   async set(patch) {
-    state.config = await call("set_config", patch); fill(); paintPreflight();
+    state.config = await call("set_config", patch); fill(); paintPreflight(); mm.refreshHistory();
     if (PREP_KEYS.some((k) => k in patch)) mm.prep();
     else if (["tiers", "palette", "tier_images", "show_tier_labels", "cutout_outline", "ball_scale", "base_radius", "growth",
               "size_curve", "tier_sizes", "ball_outline", "ball_outline_color", "auto_fit", "ball_highlight", "ball_inner_shadow",
@@ -251,6 +251,118 @@ const mm = {
   async folder() { state.output_dir = await pywebview.api.pick_folder(); fill(); },
   restart() { pywebview.api.restart_preview(); },
   async reset() { state.config = await pywebview.api.reset_config(); fill(); paintPreflight(); },
+  // ---- 📚 library ----
+  async openLibrary() {
+    const el = $("#library");
+    if (el) el.hidden = false;
+    await mm.refreshLibrary();
+  },
+  closeLibrary() { const el = $("#library"); if (el) el.hidden = true; },
+
+  async refreshLibrary() {
+    let r = null;
+    try { r = await call("library"); } catch (e) { return; }
+    state.lib = r;
+    // thumbnails come from Python as data URLs (the web view cannot read file paths)
+    await Promise.all((r.videos || []).filter((v) => v.thumb && !v.thumb.startsWith("data:"))
+      .slice(0, 80).map(async (v) => {
+        try { v.thumb = await call("library_thumb", v.thumb); } catch (e) { v.thumb = ""; }
+      }));
+    const cnt = $("#libcount");
+    if (cnt) { cnt.hidden = !r.count; cnt.textContent = r.count; }
+    mm.paintLibrary();
+  },
+
+  paintLibrary() {
+    const r = state.lib || { videos: [] };
+    const q = (($("#libsearch") || {}).value || "").trim().toLowerCase();
+    const f = ($("#libfilter") || {}).value || "";
+    const list = (r.videos || []).filter((v) => {
+      if (q && !(`${v.title} ${v.mode} ${v.file}`.toLowerCase().includes(q))) return false;
+      if (f === "won" && !v.won) return false;
+      if (f === "uploaded" && !v.uploaded) return false;
+      if (f === "notuploaded" && v.uploaded) return false;
+      return true;
+    });
+    const grid = $("#libgrid"), stats = $("#libstats"), sub = $("#libsub");
+    if (sub) sub.textContent = `${r.count || 0} video(s) · ${r.total_mb || 0} MB · ${String(r.folder || "").split(/[\\/]/).pop() || "output"}`;
+    if (stats) stats.textContent = list.length === (r.videos || []).length ? "" : `${list.length} shown`;
+    if (!grid) return;
+    grid.innerHTML = list.length ? list.map((v) => `
+      <div class="libcard" data-file="${esc(v.file)}">
+        <div class="libthumb" ${v.thumb ? `style="background-image:url('${esc(v.thumb)}')"` : ""}>
+          ${v.thumb ? `<img src="${esc(v.thumb)}" alt="">` : "no thumbnail"}
+          ${v.won ? '<span class="badge won">🏆 won</span>' : ""}
+          ${v.uploaded ? '<span class="badge up">✓ uploaded</span>' : ""}
+        </div>
+        <div class="libbody">
+          <b title="${esc(v.title)}">${esc(v.title)}</b>
+          <small>${esc(v.when)} · ${esc(v.mb)} MB${v.mode ? " · " + esc(v.mode) : ""}</small>
+          <small>${v.seed ? "seed " + esc(v.seed) : ""}${v.palette ? " · " + esc(v.palette) : ""}${v.shape ? " · " + esc(v.shape) : ""}</small>
+          <div class="libacts">
+            <button onclick="mm.libPlay('${esc(v.file)}')">▶ Play</button>
+            <button onclick="mm.libLook('${esc(v.file)}')">↺ Use this look</button>
+            <button onclick="mm.libReveal('${esc(v.file)}')">📁</button>
+            <button class="muted" onclick="mm.libDelete('${esc(v.file)}')">🗑</button>
+          </div>
+        </div>
+      </div>`).join("")
+      : `<div class="libempty">${r.count ? "Nothing matches that filter." : "No videos yet — render one and it shows up here."}</div>`;
+  },
+
+  libPlay(name) { call("library_play", name); },
+  libReveal(name) { call("library_reveal", name); },
+  async libLook(name) {
+    const r = await call("look_of", name);
+    if (!r || !Object.keys(r).length) return toast("This video predates looks — render it once more to save its look.");
+    const a = await call("apply_look", name, false);
+    if (a.error) return toast(a.error);
+    state.config = a.config; fill(); paintPreflight();
+    toast("Look applied ✓ — render to make a new video with it");
+    mm.closeLibrary();
+  },
+  async libVary(name) {
+    const a = await call("apply_look", name, true);
+    if (a.error) return toast(a.error);
+    state.config = a.config; fill(); paintPreflight();
+    toast("Same look, new seed 🎲");
+    mm.closeLibrary();
+  },
+  async libDelete(name) {
+    if (!confirm("Delete " + name + " and its thumbnail?")) return;
+    const r = await call("library_delete", name);
+    if (r.error) return toast(r.error);
+    toast("Deleted ✓");
+    mm.refreshLibrary();
+  },
+
+  // ---- undo / redo ----
+  async undo() {
+    const r = await call("undo");
+    if (!r.done) return toast("Nothing to undo");
+    state.config = (await call("bootstrap")).config;
+    fill(); paintPreflight(); mm.paintHistory();
+    toast("Undone");
+  },
+  async redo() {
+    const r = await call("redo");
+    if (!r.done) return toast("Nothing to redo");
+    state.config = (await call("bootstrap")).config;
+    fill(); paintPreflight(); mm.paintHistory();
+    toast("Redone");
+  },
+  async refreshHistory() {
+    try { state.history = await pywebview.api.history_status(); } catch (e) { return; }
+    mm.paintHistory();
+  },
+  paintHistory() {
+    const b = $("#undobtn"), f = $("#redobtn"), st = state.history || {};
+    if (b) b.disabled = !st.undo;
+    if (f) f.disabled = !st.redo;
+    if (b) b.title = st.undo ? `Undo (${st.undo})` : "Nothing to undo";
+    if (f) f.title = st.redo ? `Redo (${st.redo})` : "Nothing to redo";
+  },
+
   // ---- 📤 publish studio ----
   async openPublish() {
     const st = $("#studio");
@@ -951,9 +1063,17 @@ async function boot() {
   }
   document.addEventListener("keydown", (e) => {
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target || {}).tagName || "");
+    const mod = e.ctrlKey || e.metaKey;
+    if (mod && e.key.toLowerCase() === "z") {
+      e.preventDefault();
+      return e.shiftKey ? mm.redo() : mm.undo();
+    }
+    if (mod && e.key.toLowerCase() === "y") { e.preventDefault(); return mm.redo(); }
     if (e.key === "/" && !typing) { e.preventDefault(); if (search) search.focus(); }
     if (e.key === "Escape" && document.activeElement === search) mm.clearSearch();
+    if (e.key === "Escape") { mm.closeLibrary(); mm.closePublish(); }
   });
+  mm.refreshHistory();
   paintPreflight();
   if (state.onboarded) setPreview(true); else onboarding();   // preview waits until onboarding is done
 }
