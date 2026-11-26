@@ -134,7 +134,7 @@ const mm = {
     return mm.set(patch);
   },
   async set(patch) {
-    state.config = await call("set_config", patch); fill();
+    state.config = await call("set_config", patch); fill(); paintPreflight();
     if (PREP_KEYS.some((k) => k in patch)) mm.prep();
     else if (["tiers", "palette", "tier_images", "show_tier_labels", "cutout_outline", "ball_scale", "base_radius", "growth",
               "size_curve", "tier_sizes", "ball_outline", "ball_outline_color", "auto_fit", "ball_highlight", "ball_inner_shadow",
@@ -247,7 +247,121 @@ const mm = {
   },
   async folder() { state.output_dir = await pywebview.api.pick_folder(); fill(); },
   restart() { pywebview.api.restart_preview(); },
-  async reset() { state.config = await pywebview.api.reset_config(); fill(); },
+  async reset() { state.config = await pywebview.api.reset_config(); fill(); paintPreflight(); },
+  // ---- preflight: what would stop this render (checked in Python, offline) ----
+  togglePreflight() {
+    const list = $("#pflist"), head = $(".pfhead");
+    if (!list) return;
+    list.hidden = !list.hidden;
+    if (head) head.setAttribute("aria-expanded", String(!list.hidden));
+  },
+  // ---- settings search: find any control by label or key ----
+  search(q) {
+    q = (q === undefined ? ($("#setsearch") || {}).value || "" : q).trim().toLowerCase();
+    const info = $("#searchinfo"), clear = $("#clearsearch");
+    document.querySelectorAll(".row").forEach((r) => r.classList.remove("hit"));
+    document.querySelectorAll("details").forEach((d) => {
+      d.classList.remove("hit");
+      // a searching section hides the sections that have nothing to show
+      d.classList.toggle("searching", !!q);
+    });
+    if (!q) {
+      if (info) info.hidden = true;
+      if (clear) clear.hidden = true;
+      document.querySelectorAll("details").forEach((d) => { d.hidden = false; });
+      fill();
+      return;
+    }
+    if (clear) clear.hidden = false;
+    let hits = 0;
+    document.querySelectorAll("details").forEach((d) => {
+      let own = 0;
+      d.querySelectorAll(".row").forEach((r) => {
+        const label = (r.textContent || "").toLowerCase();
+        const key = [...r.querySelectorAll("[data-k],[data-csv],[data-l]")].map((el) => (el.dataset.k || el.dataset.csv || el.dataset.l || "")).join(" ").toLowerCase();
+        if (label.includes(q) || key.includes(q)) { r.classList.add("hit"); own++; hits++; }
+      });
+      const head = (d.querySelector("summary") || {}).textContent || "";
+      if (head.toLowerCase().includes(q)) { own++; hits++; d.classList.add("hit"); }
+      d.classList.toggle("searching", own === 0);
+      if (own) d.open = true;
+    });
+    if (info) {
+      info.hidden = false;
+      info.textContent = hits ? `${hits} match(es) for “${q}”` : `Nothing matches “${q}” — try “sound”, “speed”, “colour” or a mode name`;
+    }
+  },
+  clearSearch() { const el = $("#setsearch"); if (el) el.value = ""; mm.search(""); },
+  // ---- update center ----
+  async openUpdate() {
+    const panel = $("#updpanel");
+    if (panel && !panel.hidden) return mm.closeUpdate();
+    if (panel) panel.hidden = false;
+    if (state.update) return mm.renderUpdate(state.update);
+    mm.renderUpdate(null, "Checking GitHub for a newer build…");
+    let r = null;
+    try { r = await call("update_check"); } catch (e) { /* toast shown */ }
+    state.update = r || { error: "check failed", current: state.version };
+    mm.renderUpdate(state.update);
+    mm.paintUpdateBadge();
+  },
+  closeUpdate() { const p = $("#updpanel"); if (p) p.hidden = true; },
+  paintUpdateBadge() {
+    const u = state.update || {}, btn = $("#updbtn"), dot = $("#upddot"), label = $("#updlabel"), icon = $("#updicon");
+    if (dot) dot.hidden = !u.newer;
+    if (btn) btn.classList.toggle("new", !!u.newer);
+    if (label) label.textContent = u.newer ? `Update ${u.latest} ready` : "Check for updates";
+    if (icon) icon.textContent = u.newer ? "🚀" : "🔄";
+  },
+  renderUpdate(u, note) {
+    const body = $("#updbody"), acts = $("#updacts");
+    if (!body) return;
+    if (!u) {
+      body.innerHTML = `<span class="hint">${esc(note || "Checking…")}</span>`;
+      if (acts) acts.innerHTML = "";
+      return;
+    }
+    const notes = Array.isArray(u.notes) ? u.notes : [];
+    const head = `<div class="updver">You have <b>v${esc(u.current || state.version)}</b>`
+      + (u.latest ? ` · newest <b>v${esc(u.latest)}</b>${u.prerelease ? " (nightly)" : ""}` : "") + `</div>`;
+    if (u.error) {
+      body.innerHTML = head + `<div class="hint">${esc(u.error)}</div>`;
+      if (acts) acts.innerHTML = `<button class="ghost sm" onclick="mm.openReleases()">Open releases</button>`;
+      return;
+    }
+    if (!u.newer) {
+      body.innerHTML = head + `<div class="hint">You are up to date 🎉</div>`;
+      if (acts) acts.innerHTML = `<button class="ghost sm" onclick="mm.openReleases()">Release notes</button>`;
+      return;
+    }
+    body.innerHTML = head + (notes.length
+      ? `<ul>${notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>`
+      : `<div class="hint">A newer build is available.</div>`);
+    if (acts) acts.innerHTML = (state.frozenHint === false
+      ? `<button class="ghost sm" onclick="mm.openReleases()">Open release page</button>`
+      : `<button class="primary sm" onclick="mm.downloadUpdate()">Download ${esc(u.latest)}</button>
+         <button class="ghost sm" onclick="mm.openReleases()">Release page</button>`);
+  },
+  async downloadUpdate() {
+    const acts = $("#updacts");
+    if (acts) acts.innerHTML = `<span class="hint">Downloading…</span>`;
+    const r = await call("update_download");
+    if (r.error) { toast(r.error); mm.renderUpdate(state.update); return; }
+    state.updateFile = r.file;
+    toast(`Downloaded ${(r.size / 1048576).toFixed(1)} MB ✓`);
+    if (acts) acts.innerHTML = `<button class="primary sm" onclick="mm.installUpdate()">Restart &amp; install</button>
+      <button class="ghost sm" onclick="mm.openReleases()">Later</button>`;
+  },
+  async installUpdate() {
+    if (!state.updateFile) return toast("Download the update first");
+    const r = await call("update_install", state.updateFile);
+    if (r.error) return toast(r.error);
+    toast(r.restarted ? "Installing — the app is restarting…" : "Installed. Start the app again to use it.");
+  },
+  openReleases() {
+    const u = state.update || {};
+    call("open_url", u.url || "https://github.com/TeamRealHacker/money-maker-911/releases");
+  },
   async renderOne() {
     if (!(await call("render_one"))) return toast("Already rendering, hold on…");
     mm.progress({ i: 0, n: 1, p: 0 });
@@ -485,6 +599,61 @@ function fill() {
   if (sfx.bufKey && sfx.bufKey !== (c.sound_path || "") + "|") sfx.load();
 }
 
+// Preflight: ask Python what would stop this render, and show it right above the Render button.
+// Runs debounced (it is cheap and offline) so the banner is always about the current settings.
+let pfTimer = null;
+function paintPreflight() {
+  clearTimeout(pfTimer);
+  pfTimer = setTimeout(async () => {
+    let r = null;
+    try { r = await pywebview.api.preflight(); } catch (e) { return; }
+    const box = $("#preflight"), sum = $("#pfsum"), icon = $("#pficon"), list = $("#pflist");
+    if (!box || !r) return;
+    state.preflight = r;
+    const errs = r.items.filter((i) => i.level === "error");
+    const warns = r.items.filter((i) => i.level === "warning");
+    const show = errs.length + warns.length > 0;
+    box.hidden = !show;
+    box.classList.toggle("bad", errs.length > 0);
+    box.classList.toggle("warn", errs.length === 0 && warns.length > 0);
+    if (!show) return;
+    icon.textContent = errs.length ? "⚠" : "!";
+    sum.textContent = r.summary || (errs.length ? `${errs.length} problem(s)` : `${warns.length} warning(s)`);
+    const shown = [...errs, ...warns, ...r.items.filter((i) => i.level === "info")];
+    list.innerHTML = shown.map((i) => `
+      <li class="lv-${esc(i.level)}"><span class="dot">${i.level === "error" ? "●" : i.level === "warning" ? "●" : "·"}</span>
+        <b>${esc(i.area)}</b><span>${esc(i.message)}${i.fix ? ` <em>— ${esc(i.fix)}</em>` : ""}</span>
+        <button class="link" onclick="mm.reveal('${esc(i.key || "")}')">${i.key && (document.querySelector(`[data-k="${i.key}"]`) || document.querySelector(`[data-csv="${i.key}"]`)) ? "fix" : "show"}</button>
+      </li>`).join("");
+  }, 220);
+}
+
+// Jump to the control a preflight item is about, so "fix" is one click.
+mm.reveal = function (key) {
+  const el = key && document.querySelector(`[data-k="${key}"],[data-csv="${key}"]`);
+  if (el) {
+    const d = el.closest("details");
+    if (d) { d.open = true; scrollTo(d); }
+    el.classList.add("hit");
+    setTimeout(() => el.classList.remove("hit"), 1600);
+    try { if (el.focus) el.focus({ preventScroll: true }); } catch (e) { /* not focusable */ }
+    return;
+  }
+  // picker-driven settings (sound, pictures, output folder) have no control of their own:
+  // open the section that owns them so the button you need is on screen
+  const area = ((state.preflight || {}).items || []).find((i) => i.key === key) || {};
+  const word = (key || area.area || "").toLowerCase().split("_")[0];
+  const sec = [...document.querySelectorAll("details[data-sec]")]
+    .find((d) => (d.dataset.sec || "").split(" ").some((w) => w === word || w.startsWith(word.slice(0, 4))));
+  if (sec) scrollTo(sec);
+};
+
+// scrollIntoView is not present in every embedded engine/jsdom; never let it break a click
+function scrollTo(el) {
+  if (!el) return;
+  try { el.scrollIntoView({ block: "center", behavior: "smooth" }); } catch (e) { /* no scrolling here */ }
+}
+
 function showVal(el) {
   let o = el.nextElementSibling;
   if (!o || !o.classList.contains("v")) { o = document.createElement("i"); o.className = "v"; el.after(o); }
@@ -598,6 +767,17 @@ async function boot() {
   aiHint();
   mm.prep().catch(() => {});   // cached after the first run, so this is instant
   soundRows().catch(() => {});
+  const search = $("#setsearch");
+  if (search) {
+    let st = null;
+    search.addEventListener("input", () => { clearTimeout(st); st = setTimeout(() => mm.search(), 140); });
+  }
+  document.addEventListener("keydown", (e) => {
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target || {}).tagName || "");
+    if (e.key === "/" && !typing) { e.preventDefault(); if (search) search.focus(); }
+    if (e.key === "Escape" && document.activeElement === search) mm.clearSearch();
+  });
+  paintPreflight();
   if (state.onboarded) setPreview(true); else onboarding();   // preview waits until onboarding is done
 }
 

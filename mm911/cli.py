@@ -5,7 +5,7 @@ import argparse
 import json
 from pathlib import Path
 
-from .config import MergeConfig, MODES
+from .config import MergeConfig, MODES, VERSION
 from .config import (LENGTH_PRESETS, EMOJI_SETS, SHAPES, BG_MODES, PARTICLE_STYLES, RANDOM_KNOBS, MIN_TIERS,
                      MAX_TIERS, RESOLUTIONS, QUALITIES, CODECS, ENCODERS, FORMATS)
 from .render import render_video, make_thumbnail
@@ -178,6 +178,50 @@ def colab_cmd(a) -> None:
                                             batch_count=a.count, keep_session=a.keep), indent=2))
 
 
+def update_cmd(a) -> None:
+    """`update check` (is there a newer build?), `download`, `install`."""
+    from . import updates
+    if a.action == "check":
+        res = updates.check()
+        res["notes"] = updates.changelog(res.get("notes", ""))
+        print(json.dumps(res, indent=2))
+        if res.get("error"):
+            raise SystemExit(1)
+    elif a.action == "download":
+        info = updates.check()
+        if info.get("error"):
+            print(info["error"])
+            raise SystemExit(1)
+        if not info.get("newer"):
+            print(f"already up to date (v{VERSION})")
+            return
+        asset = next((x for x in info.get("assets") or [] if x["name"].lower().endswith(".exe")), None)
+        if not asset:
+            print(f"no .exe in {info.get('latest')} - see {info.get('url')}")
+            raise SystemExit(1)
+        out = Path("output") / "updates" / asset["name"]
+        print(json.dumps(updates.download(asset["url"], str(out)), indent=2))
+    else:
+        print(json.dumps(updates.install(a.file or ""), indent=2))
+
+
+def preflight_cmd(a) -> None:
+    """Would this preset render? Prints the problems; exit code 1 when one is fatal."""
+    from . import preflight
+    try:
+        from .ffmpeg import ffmpeg_exe
+        ff_ok = bool(ffmpeg_exe())
+    except Exception:
+        ff_ok = False
+    cfg = MergeConfig.load(a.preset) if a.preset else MergeConfig()
+    apply_args(cfg, a)
+    res = preflight.check(cfg, a.out, ffmpeg_ok=ff_ok)
+    res["summary"] = preflight.summary(res)
+    print(json.dumps(res, indent=2))
+    if res["errors"]:
+        raise SystemExit(1)
+
+
 def publish_cmd(a) -> None:
     from . import publish as pb
     if a.action == "check":
@@ -236,6 +280,13 @@ def main(argv=None) -> None:
     s.add_argument("--strategy", choices=["pitch_up", "sorted"], default="sorted")
     s.add_argument("--count", type=int, default=4)
     s.add_argument("--seed", type=int, default=1)
+    up = sub.add_parser("update", help="Update center: check / download / install the newest build")
+    up.add_argument("action", choices=["check", "download", "install"], nargs="?", default="check")
+    up.add_argument("--file", help="install: the downloaded .exe")
+    pf = sub.add_parser("preflight", help="Check the settings before a render (what would fail?)")
+    pf.add_argument("--preset", help="check a preset instead of the defaults")
+    pf.add_argument("--out", default="output", help="output folder to check")
+    _add_look_args(pf)
     k = sub.add_parser("colab", help="Google Colab GPU rendering: check / quota / pack / render")
     k.add_argument("action", choices=["check", "quota", "pack", "render"])
     k.add_argument("--preset")
@@ -262,6 +313,10 @@ def main(argv=None) -> None:
     a = p.parse_args(argv)
     if a.cmd == "sounds":
         return sounds_cmd(a)
+    if a.cmd == "update":
+        return update_cmd(a)
+    if a.cmd == "preflight":
+        return preflight_cmd(a)
     if a.cmd == "colab":
         return colab_cmd(a)
     if a.cmd == "publish":
