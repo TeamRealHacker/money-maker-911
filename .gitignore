@@ -7,3 +7,4 @@ output/
 .venv/
 .pytest_cache/
 __pycache__/
+tools/uicheck/node_modules/

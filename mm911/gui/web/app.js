@@ -111,8 +111,9 @@ const mm = {
     $("#time").textContent = t.toFixed(1) + "s";
   },
   progress(m) {
-    if (m.pub) return mm.pubProgress(m);
-    if (m.pubdone) return mm.pubDone(m);
+    if (m.colab) return mm.colabProgress(m.colab);
+    if (m.pub) { mm.uploadProgress(m); return mm.pubProgress(m); }
+    if (m.pubdone) { mm.uploadDone(m); return mm.pubDone(m); }
     if (m.autoupload) { toast("Auto-upload: " + m.autoupload.note); if (m.autoupload.queued) mm.refreshPlan(); return; }
     const p = $("#prog");
     p.hidden = false;
@@ -251,10 +252,318 @@ const mm = {
   async folder() { state.output_dir = await pywebview.api.pick_folder(); fill(); },
   restart() { pywebview.api.restart_preview(); },
   async reset() { state.config = await pywebview.api.reset_config(); fill(); paintPreflight(); },
+  // ---- 📤 one-click upload (library page + sidebar) ----
+  async refreshUploadState() {
+    let st = null;
+    try { st = await call("auto_upload_state"); } catch (e) { return; }
+    state.upload = st;
+    const box = $("#libauto"), hint = $("#libautohint"), btn = $("#libuploadbtn"), cnt = $("#libuploadcount");
+    if (box) { box.checked = !!st.enabled; box.closest(".libauto").classList.toggle("on", !!st.enabled); }
+    if (hint) {
+      hint.textContent = st.enabled
+        ? (st.signed_in ? "On — new videos upload themselves" : "On, but not signed in to YouTube yet")
+        : "Off — upload when you say so";
+      hint.className = "hint" + (st.enabled && !st.signed_in ? " bad" : "");
+    }
+    const n = st.todo || 0;
+    if (cnt) { cnt.textContent = String(n); cnt.hidden = !n; }
+    if (btn) {
+      btn.disabled = n === 0;
+      btn.title = n ? `${n} video(s) not on YouTube yet` : "Every video is already uploaded";
+    }
+    // sidebar: a green dot means auto-upload is armed
+    const dot = document.createElement("i");
+    let sd = $("#pubnav .dot");
+    if (st.enabled && !sd) { dot.className = "dot"; $("#pubnav").appendChild(dot); }
+    if (!st.enabled && sd) sd.remove();
+  },
+  async autoUploadToggle() {
+    const st = state.upload || {};
+    return mm.autoUploadFromLibrary(!st.enabled);
+  },
+  async autoUploadFromLibrary(on) {
+    let r = null;
+    try { r = await call("auto_upload_set", !!on); } catch (e) { return; }
+    toast(on ? "Auto-upload on — new videos go up by themselves" : "Auto-upload off");
+    if (on && r && !r.signed_in) toast("Tip: sign in to YouTube in the Publish studio");
+    await mm.refreshUploadState();
+  },
+  // literally one click: everything not on YouTube yet
+  async uploadNew() {
+    const n = (state.upload || {}).todo || 0;
+    if (!n) return toast("Nothing new to upload");
+    const ok = await call("publish_upload", null);
+    if (!ok) return toast("Upload not started — check the Publish studio setup");
+    const prog = $("#libprog"); if (prog) prog.hidden = false;
+    mm.refreshPlan();
+  },
+  uploadProgress(m) {
+    const prog = $("#libprog"), bar = $("#libbar"), text = $("#libptext");
+    if (!prog) return;
+    prog.hidden = false;
+    if (bar) bar.style.width = (m.n ? ((m.i + (m.p || 0)) / m.n) * 100 : 0).toFixed(1) + "%";
+    if (text) text.textContent = `Uploading ${m.i + 1} of ${m.n}${m.title ? " · " + m.title : ""}`;
+  },
+  uploadDone(m) {
+    const prog = $("#libprog"); if (prog) prog.hidden = true;
+    toast(m.error || m.note || "Upload finished");
+    mm.refreshUploadState();
+    if (state.lib) mm.refreshLibrary();
+  },
+
+  // ---- ⌘K command palette ----
+  async openPalette(q) {
+    const el = $("#palette");
+    if (!el) return;
+    el.hidden = false;
+    const input = $("#palq");
+    if (input) { input.value = q || ""; setTimeout(() => input.focus(), 30); }
+    mm.palQuery = q || "";
+    if (!state.palIndex) {
+      try { state.palIndex = await call("palette"); } catch (e) { state.palIndex = null; }
+    }
+    await mm.paletteSearch();
+  },
+  closePalette() {
+    const el = $("#palette");
+    if (el) el.hidden = true;
+    mm.palResults = [];
+    mm.palSel = 0;
+  },
+  async paletteSearch() {
+    const q = (($("#palq") || {}).value || "").trim();
+    let rows = [];
+    if (state.palIndex) {
+      // local ranking for instant feedback; Python is only used for the index
+      rows = mm.rankPalette(state.palIndex, q);
+    } else {
+      try { rows = await call("palette_search", q); } catch (e) { rows = []; }
+    }
+    mm.palResults = rows;
+    mm.palSel = 0;
+    mm.paintPalette();
+  },
+  // mirror of mm911/palette.py:score - curated first, then by match strength
+  rankPalette(idx, q) {
+    const norm = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+    const bonus = { action: 12, page: 9, setting: 0, video: 3 };
+    const order = { action: 0, page: 1, setting: 2, video: 3 };
+    const score = (label, kw) => {
+      const n = norm(q), lab = norm(label), k = norm(kw);
+      if (!n) return 0;
+      if (lab === n) return 100;
+      if (lab.startsWith(n)) return 90;
+      if (lab.split(" ").some((w) => w.startsWith(n))) return 80;
+      if (lab.includes(n)) return 65;
+      if (k === n) return 85;
+      if (k.split(" ").some((w) => w.startsWith(n))) return 55;
+      if (k.includes(n)) return 35;
+      const parts = n.split(" ");
+      if (parts.length > 1 && parts.every((x) => (lab + " " + k).includes(x))) return 25;
+      return 0;
+    };
+    const out = [];
+    for (const kind of ["action", "page", "setting", "video"]) {
+      const key = { action: "actions", page: "pages", setting: "settings", video: "videos" }[kind];
+      for (const it of (idx[key] || [])) {
+        const s = score(it.label, it.keywords);
+        if (s) out.push({ ...it, score: s + bonus[kind] });
+      }
+    }
+    if (!q) {
+      const first = (idx.actions || []).filter((a) => ["render", "batch", "publish", "library", "colab", "upload", "undo", "update"].includes(a.id));
+      return first.slice(0, 12);
+    }
+    out.sort((a, b) => (order[a.kind] - order[b.kind]) || (b.score - a.score) || a.label.localeCompare(b.label));
+    return out.slice(0, 12);
+  },
+  paintPalette() {
+    const box = $("#pallist");
+    if (!box) return;
+    const rows = mm.palResults || [];
+    const icons = { action: "⚡", page: "→", setting: "⚙", video: "🎬" };
+    box.innerHTML = rows.length ? rows.map((r, i) => `
+      <div class="palrow ${i === mm.palSel ? "on" : ""}" data-i="${i}" onclick="mm.palRun(${i})"
+           onmousemove="mm.palHover(${i})">
+        <span class="ico">${icons[r.kind] || "•"}</span>
+        <span class="lab">${esc(r.label)}${r.meta ? `<small>${esc(r.meta)}</small>` : ""}</span>
+        ${r.kind === "setting" ? `<span class="grp">setting</span>` : ""}
+        ${r.shortcut ? `<kbd>${esc(r.shortcut)}</kbd>` : ""}
+      </div>`).join("")
+      : `<div class="palempty">Nothing matches “${esc(($("#palq") || {}).value || "")}”. Try “render”, “upload”, “gravity” or a video title.</div>`;
+    const on = box.querySelector(".palrow.on");
+    if (on && on.scrollIntoView) { try { on.scrollIntoView({ block: "nearest" }); } catch (e) {} }
+  },
+  paletteKey(e) {
+    const n = (mm.palResults || []).length;
+    if (e.key === "ArrowDown") { e.preventDefault(); mm.palSel = n ? (mm.palSel + 1) % n : 0; mm.paintPalette(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); mm.palSel = n ? (mm.palSel - 1 + n) % n : 0; mm.paintPalette(); }
+    else if (e.key === "Enter") { e.preventDefault(); mm.palRun(mm.palSel); }
+    else if (e.key === "Escape") { e.preventDefault(); mm.closePalette(); }
+  },
+  palHover(i) { if (mm.palSel !== i) { mm.palSel = i; mm.paintPalette(); } },
+  async palRun(i) {
+    const r = (mm.palResults || [])[i];
+    if (!r) return;
+    mm.closePalette();
+    // settings and videos are handled here (they need the page); actions ask Python
+    if (r.kind === "setting") { mm.reveal(r.id); return; }
+    if (r.kind === "page") { mm.goPage(r.id); return; }
+    if (r.kind === "video") { mm.libPlay(r.id); return; }
+    let res = null;
+    try { res = await call("palette_run", r.kind, r.id); } catch (e) { return; }
+    if (!res || res.error) return toast((res && res.error) || "That did not work");
+    if (res.reveal) return mm.reveal(res.reveal);
+    if (res.page) return mm.goPage(res.page);
+    if (res.focus === "settings") { const el = $("#setsearch"); if (el) el.focus(); return; }
+    if (res.shortcuts) return mm.showShortcuts();
+    if (res.preflight) { state.preflight = res.preflight; paintPreflight(); return; }
+    if (res.update) { state.update = res.update; mm.renderUpdate(state.update); mm.paintUpdateBadge(); mm.openUpdate(); return; }
+    if (res.config) { state.config = res.config; fill(); paintPreflight(); }
+    if (res.started) { mm.progress({ i: 0, n: 1, p: 0 }); return; }
+    if (res.stopped) return toast("Stopping…");
+    if (res.opened) return;
+    if (res.call === "batch") return mm.renderBatch();
+    if (res.js) return mm.paletteJs(res.js);
+  },
+  paletteJs(id) {
+    if (id === "thumbnail") return mm.thumb();
+    if (id === "new_run") return mm.restart();
+    if (id === "themes") { const d = [...document.querySelectorAll("details")].find((x) => /Themes/.test(x.querySelector("summary") || {}).textContent || ""); if (d) { d.open = true; if (d.scrollIntoView) d.scrollIntoView({ block: "center" }); } return; }
+    if (id === "upload") { mm.openPublish().then(() => mm.startUpload()); return; }
+    if (id === "auto_upload") return mm.autoUploadToggle();
+  },
+
+  // Every page the palette can send you to.
+  goPage(id) {
+    if (id === "library") return mm.openLibrary();
+    if (id === "publish") return mm.openPublish();
+    if (id === "colab") return mm.openColab();
+    if (id && id.startsWith("sec-")) {
+      const d = document.getElementById(id);
+      if (d) { d.open = true; if (d.scrollIntoView) d.scrollIntoView({ block: "center", behavior: "smooth" }); }
+    }
+  },
+
+  // The palette index wants labels for every control, so settings are searchable by what
+  // the user sees ("Gravity"), not by their key ("gravity_strength").
+  settingLabels() {
+    const out = {};
+    document.querySelectorAll("[data-k],[data-csv]").forEach((el) => {
+      const key = el.dataset.k || el.dataset.csv;
+      if (!key) return;
+      const row = el.closest(".row");
+      let label = "";
+      if (row) {
+        const span = row.querySelector(":scope > span");
+        if (span) label = span.textContent.replace(/\s+/g, " ").trim();
+      }
+      if (!label && el.closest("label")) label = el.closest("label").textContent.trim();
+      out[key] = label || key.replace(/_/g, " ");
+    });
+    return out;
+  },
+
+  // ---- ⌨️ shortcuts sheet ----
+  showShortcuts() {
+    const el = $("#shortcuts"), box = $("#keyslist");
+    if (el) el.hidden = false;
+    const rows = (state.palIndex && state.palIndex.shortcuts) || [];
+    if (box && rows.length) {
+      box.innerHTML = rows.map((r) => `<div class="keysrow"><span>${esc(r.what)}</span><kbd>${esc(r.keys)}</kbd></div>`).join("");
+    } else if (box) {
+      box.innerHTML = `<div class="keysrow"><span>Search everything</span><kbd>⌘K / Ctrl+K</kbd></div>`;
+    }
+  },
+  closeShortcuts() { const el = $("#shortcuts"); if (el) el.hidden = true; },
+
+  // ---- ☁️ Colab GPU rendering ----
+  async openColab() {
+    const el = $("#colabpage");
+    if (el) el.hidden = false;
+    await mm.refreshColab();
+  },
+  closeColab() { const el = $("#colabpage"); if (el) el.hidden = true; },
+  async refreshColab() {
+    let r = null;
+    try { r = await call("colab_status"); } catch (e) { return; }
+    state.colab = r;
+    const sel = $("#colabgpu");
+    if (sel) sel.innerHTML = (r.gpus || []).map((g) => `<option value="${esc(g.id)}" title="${esc(g.note || "")}">${esc(g.label || g.id)}</option>`).join("");
+    const steps = $("#colabsteps"), status = $("#colabstatus"), acts = $("#colabacts"), go = $("#colabgo");
+    if (status) status.textContent = r.ready ? "Colab is ready" : (r.wsl === false && r.platform === "windows"
+      ? "Needs WSL2 + the Colab CLI (Windows cannot run it directly)" : (r.hint || "Not ready yet"));
+    if (steps) {
+      const rows = (r.steps || []).map((t) => t);
+      const done = [r.cli, r.cli, r.ready];
+      let firstOpen = true;
+      steps.innerHTML = rows.map((t, i) => {
+        const d = !!done[i];
+        const cls = d ? "done" : (firstOpen ? "now" : "");
+        if (!d) firstOpen = false;
+        return `<li class="${cls}"><span class="n">${d ? "✓" : i + 1}</span><span>${t}</span></li>`;
+      }).join("") + (r.notebook ? "" : `<li><span class="n">!</span><span>The render notebook is missing from this build.</span></li>`);
+    }
+    if (acts) {
+      acts.innerHTML = r.ready
+        ? `<span class="hint">GPU: ${(r.gpus || []).map((g) => esc(g.id)).join(" · ")}</span>`
+        : `<button class="ghost sm" onclick="mm.colabSetup()">Setup guide</button>`;
+    }
+    if (go) go.disabled = !r.ready;
+  },
+  colabSetup() { call("colab_open_setup"); },
+  async refreshColabDot() {
+    let r = null;
+    try { r = await call("colab_status"); } catch (e) { return; }
+    const dot = $("#colabdot");
+    if (dot) {
+      dot.hidden = false;
+      dot.style.background = r.ready ? "#2ECC71" : "#D9D9DE";
+      $("#colabnav").title = r.ready ? "Colab ready — render on a GPU" : "Colab GPU rendering (needs setup)";
+    }
+  },
+  async colabQuota() {
+    const el = $("#colabquota");
+    if (el) el.textContent = "Checking compute units…";
+    let r = null;
+    try { r = await call("colab_quota"); } catch (e) { return; }
+    if (el) el.textContent = r.error ? `Quota: ${r.error}` : (r.output || "No quota information returned.").slice(0, 400);
+  },
+  async startColab() {
+    const gpu = (($("#colabgpu") || {}).value) || "T4";
+    const count = Math.max(0, parseInt((($("#colabcount") || {}).value) || "0") || 0);
+    const keep = !!($("#colabkeep") || {}).checked;
+    const r = await call("colab_render", gpu, count, keep);
+    if (!r || r.ok === false) {
+      toast((r && r.error) || "Colab could not start");
+      if (r && r.setup) return mm.refreshColab();
+      return;
+    }
+    const prog = $("#colabprog"); if (prog) prog.hidden = false;
+  },
+  colabProgress(m) {
+    const prog = $("#colabprog"), bar = $("#colabbar"), text = $("#colabptext"), res = $("#colabresults");
+    if (m.state === "packing") { if (prog) prog.hidden = false; if (text) text.textContent = m.note; return; }
+    if (prog) prog.hidden = true;
+    if (m.state === "error") {
+      if (res) res.innerHTML = `<div class="bad">✗ ${esc(m.error)}</div>`;
+      return toast("Colab render failed");
+    }
+    if (m.state === "done") {
+      const vids = m.videos || [];
+      if (res) res.innerHTML = vids.length
+        ? `${vids.length} video(s) downloaded:<br>` + vids.map((v) => `<div>✓ ${esc(String(v).split(/[\\/]/).pop())}</div>`).join("")
+        : `<span class="hint">${esc(m.note || "No videos came back.")}</span>`;
+      toast(m.note || "Colab render finished");
+      if (state.lib) mm.refreshLibrary();
+    }
+  },
+
   // ---- 📚 library ----
   async openLibrary() {
     const el = $("#library");
     if (el) el.hidden = false;
+    mm.refreshUploadState();
     await mm.refreshLibrary();
   },
   closeLibrary() { const el = $("#library"); if (el) el.hidden = true; },
@@ -1064,17 +1373,26 @@ async function boot() {
   document.addEventListener("keydown", (e) => {
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target || {}).tagName || "");
     const mod = e.ctrlKey || e.metaKey;
+    if (mod && e.key.toLowerCase() === "k") { e.preventDefault(); return mm.openPalette(); }
+    if (mod && e.key.toLowerCase() === "r") { e.preventDefault(); return e.shiftKey ? mm.renderBatch() : mm.renderOne(); }
+    if (mod && e.key.toLowerCase() === "p") { e.preventDefault(); return mm.openPublish().then(() => mm.startUpload()); }
+    if (mod && e.key.toLowerCase() === "l") { e.preventDefault(); return mm.openLibrary(); }
     if (mod && e.key.toLowerCase() === "z") {
       e.preventDefault();
       return e.shiftKey ? mm.redo() : mm.undo();
     }
     if (mod && e.key.toLowerCase() === "y") { e.preventDefault(); return mm.redo(); }
     if (e.key === "/" && !typing) { e.preventDefault(); if (search) search.focus(); }
+    if (e.key === "?" && !typing) { e.preventDefault(); return mm.showShortcuts(); }
     if (e.key === "Escape" && document.activeElement === search) mm.clearSearch();
-    if (e.key === "Escape") { mm.closeLibrary(); mm.closePublish(); }
+    if (e.key === "Escape") { mm.closePalette(); mm.closeLibrary(); mm.closePublish(); mm.closeColab(); mm.closeShortcuts(); }
   });
   mm.refreshHistory();
   paintPreflight();
+  // build the palette index early: it also feeds the shortcuts sheet
+  call("palette").then((idx) => { state.palIndex = idx; }).catch(() => {});
+  mm.refreshUploadState();
+  mm.refreshColabDot();
   if (state.onboarded) setPreview(true); else onboarding();   // preview waits until onboarding is done
 }
 

@@ -80,6 +80,7 @@ class Api:
         self._signin = {"running": False, "url": "", "error": "", "done": False}
         self._uploading = False
         self._plan_edits = {}
+        self._colab_busy = False
         from ..library import History
         self._history = History()
         self._history_lock = threading.Lock()
@@ -599,6 +600,134 @@ class Api:
             LOG.warning("sound preview failed: %s", e)
             return ""
 
+    # ---------- ⌘K command palette ----------
+    def palette(self) -> dict:
+        """The palette index: actions, pages, settings (with their on-page labels) and videos."""
+        from .. import palette as pal
+        labels = {}
+        try:
+            raw = self._window.evaluate_js("window.mm && window.mm.settingLabels ? window.mm.settingLabels() : {}")
+            if isinstance(raw, dict):
+                labels = {str(k): str(v) for k, v in raw.items()}
+        except Exception:
+            labels = {}                        # no window (tests) / page not ready yet: keys still work
+        vids = []
+        try:
+            from .. import library as lib
+            vids = lib.library(self._settings.get("output_dir", ""), limit=120)["videos"]
+        except Exception as e:
+            LOG.error("palette library failed: %s", e)
+        return pal.build(labels, vids)
+
+    def palette_search(self, query: str, index: dict | None = None) -> list[dict]:
+        from .. import palette as pal
+        return pal.search(index or self.palette(), str(query or ""))
+
+    def palette_run(self, kind: str, ident: str) -> dict:
+        """Do what a palette row means. JS handles the purely-UI ones (reveal a control)."""
+        kind, ident = str(kind or ""), str(ident or "")
+        if kind == "setting":
+            return {"reveal": ident}
+        if kind == "page":
+            return {"page": ident}
+        if kind == "video":
+            return {"video": ident}
+        if kind != "action":
+            return {"error": f"unknown kind {kind}"}
+        if ident == "render":
+            return {"started": self.render_one()}
+        if ident == "batch":
+            return {"call": "batch"}
+        if ident == "stop":
+            self.stop()
+            return {"stopped": True}
+        if ident in ("undo", "redo"):
+            return getattr(self, ident)()
+        if ident == "reset":
+            return {"config": self.reset_config()}
+        if ident == "preflight":
+            return {"preflight": self.preflight()}
+        if ident == "update":
+            return {"update": self.update_check()}
+        if ident == "library":
+            return {"page": "library"}
+        if ident == "publish":
+            return {"page": "publish"}
+        if ident == "colab":
+            return {"page": "colab"}
+        if ident == "open_output":
+            self.open_output()
+            return {"opened": True}
+        if ident == "search_settings":
+            return {"focus": "settings"}
+        if ident == "shortcuts":
+            return {"shortcuts": True}
+        # the rest are JS-side (thumbnail, new run, themes, upload, auto_upload)
+        try:
+            from .. import palette as palette_mod
+            known = {a[0] for a in palette_mod.ACTIONS}   # (id, label, group, keywords, shortcut)
+        except Exception:
+            LOG.exception("could not read the action list")
+            known = set()
+        if ident in known:
+            return {"js": ident}
+        return {"error": f"unknown action {ident}"}
+
+    # ---------- ☁️ Colab GPU rendering ----------
+    def colab_status(self) -> dict:
+        from .. import colab
+        try:
+            return colab.status()
+        except Exception as e:
+            LOG.exception("colab status failed")
+            return {"ready": False, "cli": False, "note": str(e)[:300], "gpus": [], "steps": []}
+
+    def colab_quota(self) -> dict:
+        from .. import colab
+        try:
+            return colab.quota()
+        except Exception as e:
+            return {"error": str(e)[:200]}
+
+    def colab_open_setup(self) -> None:
+        """Open the one page (Google Colab CLI docs) that explains the install."""
+        self._open_url("https://github.com/googlecolab/google-colab-cli")
+
+    def colab_render(self, gpu: str = "T4", count: int = 0, keep: bool = False) -> dict:
+        """Render on a rented Colab GPU on a worker thread; progress goes to the progress bar."""
+        from .. import colab
+        if self._colab_busy:
+            return {"ok": False, "error": "A Colab render is already running."}
+        st = self.colab_status()
+        if not st.get("ready"):
+            return {"ok": False, "setup": True,
+                    "error": st.get("note") or "Colab is not connected yet — see the setup steps."}
+        gpus = {g["id"] for g in st.get("gpus", [])}
+        if gpus and gpu not in gpus:
+            gpu = "T4" if "T4" in gpus else sorted(gpus)[0]
+        self._colab_busy = True
+
+        def work():
+            try:
+                self._emit({"colab": {"state": "packing",
+                                      "note": "Packing your project (code, preset, pictures, sounds)…"}})
+                out = None
+                res = colab.render_on_colab(copy.deepcopy(self._cfg), self._settings["output_dir"],
+                                            gpu=gpu or "T4",
+                                            batch_count=max(0, int(count or 0)),
+                                            keep_session=bool(keep))
+                self._emit({"colab": {"state": "done", "videos": res.get("videos", []),
+                                      "note": f"{len(res.get('videos', []))} video(s) downloaded"}})
+                return out
+            except BaseException as e:            # SystemExit from colab_cmd() included
+                LOG.exception("colab render failed")
+                self._emit({"colab": {"state": "error", "error": str(e)[:400]}})
+            finally:
+                self._colab_busy = False
+
+        threading.Thread(target=work, daemon=True).start()
+        return {"ok": True, "gpu": gpu}
+
     # ---------- 📚 library + undo ----------
     def _push_history(self, label: str = "") -> None:
         try:
@@ -809,6 +938,31 @@ class Api:
                 row[k] = [t.strip() for t in str(v).split(",") if t.strip()] if k == "tags" else str(v)
         self._plan_edits = edits
         return {"ok": True}
+
+    def auto_upload_state(self) -> dict:
+        """The one-glance state the sidebar/library need — no network, no Google imports required."""
+        from .. import publish as pb
+        from .. import autoupload
+        st = self._publish_settings()
+        try:
+            todo = self.publish_plan().get("todo", 0)
+        except Exception:
+            LOG.exception("plan failed")
+            todo = 0
+        folder = self._settings.get("output_dir", "")
+        try:
+            waiting = len([v for v in autoupload.rows_from_folder(folder) if not v.get("uploaded")])
+        except Exception:
+            waiting = todo
+        return {"enabled": bool(st.get("enabled")), "only_wins": bool(st.get("only_wins")),
+                "deps": pb.has_google_deps(), "signed_in": pb.token_file().exists(),
+                "todo": int(todo), "waiting": int(waiting), "folder": folder,
+                "summary": autoupload.summary({"plan": [], "queued": todo}) if todo else ""}
+
+    def auto_upload_set(self, enabled: bool) -> dict:
+        """Flip auto-upload from anywhere (palette, sidebar, library) in one call."""
+        res = self._set_publish_settings({"enabled": bool(enabled)})
+        return {"enabled": bool(res.get("enabled")), **self.auto_upload_state()}
 
     def publish_upload(self, plan: list | None = None) -> bool:
         """Upload the plan on a worker thread; progress goes to the normal progress bar."""
