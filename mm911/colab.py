@@ -80,24 +80,39 @@ def colab_cmd() -> list[str] | None:
     return None
 
 
+# Auth markers the CLI prints when the browser sign-in is needed.
+AUTH_HINTS = ("unauthorized", "unauthenticated", "not authenticated", "login", "sign in", "oauth",
+              "credentials", "permission denied", "401")
+
+
 def check() -> dict:
     """What the app's status bar shows: ☁️ Colab ready / what is missing."""
-    out = {"cli": False, "wsl": False, "notebook": False, "gpu": None, "ready": False, "note": ""}
+    out = {"cli": False, "wsl": False, "notebook": False, "gpu": None, "ready": False,
+           "needs_login": False, "note": "", "version": ""}
     prefix = colab_cmd()
     out["wsl"] = _wsl_available() if _windows() else True
     out["notebook"] = REPO_NOTEBOOK.exists()
     if prefix is None:
-        out["note"] = ("google-colab-cli not found. On Windows: install WSL2 (wsl --install -d Ubuntu), "
-                       "then inside Ubuntu: pipx install google-colab-cli, and sign in with "
-                       "`gcloud auth application-default login`.")
+        out["note"] = ("google-colab-cli not found. One click installs it (WSL2 + Ubuntu + the CLI on "
+                       "Windows); or install it yourself and press Re-check.")
         return out
     out["cli"] = True
-    argv = _argv(prefix, ["colab", "config", "list"])
     try:
-        r = subprocess.run(argv, capture_output=True, text=True, timeout=90)
-        txt = (r.stdout + r.stderr).lower()
-        if "not authenticated" in txt or "login" in txt and "required" in txt:
-            out["note"] = "Colab CLI found, but not signed in. Run: gcloud auth application-default login"
+        r = subprocess.run(_argv(prefix, ["colab", "version"]), capture_output=True, text=True,
+                           timeout=90)
+        lines = ((r.stdout or "") + (r.stderr or "")).strip().splitlines()
+        out["version"] = lines[0][:60] if lines else ""
+    except (OSError, subprocess.TimeoutExpired) as e:
+        out["note"] = f"Colab CLI did not answer: {e}"
+        return out
+    try:
+        r = subprocess.run(_argv(prefix, ["colab", "sessions"]), capture_output=True, text=True,
+                           timeout=120)
+        txt = ((r.stdout or "") + (r.stderr or "")).lower()
+        if any(k in txt for k in AUTH_HINTS):
+            out["needs_login"] = True
+            out["note"] = ("Colab CLI found, but you are not signed in yet — press "
+                           "\"Sign in to Google\" in the app.")
         else:
             out["ready"] = True
             out["note"] = "☁️ Colab ready"
@@ -107,25 +122,189 @@ def check() -> dict:
 
 
 GPU_CHOICES = [
-    {"id": "T4", "label": "T4 · free tier", "note": "about as fast as a good laptop GPU"},
-    {"id": "L4", "label": "L4 · paid", "note": "~2x faster than T4"},
-    {"id": "A100", "label": "A100 · Pro only", "note": "fastest, needs Colab Pro"},
+    {"id": "T4", "label": "T4 · free tier", "note": "about as fast as a good laptop GPU", "free": True},
+    {"id": "L4", "label": "L4 · paid", "note": "~2x faster than T4", "free": False},
+    {"id": "A100", "label": "A100 · Pro only", "note": "fastest, needs Colab Pro", "free": False},
 ]
 
+# The real CLI ships for Linux/macOS only, so Windows goes through WSL2. Ubuntu 24.04 blocks
+# system pip installs (PEP 668), hence pipx - it also keeps the CLI off the system Python.
 INSTALL_STEPS = [
-    "Install WSL2 + Ubuntu: <code>wsl --install -d Ubuntu</code> (Windows only, skip on Linux/macOS)",
-    "Inside Ubuntu: <code>pipx install google-colab-cli</code>",
-    "Sign in to Google once: <code>gcloud auth application-default login</code>",
+    {"id": "wsl", "title": "Install WSL2 (Windows only)",
+     "cmd": "wsl --install -d Ubuntu", "shell": "powershell", "note": "then reboot — skip on Linux/macOS"},
+    {"id": "pipx", "title": "Install pipx inside Ubuntu",
+     "cmd": "sudo apt-get update && sudo apt-get install -y pipx", "shell": "bash"},
+    {"id": "cli", "title": "Install the Colab CLI",
+     "cmd": "pipx install google-colab-cli", "shell": "bash"},
+    {"id": "login", "title": "Sign in to Google (opens a browser)",
+     "cmd": "colab logout; colab sessions", "shell": "bash", "note": "the CLI prints a URL — open it and approve"},
 ]
+
+SETUP_URL = "https://github.com/googlecolab/google-colab-cli"
+
+
+def manual_commands() -> dict:
+    """The exact commands to paste, per platform - what the app shows when it cannot run them."""
+    if _windows():
+        return {"powershell": ["wsl --install -d Ubuntu",
+                               "wsl -d Ubuntu -- bash -lc \"sudo apt-get update && "
+                               "sudo apt-get install -y pipx && pipx install google-colab-cli\""],
+                "signin": "wsl -d Ubuntu -- bash -lc \"colab sessions\"",
+                "note": "Windows: the Colab CLI runs inside WSL2. Run the first command in PowerShell "
+                        "as administrator, reboot when asked, then the second one (that is the whole "
+                        "install). The sign-in URL appears in the app."}
+    pip = "pipx" if shutil.which("pipx") else "pip3"
+    return {"bash": [f"{pip} install google-colab-cli"], "signin": "colab sessions",
+            "note": "Install the Colab CLI, then sign in - the URL appears in the app."}
 
 
 def status() -> dict:
     """Everything the app's Colab card needs, in one call (offline)."""
     info = check()
-    return {**info, "gpus": GPU_CHOICES, "steps": INSTALL_STEPS,
-            "version": VERSION if "VERSION" in globals() else "",
-            "platform": "windows" if _windows() else sys.platform,
-            "wsl": info.get("wsl"), "hint": info.get("note", "")}
+    steps = [dict(s) for s in INSTALL_STEPS]
+    if not _windows():                       # first step is Windows-only
+        steps[0]["skip"] = True
+    return {**info, "gpus": GPU_CHOICES, "steps": steps, "manual": manual_commands(),
+            "version": VERSION, "platform": "windows" if _windows() else sys.platform,
+            "wsl": info.get("wsl"), "hint": info.get("note", ""),
+            "setup_url": SETUP_URL, "can_install": _runner() is not None}
+
+
+# ---------- run commands for the user (one-click install / login) ----------
+def _runner() -> list[str] | None:
+    """The shell that can install things here: PowerShell on Windows (it can start WSL),
+    the login shell elsewhere. None when there is nothing to run with."""
+    if _windows():
+        pw = _resolve("powershell") or _resolve("pwsh")
+        return [pw] if pw else None
+    sh = _resolve("bash") or _resolve("sh")
+    return [sh, "-lc"] if sh else None
+
+
+def install_commands() -> list[dict]:
+    """The steps the one-click installer runs here, in order (each is shown before it runs)."""
+    if _windows():
+        return [{"title": "Install WSL2 + Ubuntu", "cmd": "wsl --install -d Ubuntu", "timeout": 1800,
+                 "note": "Windows may ask to reboot. If WSL is already installed this is instant."},
+                {"title": "Install pipx and the Colab CLI inside Ubuntu", "timeout": 1800,
+                 "cmd": "wsl -d Ubuntu -- bash -lc \"sudo apt-get update && "
+                        "sudo apt-get install -y pipx && pipx install google-colab-cli\"",
+                 "note": "sudo may ask for your Ubuntu password once."}]
+    pipx = shutil.which("pipx")
+    cmd = "pipx install google-colab-cli" if pipx else "pip install --user google-colab-cli"
+    return [{"title": "Install the Colab CLI", "cmd": cmd, "timeout": 1800,
+             "note": "pipx keeps it out of your system Python." if pipx else
+                     "pipx was not found, using pip --user instead."}]
+
+
+def install(on_step=None, dry_run: bool = False) -> dict:
+    """One click: run the install commands, reporting each one.
+
+    `on_step(i, title, state, output)` is called as start/done/error so the app can show the
+    progress live. Nothing is hidden: the command line is shown before it runs."""
+    runner = _runner()
+    steps = install_commands()
+    if dry_run:
+        return {"ok": False, "dry_run": True, "steps": steps,
+                "note": "Preview only - press Install to run these."}
+    if runner is None:
+        return {"ok": False, "steps": steps, "error": "No shell found to run the installer with.",
+                "manual": manual_commands()}
+    results = []
+    for i, st in enumerate(steps):
+        if on_step:
+            on_step(i, st["title"], "start", st["cmd"])
+        try:
+            r = subprocess.run(runner + [st["cmd"]], capture_output=True, text=True,
+                               timeout=st.get("timeout", 1800))
+            out = ((r.stdout or "") + (r.stderr or "")).strip()
+            ok = r.returncode == 0 or _looks_installed(out)
+            results.append({"title": st["title"], "cmd": st["cmd"], "ok": ok,
+                            "returncode": r.returncode, "output": out[-3000:]})
+            if on_step:
+                on_step(i, st["title"], "done" if ok else "error", out[-1200:])
+            if not ok:
+                detail = (out.strip().splitlines() or [""])[-1][:200]
+                return {"ok": False, "steps": results,
+                        "error": f"step failed: {st['title']}" + (f" — {detail}" if detail else ""),
+                        "manual": manual_commands()}
+        except (OSError, subprocess.TimeoutExpired) as e:
+            results.append({"title": st["title"], "cmd": st["cmd"], "ok": False, "output": str(e)})
+            if on_step:
+                on_step(i, st["title"], "error", str(e))
+            return {"ok": False, "steps": results, "error": str(e), "manual": manual_commands()}
+    return {"ok": True, "steps": results, "needs_login": True,
+            "note": "Colab CLI installed — now sign in."}
+
+
+def _looks_installed(out: str) -> bool:
+    """`pipx install` over an existing install, or WSL already being there, are not failures."""
+    low = out.lower()
+    return any(k in low for k in ("already installed", "already exists", "successfully installed",
+                                 "installed package", "is already the newest", "upgrade"))
+
+
+def login_start() -> dict:
+    """Start the browser sign-in and return the URL as soon as the CLI prints one.
+
+    `colab sessions` is the cheapest CLI call that requires auth: on a fresh machine it prints the
+    Google consent URL (or opens the browser) and waits, so we read it and stop waiting on it."""
+    runner = _runner()
+    prefix = colab_cmd()
+    if prefix is None:
+        # nothing to sign in with yet: say so instead of launching a shell that will fail
+        return {"error": "Install the Colab CLI first — then sign in.",
+                "manual": manual_commands(), "needs_install": True}
+    argv = _argv(prefix, ["colab", "sessions"])
+    proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                            bufsize=1)
+    return {"proc": proc, "note": "Waiting for Google sign-in…"}
+
+
+def find_url(text: str) -> str:
+    """The first https URL in CLI output (the consent page)."""
+    import re
+    m = re.search(r"https?://[^\s\"'<>]+", text or "")
+    return m.group(0).rstrip(".,);") if m else ""
+
+
+def login_watch(proc, on_url=None, on_line=None, timeout: int = 300) -> dict:
+    """Read the login process until it succeeds, prints a URL, or the user closes the browser."""
+    import time
+    url, lines, t0 = "", [], time.time()
+    assert proc.stdout is not None
+    try:
+        while True:
+            line = proc.stdout.readline()
+            if not line:
+                break
+            lines.append(line.rstrip())
+            if on_line:
+                on_line(line.rstrip())
+            if not url:
+                found = find_url(line)
+                if found and ("accounts.google.com" in found or "oauth" in found.lower()):
+                    url = found
+                    if on_url:
+                        on_url(found)
+            if proc.poll() is not None:
+                break
+            if time.time() - t0 > timeout:
+                break
+    finally:
+        rc = proc.poll()
+        if rc is None:
+            try:
+                proc.terminate()
+            except OSError:
+                pass
+        if proc.poll() is None:
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+    out = "\n".join(lines)
+    return {"url": url, "returncode": rc, "output": out[-2000:], "ok": rc == 0}
 
 
 def _argv(prefix: list[str], cmd: list[str]) -> list[str]:
@@ -151,6 +330,46 @@ def quota() -> dict:
         return {"returncode": r.returncode, "output": (r.stdout or r.stderr).strip()[-2000:]}
     except (OSError, subprocess.TimeoutExpired) as e:
         return {"error": str(e)}
+
+
+def preflight(gpu: str = "T4") -> dict:
+    """Everything that must be true before a cloud render, checked up front (offline).
+
+    A Colab run costs minutes and compute units, so the app refuses to start one when a step
+    would obviously fail - the user gets the fix instead of a stack trace 3 minutes later."""
+    st = status()
+    items = []
+
+    def add(state, title, detail, fix=""):
+        items.append({"state": state, "title": title, "detail": detail, "fix": fix})
+
+    if st["cli"]:
+        add("ok", "Colab CLI", st.get("version") or "installed")
+    else:
+        add("error", "Colab CLI", "not installed",
+            "press Install (one click) or run the commands on the right" if st["can_install"]
+            else "run the commands on the right")
+    if st["cli"] and not st["ready"]:
+        add("error", "Google sign-in", "the CLI is installed but not signed in",
+            "press Sign in to Google")
+    elif st["ready"]:
+        add("ok", "Google sign-in", "signed in")
+    if not st["notebook"]:
+        add("error", "Render notebook", f"missing: {REPO_NOTEBOOK.name}")
+    else:
+        add("ok", "Render notebook", "bundled")
+    gpus = {g["id"] for g in GPU_CHOICES}
+    if gpu not in gpus:
+        add("error", "GPU", f"unknown GPU {gpu!r}", "pick " + ", ".join(sorted(gpus)))
+    else:
+        add("ok", "GPU", gpu)
+    if _windows() and not st["wsl"] and not st["cli"]:
+        add("warn", "WSL2", "the Colab CLI runs inside WSL2 on Windows",
+            "the Install button sets it up (needs a reboot)")
+    errors = [i for i in items if i["state"] == "error"]
+    return {"ok": not errors, "items": items, "gpu": gpu,
+            "errors": len(errors), "warnings": len([i for i in items if i["state"] == "warn"]),
+            "fix": " ".join(i["fix"] for i in errors if i["fix"])}
 
 
 # ---------- job packing ----------
@@ -262,6 +481,7 @@ def render_on_colab(cfg, out_dir: str, gpu: str = "T4", session: str = SESSION_D
     import tempfile
     out_dir = str(Path(out_dir))
     Path(out_dir).mkdir(parents=True, exist_ok=True)
+    before = {str(p) for p in Path(out_dir).glob("*.mp4")} | {str(p) for p in Path(out_dir).glob("*.mov")}
     with tempfile.TemporaryDirectory(prefix="mm911_colab_") as tmp:
         job_zip = str(Path(tmp) / "job.zip")
         info = pack_job(cfg, job_zip, batch_count=batch_count)
@@ -275,20 +495,26 @@ def render_on_colab(cfg, out_dir: str, gpu: str = "T4", session: str = SESSION_D
             else:
                 raise
         try:
-            # upload: the CLI moves a folder or file into the session's working dir
-            up = Path(tmp) / "upload"
-            up.mkdir()
-            shutil.copy(job_zip, up / "job.zip")
-            shutil.copy(REPO_NOTEBOOK, up / "mm911_render.ipynb")
-            _run(prefix, ["colab", "upload", "-s", session, "--path", str(up)], timeout=900)
+            # `colab upload LOCAL REMOTE` is one file per call (no --path flag in the real CLI)
+            _run(prefix, ["colab", "upload", "-s", session, job_zip, "/content/job.zip"], timeout=900)
+            _run(prefix, ["colab", "upload", "-s", session, str(REPO_NOTEBOOK),
+                          "/content/mm911_render.ipynb"], timeout=900)
             note("☁️ rendering on the Colab GPU (this can take a while)...")
-            _run(prefix, ["colab", "exec", "-s", session, "-f", "mm911_render.ipynb"], timeout=timeout)
-            _run(prefix, ["colab", "download", "-s", session, "--path", "output", "--dest", out_dir],
-                 timeout=1800, check_rc=False)
+            _run(prefix, ["colab", "exec", "-s", session, "-f", str(REPO_NOTEBOOK)], timeout=timeout)
+            _run(prefix, ["colab", "download", "-s", session, "/content/output.zip",
+                          str(Path(tmp) / "output.zip")], timeout=1800, check_rc=False)
+            got = Path(tmp) / "output.zip"
+            if got.exists():
+                with zipfile.ZipFile(got) as z:
+                    for name in z.namelist():
+                        if name.lower().endswith((".mp4", ".mov", ".json", ".csv")):
+                            z.extract(name, out_dir)
+                note(f"⬇️ downloaded {got.stat().st_size / 1e6:.0f} MB from the VM")
         finally:
             if not keep_session:
                 _run(prefix, ["colab", "stop", "-s", session], timeout=120, check_rc=False)
-    vids = sorted(str(p) for p in Path(out_dir).glob("**/*.mp4")) + \
-        sorted(str(p) for p in Path(out_dir).glob("**/*.mov"))
+    # only what this run actually produced (the output folder holds older videos too)
+    vids = sorted(str(p) for p in list(Path(out_dir).glob("*.mp4")) + list(Path(out_dir).glob("*.mov"))
+                  if str(p) not in before)
     note(f"✅ {len(vids)} video(s) in {out_dir}")
     return {"videos": vids, "gpu": gpu, "session": session}

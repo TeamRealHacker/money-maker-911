@@ -444,6 +444,18 @@ class Api:
     def open_url(self, url: str) -> None:
         self._open_url(str(url or ""))
 
+    def set_text(self, text: str) -> bool:
+        """Put text on the clipboard (the web view cannot copy on its own)."""
+        text = str(text or "")[:20000]
+        if not text:
+            return False
+        try:
+            from . import clipboard
+            return clipboard.copy(text)
+        except Exception as e:                 # a missing clipboard must never break a button
+            LOG.error("clipboard failed: %s", e)
+            return False
+
     def _open_url(self, url: str) -> None:
         """Open a link in the user's browser (only http/https, never a local path)."""
         if not re.match(r"^https?://", url or "", re.I):
@@ -693,6 +705,84 @@ class Api:
         """Open the one page (Google Colab CLI docs) that explains the install."""
         self._open_url("https://github.com/googlecolab/google-colab-cli")
 
+    def colab_preflight(self, gpu: str = "T4") -> dict:
+        """What would stop a cloud render, checked up front."""
+        from .. import colab
+        try:
+            return colab.preflight(str(gpu or "T4"))
+        except Exception as e:
+            LOG.exception("colab preflight failed")
+            return {"ok": False, "items": [], "fix": str(e)[:200]}
+
+    def colab_install_plan(self) -> dict:
+        """The exact commands one click would run here (nothing runs yet)."""
+        from .. import colab
+        try:
+            return colab.install(dry_run=True)
+        except Exception as e:
+            return {"ok": False, "steps": [], "error": str(e)[:200]}
+
+    def colab_install(self, confirm: bool = False) -> dict:
+        """One click: install WSL2/pipx/the Colab CLI, live status in the progress channel."""
+        from .. import colab
+        if self._colab_busy:
+            return {"ok": False, "error": "Something else is already running."}
+        if not confirm:
+            return self.colab_install_plan()
+        self._colab_busy = True
+
+        def on_step(i, title, state, output):
+            self._emit({"colab": {"state": "install", "i": i, "title": title, "step": state,
+                                  "output": str(output or "")[-600:],
+                                  "note": f"Installing: {title} ({state})"}})
+
+        def work():
+            try:
+                res = colab.install(on_step=on_step)
+                self._emit({"colab": {"state": "installed" if res.get("ok") else "error",
+                                      "steps": res.get("steps", []),
+                                      "note": res.get("note") or "Install finished",
+                                      "error": res.get("error", ""),
+                                      "manual": res.get("manual", {})}})
+            except BaseException as e:              # never leave the button spinning
+                LOG.exception("colab install failed")
+                self._emit({"colab": {"state": "error", "error": str(e)[:400]}})
+            finally:
+                self._colab_busy = False
+
+        threading.Thread(target=work, daemon=True).start()
+        return {"ok": True, "started": True}
+
+    def colab_login(self) -> dict:
+        """Start Google sign-in; the consent URL is opened and shown in the app."""
+        from .. import colab
+        if self._colab_busy:
+            return {"ok": False, "error": "Something else is already running."}
+        started = colab.login_start()
+        if started.get("error"):
+            return {"ok": False, **started}
+        proc = started["proc"]
+        self._colab_busy = True
+
+        def work():
+            try:
+                res = colab.login_watch(proc, on_url=lambda u: (self._open_url(u),
+                                       self._emit({"colab": {"state": "login_url", "url": u,
+                                                             "note": "Approve the sign-in in your browser"}})))
+                st = self.colab_status()
+                self._emit({"colab": {"state": "logged_in" if st.get("ready") else "login_done",
+                                      "note": st.get("note") or "Sign-in finished",
+                                      "output": res.get("output", "")[-800:],
+                                      "status": st}})
+            except BaseException as e:
+                LOG.exception("colab login failed")
+                self._emit({"colab": {"state": "error", "error": str(e)[:400]}})
+            finally:
+                self._colab_busy = False
+
+        threading.Thread(target=work, daemon=True).start()
+        return {"ok": True, "url": started.get("url", ""), "started": True}
+
     def colab_render(self, gpu: str = "T4", count: int = 0, keep: bool = False) -> dict:
         """Render on a rented Colab GPU on a worker thread; progress goes to the progress bar."""
         from .. import colab
@@ -700,7 +790,8 @@ class Api:
             return {"ok": False, "error": "A Colab render is already running."}
         st = self.colab_status()
         if not st.get("ready"):
-            return {"ok": False, "setup": True,
+            pf = self.colab_preflight(gpu)
+            return {"ok": False, "setup": True, "preflight": pf,
                     "error": st.get("note") or "Colab is not connected yet — see the setup steps."}
         gpus = {g["id"] for g in st.get("gpus", [])}
         if gpus and gpu not in gpus:

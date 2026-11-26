@@ -152,3 +152,18 @@ def test_api_auto_upload_is_one_call(api):
     assert api.auto_upload_set(True)["enabled"] is True
     assert api.auto_upload_state()["enabled"] is True
     assert api.auto_upload_set(False)["enabled"] is False
+
+
+def test_the_ui_has_no_duplicate_bridge_methods():
+    """A duplicated key in the `mm` object silently replaces the newer one (a stale Colab block
+    once did exactly that), so the file is checked directly - no browser needed."""
+    import re
+    from collections import Counter
+    from pathlib import Path
+    src = Path(__file__).resolve().parents[1] / "mm911" / "gui" / "web" / "app.js"
+    body = src.read_text(encoding="utf-8")
+    body = body[body.index("const mm = {"):]
+    names = re.findall(r"^  (?:async )?([A-Za-z_$][\w$]*)\s*\(", body, re.M)
+    dup = {k: v for k, v in Counter(names).items() if v > 1 and k not in {"if", "$", "swatches"}}
+    assert not dup, f"duplicate mm methods: {sorted(dup)}"
+    assert "async openColab()" in body and "async refreshColab()" in body

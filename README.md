@@ -91,6 +91,8 @@
 | ♾️ Infinite Zoom Physics Loop (v0.23.0) | ✅ The satisfying meme physics simulation: a raw PNG meme cutout bounces down glowing neon stairs in a pitch-black star space while the camera zooms in forever; every bounce plays a sound that is slower and deeper in pitch as the object grows, INFINITE! at the end |
 | 📤 YouTube uploader | ✅ `mm911/publish.py`: upload videos or schedule a whole titles.csv queue across days (YouTube Data API v3, resumable upload, OAuth token cache) |
 | 🎵 More 2D modes | 🔜 One by one (3D modes next) |
+| 🧭 Sticky rails (v0.26.0) | ✅ Sidebar modes scroll on their own; Library / Publish / Colab / updates stay pinned |
+| ☁️ Colab one-click (v0.26.0) | ✅ Install (WSL2 + pipx + CLI) and Google sign-in from inside the app, with a preflight before spending compute units |
 | ☁️ Colab rendering (v0.23.0) | ✅ **Working**: `mm911/colab.py` + `colab/mm911_render.ipynb` — packs your project, rents a Colab GPU via `google-colab-cli` (WSL2 bridge on Windows), renders, downloads, stops the session. Since v0.25.0 it has its **own page in the app** (sidebar ▸ ☁️ Colab GPU): status, the setup commands, GPU choice, one button to render |
 | 🔎 Search everything (v0.25.0) | ✅ **⌘K / Ctrl+K palette** (`mm911/palette.py`): actions, pages, settings *and* videos in one box, plus `?` for the shortcut sheet |
 | 📤 One-click upload (v0.25.0) | ✅ Auto-upload toggle in *My videos* (green dot when armed) + **Upload new videos (N)** for everything not on YouTube yet |
@@ -296,6 +298,7 @@ top bar — and type. One box searches:
 | --- | --- |
 | `⌘K` / `Ctrl+K` | Search everything (the palette) |
 | `Ctrl+R` / `Ctrl+Shift+R` | Render one video / a batch |
+| `Ctrl+Shift+P` | Search settings only |
 | `Ctrl+P` | Upload the queue to YouTube |
 | `Ctrl+L` | My videos |
 | `Ctrl+Z` / `Ctrl+Shift+Z` / `Ctrl+Y` | Undo / redo |
@@ -310,6 +313,17 @@ to decide yourself? **📤 Upload new videos (N)** uploads everything that is no
 click, with progress and per-video results. Details in [Publish studio](#-publish-studio).
 
 ## ☁️ Google Colab GPU Rendering
+
+**On Windows too — no terminal needed.** Sidebar ▸ ☁️ Colab GPU shows what is missing and offers
+**⚡ Install for me (one click)**: it sets up WSL2 + Ubuntu, then pipx and the Colab CLI inside it
+(Ubuntu 24.04 refuses system pip, so the installer uses pipx), showing every command before it runs
+and the live output while it does. Then **Sign in to Google** launches the CLI, catches the consent
+URL, opens it *and* shows it in the app with Copy / Open. The sidebar dot is green when Colab is
+ready, amber when a sign-in is still needed, grey before that.
+
+Under the hood the same one button packs your project, rents the GPU, renders, downloads the videos
+and stops the session — and a preflight refuses to spend compute units until the CLI, sign-in,
+notebook and GPU choice are all valid, telling you the one thing to fix.
 
 Money Maker 911 uses the official **[Google Colab CLI](https://github.com/googlecolab/google-colab-cli)** (`google-colab-cli`) to rent a Colab GPU, render your batch, download the videos and shut the GPU down, all automatically. Since v0.23.0 this is implemented: `mm911/colab.py` packs your project into a job zip and drives the whole session; `colab/mm911_render.ipynb` is the notebook that runs on the VM.
 

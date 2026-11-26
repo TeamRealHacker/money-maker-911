@@ -2,7 +2,7 @@
  "bootstrap": {
   "app": "Money Maker 911",
   "credit": "made by TeamRealHackers",
-  "version": "0.23.0",
+  "version": "0.25.0",
   "config": {
    "mode": "merge",
    "width": 1080,
@@ -731,7 +731,7 @@
     320
    ]
   },
-  "output_dir": "/tmp/tmp4iz3tzv9/Videos/MoneyMaker911"
+  "output_dir": "/tmp/tmp77x0deut/Videos/MoneyMaker911"
  },
  "palette": {
   "actions": [
@@ -1026,43 +1026,58 @@
   "shortcuts": [
    {
     "keys": "\u2318K / Ctrl+K",
-    "what": "Search everything (this palette)"
+    "what": "Search everything (the palette)",
+    "group": "Search"
    },
    {
-    "keys": "/",
-    "what": "Focus the settings search"
-   },
-   {
-    "keys": "Ctrl+Z",
-    "what": "Undo"
-   },
-   {
-    "keys": "Ctrl+Shift+Z",
-    "what": "Redo"
-   },
-   {
-    "keys": "Ctrl+R",
-    "what": "Render video"
-   },
-   {
-    "keys": "Ctrl+Shift+R",
-    "what": "Render a batch"
-   },
-   {
-    "keys": "Ctrl+P",
-    "what": "Upload the queue to YouTube"
-   },
-   {
-    "keys": "Ctrl+L",
-    "what": "My videos"
-   },
-   {
-    "keys": "Esc",
-    "what": "Close the palette / a page"
+    "keys": "Ctrl+Shift+P",
+    "what": "Search settings only",
+    "group": "Search"
    },
    {
     "keys": "?",
-    "what": "Keyboard shortcuts"
+    "what": "Show this shortcut sheet",
+    "group": "Search"
+   },
+   {
+    "keys": "/",
+    "what": "Jump to the settings search box",
+    "group": "Search"
+   },
+   {
+    "keys": "Ctrl+R",
+    "what": "Render one video",
+    "group": "Render"
+   },
+   {
+    "keys": "Ctrl+Shift+R",
+    "what": "Render a batch",
+    "group": "Render"
+   },
+   {
+    "keys": "Ctrl+P",
+    "what": "Upload the queue to YouTube",
+    "group": "Publish"
+   },
+   {
+    "keys": "Ctrl+L",
+    "what": "My videos",
+    "group": "Library"
+   },
+   {
+    "keys": "Ctrl+Z",
+    "what": "Undo",
+    "group": "Edit"
+   },
+   {
+    "keys": "Ctrl+Shift+Z / Ctrl+Y",
+    "what": "Redo",
+    "group": "Edit"
+   },
+   {
+    "keys": "Esc",
+    "what": "Close whatever is open",
+    "group": "App"
    }
   ]
  },
@@ -1072,32 +1087,69 @@
   "notebook": true,
   "gpu": null,
   "ready": false,
-  "note": "google-colab-cli not found. On Windows: install WSL2 (wsl --install -d Ubuntu), then inside Ubuntu: pipx install google-colab-cli, and sign in with `gcloud auth application-default login`.",
+  "needs_login": false,
+  "note": "google-colab-cli not found. One click installs it (WSL2 + Ubuntu + the CLI on Windows); or install it yourself and press Re-check.",
+  "version": "0.25.0",
   "gpus": [
    {
     "id": "T4",
     "label": "T4 \u00b7 free tier",
-    "note": "about as fast as a good laptop GPU"
+    "note": "about as fast as a good laptop GPU",
+    "free": true
    },
    {
     "id": "L4",
     "label": "L4 \u00b7 paid",
-    "note": "~2x faster than T4"
+    "note": "~2x faster than T4",
+    "free": false
    },
    {
     "id": "A100",
     "label": "A100 \u00b7 Pro only",
-    "note": "fastest, needs Colab Pro"
+    "note": "fastest, needs Colab Pro",
+    "free": false
    }
   ],
   "steps": [
-   "Install WSL2 + Ubuntu: <code>wsl --install -d Ubuntu</code> (Windows only, skip on Linux/macOS)",
-   "Inside Ubuntu: <code>pipx install google-colab-cli</code>",
-   "Sign in to Google once: <code>gcloud auth application-default login</code>"
+   {
+    "id": "wsl",
+    "title": "Install WSL2 (Windows only)",
+    "cmd": "wsl --install -d Ubuntu",
+    "shell": "powershell",
+    "note": "then reboot \u2014 skip on Linux/macOS",
+    "skip": true
+   },
+   {
+    "id": "pipx",
+    "title": "Install pipx inside Ubuntu",
+    "cmd": "sudo apt-get update && sudo apt-get install -y pipx",
+    "shell": "bash"
+   },
+   {
+    "id": "cli",
+    "title": "Install the Colab CLI",
+    "cmd": "pipx install google-colab-cli",
+    "shell": "bash"
+   },
+   {
+    "id": "login",
+    "title": "Sign in to Google (opens a browser)",
+    "cmd": "colab logout; colab sessions",
+    "shell": "bash",
+    "note": "the CLI prints a URL \u2014 open it and approve"
+   }
   ],
-  "version": "0.23.0",
+  "manual": {
+   "bash": [
+    "pip3 install google-colab-cli"
+   ],
+   "signin": "colab sessions",
+   "note": "Install the Colab CLI, then sign in - the URL appears in the app."
+  },
   "platform": "linux",
-  "hint": "google-colab-cli not found. On Windows: install WSL2 (wsl --install -d Ubuntu), then inside Ubuntu: pipx install google-colab-cli, and sign in with `gcloud auth application-default login`."
+  "hint": "google-colab-cli not found. One click installs it (WSL2 + Ubuntu + the CLI on Windows); or install it yourself and press Re-check.",
+  "setup_url": "https://github.com/googlecolab/google-colab-cli",
+  "can_install": true
  },
  "upload": {
   "enabled": false,
@@ -1156,7 +1208,7 @@
   "warnings": 0,
   "ready": true,
   "free_gb": 18.8,
-  "output_dir": "/tmp/tmp4iz3tzv9/Videos/MoneyMaker911",
+  "output_dir": "/tmp/tmp77x0deut/Videos/MoneyMaker911",
   "summary": "Ready to render"
  },
  "history": {
@@ -1182,7 +1234,7 @@
   },
   "pip": "pip install google-api-python-client google-auth-oauthlib",
   "console_url": "https://console.cloud.google.com/apis/credentials",
-  "folder": "/tmp/tmp4iz3tzv9/Videos/MoneyMaker911"
+  "folder": "/tmp/tmp77x0deut/Videos/MoneyMaker911"
  },
  "plan": {
   "plan": [],
