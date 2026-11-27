@@ -91,6 +91,7 @@
 | ♾️ Infinite Zoom Physics Loop (v0.23.0) | ✅ The satisfying meme physics simulation: a raw PNG meme cutout bounces down glowing neon stairs in a pitch-black star space while the camera zooms in forever; every bounce plays a sound that is slower and deeper in pitch as the object grows, INFINITE! at the end |
 | 📤 YouTube uploader | ✅ `mm911/publish.py`: upload videos or schedule a whole titles.csv queue across days (YouTube Data API v3, resumable upload, OAuth token cache) |
 | 🎵 More 2D modes | 🔜 One by one (3D modes next) |
+| ⚡ Quick start (v0.27.0) | ✅ One sheet: mode + look, how many, upload when finished — one button, `Ctrl+Q` |
 | 🧭 Sticky rails (v0.26.0) | ✅ Sidebar modes scroll on their own; Library / Publish / Colab / updates stay pinned |
 | ☁️ Colab one-click (v0.26.0) | ✅ Install (WSL2 + pipx + CLI) and Google sign-in from inside the app, with a preflight before spending compute units |
 | ☁️ Colab rendering (v0.23.0) | ✅ **Working**: `mm911/colab.py` + `colab/mm911_render.ipynb` — packs your project, rents a Colab GPU via `google-colab-cli` (WSL2 bridge on Windows), renders, downloads, stops the session. Since v0.25.0 it has its **own page in the app** (sidebar ▸ ☁️ Colab GPU): status, the setup commands, GPU choice, one button to render |
@@ -278,6 +279,20 @@ flowchart LR
 
 ---
 
+## ⚡ Quick start (one button)
+
+Press **⚡ Quick start** in the dock (or `Ctrl+Q`, or type "quick" in `⌘K`) and answer three things:
+
+1. **What should it make?** — pick a mode; the hook it asks ("Can it reach the jackpot?") is shown, and
+   you can pick a look or let the app rotate looks for variety.
+2. **How many?** — 1, 5, 10 or 25, with *vary them* and *only the winners* switches.
+3. **Upload when finished?** — one switch. The app tells you up front whether YouTube is connected.
+
+Then **Make it**. It renders, and if you left the upload switch on it uploads everything new the
+moment the render ends — no second page, no second click. Private by default, never uploaded twice.
+
+![Quick start](docs/ui-pass6-quick-start.png)
+
 ## 🔎 Search everything (⌘K)
 
 Press **⌘K** (macOS) or **Ctrl+K** (Windows / Linux) anywhere in the app — or click **Search…** in the
@@ -297,6 +312,7 @@ top bar — and type. One box searches:
 | Keys | What |
 | --- | --- |
 | `⌘K` / `Ctrl+K` | Search everything (the palette) |
+| `Ctrl+Q` | Quick start (render + upload in one button) |
 | `Ctrl+R` / `Ctrl+Shift+R` | Render one video / a batch |
 | `Ctrl+Shift+P` | Search settings only |
 | `Ctrl+P` | Upload the queue to YouTube |

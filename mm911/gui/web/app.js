@@ -112,6 +112,7 @@ const mm = {
   },
   progress(m) {
     if (m.colab) return mm.colabProgress(m.colab);
+    if (m.done || m.error) { const note = $("#quicknote"); if (note) note.textContent = ""; }
     if (m.pub) { mm.uploadProgress(m); return mm.pubProgress(m); }
     if (m.pubdone) { mm.uploadDone(m); return mm.pubDone(m); }
     if (m.autoupload) { toast("Auto-upload: " + m.autoupload.note); if (m.autoupload.queued) mm.refreshPlan(); return; }
@@ -138,7 +139,11 @@ const mm = {
     return mm.set(patch);
   },
   async set(patch) {
-    state.config = await call("set_config", patch); fill(); paintPreflight(); mm.refreshHistory();
+    clearTimeout(pendTimer);                 // a slider's pending value must not land after this one
+    pending = {};
+    let r = null;
+    try { r = await call("set_config", patch); } catch (e) { return; }   // toast already shown
+    state.config = r;
     if (PREP_KEYS.some((k) => k in patch)) mm.prep();
     else if (["tiers", "palette", "tier_images", "show_tier_labels", "cutout_outline", "ball_scale", "base_radius", "growth",
               "size_curve", "tier_sizes", "ball_outline", "ball_outline_color", "auto_fit", "ball_highlight", "ball_inner_shadow",
@@ -371,7 +376,7 @@ const mm = {
       }
     }
     if (!q) {
-      const first = (idx.actions || []).filter((a) => ["render", "batch", "publish", "library", "colab", "upload", "undo", "update"].includes(a.id));
+      const first = (idx.actions || []).filter((a) => ["quick", "render", "batch", "publish", "library", "colab", "upload", "undo", "update"].includes(a.id));
       return first.slice(0, 12);
     }
     out.sort((a, b) => (order[a.kind] - order[b.kind]) || (b.score - a.score) || a.label.localeCompare(b.label));
@@ -427,6 +432,7 @@ const mm = {
     if (res.js) return mm.paletteJs(res.js);
   },
   paletteJs(id) {
+    if (id === "quick") return mm.openQuick();
     if (id === "thumbnail") return mm.thumb();
     if (id === "new_run") return mm.restart();
     if (id === "themes") { const d = [...document.querySelectorAll("details")].find((x) => /Themes/.test(x.querySelector("summary") || {}).textContent || ""); if (d) { d.open = true; if (d.scrollIntoView) d.scrollIntoView({ block: "center" }); } return; }
@@ -1112,6 +1118,97 @@ const mm = {
     if (!(await call("render_one"))) return toast("Already rendering, hold on…");
     mm.progress({ i: 0, n: 1, p: 0 });
   },
+  // ---- ⚡ Quick start: three questions, then one button ----
+  async openQuick() {
+    const el = $("#quick");
+    if (el) el.hidden = false;
+    const sel = $("#quickmode");
+    if (sel && !sel.options.length) {
+      sel.innerHTML = MODES.map(([label, key]) => (key ? `<option value="${esc(key)}">${esc(label)}</option>` : "")).join("");
+      if (state.config && state.config.mode) sel.value = state.config.mode;
+    }
+    mm.quickMode();
+    mm.paintQuickCount();
+    // say up front whether the upload switch can do anything
+    let st = null;
+    try { st = await call("auto_upload_state"); } catch (e) { st = null; }
+    state.upload = st || state.upload;
+    const up = $("#quickupload"), hint = $("#quickupstate");
+    if (up) {
+      up.checked = !!(st && st.enabled) || !!mm.quickUploadPref;
+      up.disabled = !(st && st.signed_in);
+    }
+    if (hint) {
+      hint.textContent = !st ? "YouTube state unknown"
+        : !st.deps ? "The Google libraries are not installed — open Publish studio once."
+        : !st.signed_in ? "Not signed in to YouTube yet — the videos will stay local."
+        : `Ready — ${st.todo || 0} video(s) waiting, private by default.`;
+      hint.className = "hint" + (st && st.signed_in ? "" : " bad");
+    }
+    document.querySelectorAll("#quickcounts .qc").forEach((b) => {
+      b.onclick = () => { mm.quickCount = +b.dataset.n; mm.paintQuickCount(); };
+    });
+    mm.quickSwatches();
+  },
+  closeQuick() { const el = $("#quick"); if (el) el.hidden = true; },
+  paintQuickCount() {
+    const want = mm.quickCount || 1;
+    document.querySelectorAll("#quickcounts .qc").forEach((b) => b.classList.toggle("on", +b.dataset.n === want));
+  },
+  quickSwatches() {
+    const box = $("#quickswatch");
+    if (!box) return;
+    const cur = (state.config || {}).palette;
+    // a palette is {bg_top, bg_bottom, tiers[]}: show its background plus two tier colours
+    box.innerHTML = Object.entries(state.palettes || {}).map(([name, pal]) => {
+      const tiers = Array.isArray(pal && pal.tiers) ? pal.tiers : [];
+      const a = (pal && pal.bg_top) || tiers[0] || "#DDD";
+      const b = tiers[Math.min(4, Math.max(0, tiers.length - 1))] || (pal && pal.bg_bottom) || a;
+      const bg = `background:linear-gradient(135deg,${a} 0 50%,${b} 50%)`;
+      return `<b style="${bg}" title="${esc(name)}" class="${name === cur ? "on" : ""}" data-p="${esc(name)}"></b>`;
+    }).join("") || `<span class="hint">Looks appear here once the app has loaded.</span>`;
+    box.querySelectorAll("b").forEach((b) => {
+      b.onclick = async () => {
+        await mm.set({ palette: b.dataset.p });
+        box.querySelectorAll("b").forEach((x) => x.classList.toggle("on", x === b));
+        mm.pushPlan({ palette: b.dataset.p });
+      };
+    });
+  },
+  // each change is remembered, so "Make it" only has to send the differences
+  pushPlan(patch) { mm.quickPlan = { ...(mm.quickPlan || {}), ...patch }; },
+  quickMode() {
+    const sel = $("#quickmode");
+    if (!sel) return;
+    const label = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : "";
+    const hook = $("#quickhook");
+    if (hook) hook.textContent = MODE_HOOKS[sel.value] || (state.config && state.config.hook) || "—";
+    mm.pushPlan({ mode: sel.value });
+    mm.quickTitle = label;
+  },
+  async runQuick() {
+    const n = mm.quickCount || 1;
+    const upload = !!($("#quickupload") || {}).checked && !($("#quickupload") || {}).disabled;
+    const vary = !!($("#quickvary") || {}).checked;
+    const wins = !!($("#quickwins") || {}).checked;
+    const mode = ($("#quickmode") || {}).value || "";
+    mm.quickUploadPref = upload;
+    const note = $("#quicknote"), go = $("#quickgo");
+    if (go) go.disabled = true;
+    if (note) note.textContent = `Rendering ${n} video${n === 1 ? "" : "s"}…`;
+    let r = null;
+    try { r = await call("quick_start", n, upload, vary, wins, mode); } catch (e) { r = null; }
+    if (go) go.disabled = false;
+    if (!r || r.ok === false) {
+      if (note) note.textContent = "";
+      return toast((r && r.error) || "Could not start");
+    }
+    mm.progress({ i: 0, n, p: 0 });
+    toast(r.note || "Started");
+    if (note) note.textContent = r.upload ? "Rendering, then uploading…" : "Rendering…";
+    setTimeout(() => mm.closeQuick(), 400);
+  },
+
   async renderBatch() {
     const n = Math.max(1, Math.min(500, parseInt($("#count").value || "10") || 10));
     if (!(await call("render_batch", n, $("#rand").checked, $("#wins").checked))) return toast("Already rendering, hold on…");
@@ -1132,9 +1229,10 @@ function swatches(el, onPick, current) {
   }
 }
 
-function toast(msg) {
+function toast(msg, kind) {
   let t = $(".toast");
   if (!t) { t = document.createElement("div"); t.className = "toast"; document.body.appendChild(t); }
+  t.className = "toast" + (kind ? " " + kind : "");
   t.textContent = msg; clearTimeout(t._h); t._h = setTimeout(() => t.remove(), 2600);
 }
 
@@ -1369,20 +1467,30 @@ function paintPreflight() {
     list.innerHTML = shown.map((i) => `
       <li class="lv-${esc(i.level)}"><span class="dot">${i.level === "error" ? "●" : i.level === "warning" ? "●" : "·"}</span>
         <b>${esc(i.area)}</b><span>${esc(i.message)}${i.fix ? ` <em>— ${esc(i.fix)}</em>` : ""}</span>
-        <button class="link" onclick="mm.reveal('${esc(i.key || "")}')">${i.key && (document.querySelector(`[data-k="${i.key}"]`) || document.querySelector(`[data-csv="${i.key}"]`)) ? "fix" : "show"}</button>
+        <button class="link" onclick="mm.reveal('${esc(i.key || "")}')">${i.key ? "fix" : "show"}</button>
       </li>`).join("");
   }, 220);
 }
 
 // Jump to the control a preflight item is about, so "fix" is one click.
 mm.reveal = function (key) {
-  const el = key && document.querySelector(`[data-k="${key}"],[data-csv="${key}"]`);
+  const el = key && document.querySelector(`[data-k="${key}"],[data-csv="${key}"],[data-l="${key}"]`);
   if (el) {
     const d = el.closest("details");
-    if (d) { d.open = true; scrollTo(d); }
-    el.classList.add("hit");
-    setTimeout(() => el.classList.remove("hit"), 1600);
+    if (d) {
+      d.open = true;
+      d.classList.remove("searching");
+      d.classList.add("flash");
+      setTimeout(() => d.classList.remove("flash"), 2400);
+      scrollTo(d);
+    }
+    const row = el.closest(".row") || el;
+    row.classList.add("hit");
+    setTimeout(() => row.classList.remove("hit"), 2400);
     try { if (el.focus) el.focus({ preventScroll: true }); } catch (e) { /* not focusable */ }
+    const label = ((row.querySelector(":scope > span") || {}).textContent || key.replace(/_/g, " ")).trim();
+    window.__lastReveal = key;
+    toast(`Jumped to “${label}”`, "good");
     return;
   }
   // picker-driven settings (sound, pictures, output folder) have no control of their own:
@@ -1411,7 +1519,8 @@ function bindInputs() {
   const pv = $("#pvsound");
   if (pv) { pv.checked = sfx.on; pv.onchange = () => { sfx.on = pv.checked; localStorage.setItem("mm_pvsound", pv.checked ? "1" : "0"); if (sfx.on) { sfx.ensure(); sfx.load(); } }; }
   document.querySelectorAll("[data-k]").forEach((el) => {
-    const ev = el.type === "text" || el.type === "number" ? "change" : "input";
+    // text/number/color are discrete choices: "change" only, so they never fight a slider drag
+    const ev = ["text", "number", "color"].includes(el.type) ? "change" : "input";
     el.addEventListener(ev, () => {
       let v = el.type === "checkbox" ? el.checked : el.value;
       if (el.type === "range" || el.type === "number" || (el.tagName === "SELECT" && v !== "" && !isNaN(v))) v = parseFloat(v);
@@ -1522,6 +1631,7 @@ async function boot() {
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target || {}).tagName || "");
     const mod = e.ctrlKey || e.metaKey;
     if (mod && e.key.toLowerCase() === "k") { e.preventDefault(); return mm.openPalette(); }
+    if (mod && e.key.toLowerCase() === "q") { e.preventDefault(); return mm.openQuick(); }
     if (mod && e.key.toLowerCase() === "r") { e.preventDefault(); return e.shiftKey ? mm.renderBatch() : mm.renderOne(); }
     if (mod && e.key.toLowerCase() === "p") {
       e.preventDefault();
@@ -1537,7 +1647,7 @@ async function boot() {
     if (e.key === "/" && !typing) { e.preventDefault(); if (search) search.focus(); }
     if (e.key === "?" && !typing) { e.preventDefault(); return mm.showShortcuts(); }
     if (e.key === "Escape" && document.activeElement === search) mm.clearSearch();
-    if (e.key === "Escape") { mm.closePalette(); mm.closeLibrary(); mm.closePublish(); mm.closeColab(); mm.closeShortcuts(); }
+    if (e.key === "Escape") { mm.closePalette(); mm.closeLibrary(); mm.closePublish(); mm.closeColab(); mm.closeShortcuts(); mm.closeQuick(); }
   });
   mm.refreshHistory();
   paintPreflight();

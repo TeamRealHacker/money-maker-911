@@ -2,7 +2,7 @@
  "bootstrap": {
   "app": "Money Maker 911",
   "credit": "made by TeamRealHackers",
-  "version": "0.25.0",
+  "version": "0.27.0",
   "config": {
    "mode": "merge",
    "width": 1080,
@@ -731,10 +731,18 @@
     320
    ]
   },
-  "output_dir": "/tmp/tmp77x0deut/Videos/MoneyMaker911"
+  "output_dir": "/tmp/tmpfoyb1kqz/Videos/MoneyMaker911"
  },
  "palette": {
   "actions": [
+   {
+    "id": "quick",
+    "label": "\u26a1 Quick start (render + upload)",
+    "group": "Render",
+    "keywords": "quick start easy one button auto upload make",
+    "shortcut": "Ctrl+Q",
+    "kind": "action"
+   },
    {
     "id": "render",
     "label": "Render video",
@@ -1045,6 +1053,11 @@
     "group": "Search"
    },
    {
+    "keys": "Ctrl+Q",
+    "what": "Quick start (render + upload in one button)",
+    "group": "Render"
+   },
+   {
     "keys": "Ctrl+R",
     "what": "Render one video",
     "group": "Render"
@@ -1089,7 +1102,7 @@
   "ready": false,
   "needs_login": false,
   "note": "google-colab-cli not found. One click installs it (WSL2 + Ubuntu + the CLI on Windows); or install it yourself and press Re-check.",
-  "version": "0.25.0",
+  "version": "0.27.0",
   "gpus": [
    {
     "id": "T4",
@@ -1207,8 +1220,8 @@
   "errors": 0,
   "warnings": 0,
   "ready": true,
-  "free_gb": 18.8,
-  "output_dir": "/tmp/tmp77x0deut/Videos/MoneyMaker911",
+  "free_gb": 18.7,
+  "output_dir": "/tmp/tmpfoyb1kqz/Videos/MoneyMaker911",
   "summary": "Ready to render"
  },
  "history": {
@@ -1234,7 +1247,7 @@
   },
   "pip": "pip install google-api-python-client google-auth-oauthlib",
   "console_url": "https://console.cloud.google.com/apis/credentials",
-  "folder": "/tmp/tmp77x0deut/Videos/MoneyMaker911"
+  "folder": "/tmp/tmpfoyb1kqz/Videos/MoneyMaker911"
  },
  "plan": {
   "plan": [],

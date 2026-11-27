@@ -21,7 +21,9 @@ def test_empty_query_offers_the_useful_actions_first():
     idx = _index()
     res = palette.search(idx, "")
     labels = [r["label"] for r in res]
-    assert labels[0] in ("Render video", "Render a batch of videos")
+    # the one-button path is offered first, then the classic actions
+    assert labels[0].startswith("⚡ Quick start") or labels[0] in ("Render video",
+                                                                   "Render a batch of videos")
     assert any("Publish" in l for l in labels)
     assert len(res) <= 12
 
@@ -166,4 +168,53 @@ def test_the_ui_has_no_duplicate_bridge_methods():
     names = re.findall(r"^  (?:async )?([A-Za-z_$][\w$]*)\s*\(", body, re.M)
     dup = {k: v for k, v in Counter(names).items() if v > 1 and k not in {"if", "$", "swatches"}}
     assert not dup, f"duplicate mm methods: {sorted(dup)}"
-    assert "async openColab()" in body and "async refreshColab()" in body
+    # a later `mm.x = function …` silently replaces a method of the same name (this is how the
+    # palette's jump-to-setting broke: a second reveal() hid the first)
+    assigned = set(re.findall(r"^mm\.([A-Za-z_$][\w$]*)\s*=", src.read_text(encoding="utf-8"), re.M))
+    clash = assigned & set(names)
+    assert not clash, f"methods replaced by a later assignment: {sorted(clash)}"
+    for needed in ("async openColab()", "async refreshColab()", "async openQuick()", "reveal("):
+        assert needed in body
+
+
+# ---------- ⚡ quick start ----------
+def test_quick_start_refuses_while_busy(api):
+    api._busy = True
+    r = api.quick_start(3, False, True, True, "merge")
+    assert r["ok"] is False and "already" in r["error"].lower()
+
+
+def test_quick_start_switches_mode_and_starts_a_render(api, monkeypatch):
+    started = {}
+    monkeypatch.setattr(api, "render_one", lambda: started.update(one=True) or True)
+    monkeypatch.setattr(api, "render_batch", lambda n, rnd, wins: started.update(batch=(n, rnd, wins)) or True)
+    r = api.quick_start(1, upload=False, randomize=True, only_wins=True, mode="plinko")
+    assert r["ok"] is True and started["one"] is True
+    assert api._cfg.mode == "plinko"
+    r2 = api.quick_start(7, upload=True, randomize=False, only_wins=False, mode="merge")
+    assert r2["ok"] is True and started["batch"] == (7, False, False)
+    assert api._quick_upload is True
+
+
+def test_quick_start_clamps_a_silly_count(api, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(api, "render_batch", lambda n, rnd, wins: seen.update(n=n) or True)
+    assert api.quick_start(9999, False, True, True, "merge")["count"] == 500
+    assert seen["n"] == 500
+
+
+def test_quick_upload_after_render_is_a_no_op_unless_asked(api, monkeypatch):
+    called = []
+    monkeypatch.setattr(api, "publish_upload", lambda plan=None: called.append(plan))
+    api._quick_upload = False
+    api._quick_upload_after_render()
+    assert called == []
+    api._quick_upload = True                    # asked, but YouTube is not connected in tests
+    frames = []
+    monkeypatch.setattr(api, "_emit", lambda f: frames.append(f))
+    from mm911 import publish as pb
+    assert pb.has_google_deps() is False or pb.token_file().exists() is False
+    api._quick_upload_after_render()
+    assert called == []                          # nothing is uploaded without a connection
+    assert any(f.get("pubdone") is True and "YouTube is not connected" in f.get("error", "")
+               for f in frames), frames        # ... and the user is told why

@@ -19,6 +19,7 @@ from pathlib import Path
 # ---------- the fixed part: actions ----------
 ACTIONS = [
     # (id, label, group, keywords, shortcut)
+    ("quick", "⚡ Quick start (render + upload)", "Render", "quick start easy one button auto upload make", "Ctrl+Q"),
     ("render", "Render video", "Render", "make video render now single", ""),
     ("batch", "Render a batch of videos", "Render", "batch many queue factory", ""),
     ("stop", "Stop rendering", "Render", "cancel stop abort", ""),
@@ -130,7 +131,8 @@ def search(index: dict, query: str, limit: int = 12) -> list[dict]:
     q = (query or "").strip()
     if not q:
         first = [a for a in index.get("actions", []) if a["id"] in
-                 ("render", "batch", "publish", "library", "colab", "upload", "undo", "update")]
+                 ("quick", "render", "batch", "publish", "library", "colab", "upload", "undo",
+                  "update")]
         return first[:limit]
     out = []
     for kind, key in (("action", "actions"), ("page", "pages"), ("setting", "settings"),
