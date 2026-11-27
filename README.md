@@ -92,6 +92,7 @@
 | 📤 YouTube uploader | ✅ `mm911/publish.py`: upload videos or schedule a whole titles.csv queue across days (YouTube Data API v3, resumable upload, OAuth token cache) |
 | 🎵 More 2D modes | 🔜 One by one (3D modes next) |
 | ⚡ Quick start (v0.27.0) | ✅ One sheet: mode + look, how many, upload when finished — one button, `Ctrl+Q` |
+| 🪐 Orbit 3D (v0.28.0) | ✅ Perspective tunnel mode: 8 hoops, depth fog, orbit speed, hoop weight — and it renders as fast as the 2D modes |
 | 🧭 Sticky rails (v0.26.0) | ✅ Sidebar modes scroll on their own; Library / Publish / Colab / updates stay pinned |
 | ☁️ Colab one-click (v0.26.0) | ✅ Install (WSL2 + pipx + CLI) and Google sign-in from inside the app, with a preflight before spending compute units |
 | ☁️ Colab rendering (v0.23.0) | ✅ **Working**: `mm911/colab.py` + `colab/mm911_render.ipynb` — packs your project, rents a Colab GPU via `google-colab-cli` (WSL2 bridge on Windows), renders, downloads, stops the session. Since v0.25.0 it has its **own page in the app** (sidebar ▸ ☁️ Colab GPU): status, the setup commands, GPU choice, one button to render |
@@ -154,6 +155,7 @@ Everything it can do in one place:
 | 22 | 🫧 **Bubble Pop** ✅ | Your ball hunts rising bubbles and pops them one by one | *"Can it pop every bubble?"* |
 | 23 | 🕳️ **Hole Eater** ✅ | A glowing hole swallows drifting balls and grows with every bite | *"Can the hole eat them all?"* |
 | 24 | ♾️ **Infinite Zoom Physics Loop** ✅ | A meme cutout tumbles down neon stairs in a star space while the camera zooms forever — bounces get slower and deeper as it grows | *"How deep do the stairs go?"* |
+| 25 | 🪐 **Orbit 3D** ✅ (v0.28.0) | A real perspective tunnel — no GPU needed: the hoops nest to a vanishing point and the ball weaves through them one at a time | *"Can it fly through every hoop?"* |
 
 ### 🔵 3D Modes (best on an NVIDIA GPU or Colab)
 

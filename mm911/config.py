@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_NAME = "Money Maker 911"
 CREDIT = "made by TeamRealHackers"
-VERSION = "0.27.0"
+VERSION = "0.28.0"
 
 # Soft, non-neon palettes. Each: background top, background bottom, container, text, tier colors
 PALETTES: dict[str, dict] = {
@@ -102,7 +102,7 @@ DEFAULT_RANDOM_KNOBS = ["palette", "shape", "hook", "spin", "drop_interval"]
 
 
 MODES = ["merge", "escape", "breaker", "glass", "ghost", "rhythmic", "accumulate", "drawer", "tower", "battle", "weapon", "plinko", "race", "flip", "snake", "chain", "countdown", "colorsort", "voting",
-         "bowling", "stacker", "bubble", "hole", "zoom"]
+         "bowling", "stacker", "bubble", "hole", "zoom", "orbit3d"]
 WEAPON_TYPES = ["sword", "spear", "mace", "mixed"]
 MODE_HOOKS = {"merge": "Will it reach the Final Form?", "escape": "Can it escape all 8 rings?",
               "breaker": "Can it break every brick?", "glass": "Will the glass hold?",
@@ -110,7 +110,8 @@ MODE_HOOKS = {"merge": "Will it reach the Final Form?", "escape": "Can it escape
               "accumulate": "Can it reach 100 balls?", "drawer": "Can it paint the whole picture?",
               "tower": "How many floors will break?", "battle": "Who wins the battle?",
               "weapon": "Who survives?", "plinko": "Can it reach the jackpot?", "race": "Who wins the race?", "flip": "Can gravity survive?", "snake": "How long can it get?", "chain": "Can one pop clear them all?", "countdown": "Who survives the countdown?", "colorsort": "Can it sort every colour?", "voting": "Who gets your vote?",
-              "bowling": "Can it bowl a STRIKE?", "stacker": "How high can the tower go?", "bubble": "Can it pop every bubble?", "hole": "Can the hole eat them all?", "zoom": "How deep do the stairs go?"}
+              "bowling": "Can it bowl a STRIKE?", "stacker": "How high can the tower go?", "bubble": "Can it pop every bubble?", "hole": "Can the hole eat them all?", "zoom": "How deep do the stairs go?",
+              "orbit3d": "Can it clear every ring in 3D?"}
 BREAKER_PATTERNS = ["full", "pyramid", "diamond", "heart", "checker", "stripes"]
 
 
@@ -422,6 +423,17 @@ class MergeConfig:
     bubble_ball_speed: float = 700.0
     bubble_counter_text: str = "{broken} / {total}"
     bubble_final_text: str = "ALL POPPED!"
+    # ---- 🪐 Orbit 3D (perspective rings, no GPU) ----
+    orbit_rings: int = 8                 # how many rings to clear
+    orbit_camera_dist: float = 760.0     # world scale of the tunnel (bigger = tighter shot)
+    orbit_ball_radius: float = 74.0
+    orbit_ball_y: float = 70.0           # vertical offset of the shot (0 = dead centre)
+    orbit_speed_deg: float = 105.0       # lap speed (degrees per second)
+    orbit_ring_thickness: int = 8
+    orbit_fog: float = 0.45              # how much the far rings fade into the background
+    orbit_trail: int = 14
+    orbit_counter_text: str = "{cleared} / {total} rings"
+    orbit_final_text: str = "FINAL FORM 3D!"
     # 🕳️ Hole Eater (v0.23.0): a hungry hole glides around swallowing drifting balls and grows
     hole_balls: int = 40
     hole_radius: float = 46.0
@@ -751,6 +763,14 @@ class MergeConfig:
         self.bubble_wobble_speed = max(0.3, min(10.0, float(self.bubble_wobble_speed)))
         self.bubble_ball_radius = max(8.0, min(60.0, float(self.bubble_ball_radius)))
         self.bubble_ball_speed = max(200.0, min(2500.0, float(self.bubble_ball_speed)))
+        self.orbit_rings = max(2, min(40, int(self.orbit_rings)))
+        self.orbit_camera_dist = max(260.0, min(2400.0, float(self.orbit_camera_dist)))
+        self.orbit_ball_radius = max(8.0, min(90.0, float(self.orbit_ball_radius)))
+        self.orbit_ball_y = max(0.0, min(400.0, float(self.orbit_ball_y)))
+        self.orbit_speed_deg = max(8.0, min(400.0, float(self.orbit_speed_deg)))
+        self.orbit_ring_thickness = max(1, min(14, int(self.orbit_ring_thickness)))
+        self.orbit_fog = max(0.0, min(0.9, float(self.orbit_fog)))
+        self.orbit_trail = max(0, min(40, int(self.orbit_trail)))
         self.hole_balls = max(2, min(200, int(self.hole_balls)))
         self.hole_radius = max(16.0, min(160.0, float(self.hole_radius)))
         self.hole_growth = max(0.0, min(0.3, float(self.hole_growth)))

@@ -1112,3 +1112,8 @@ class VotingRenderer(BreakerRenderer):
             for ddx, ddy in ((-2, 0), (2, 0), (0, -2), (0, 2)):
                 S.blit(o, (x + ddx, y + ddy))
             S.blit(s, (x, y))
+
+
+# 🪐 Orbit 3D lives in its own module (it is a perspective renderer, not a 2D one) but is
+# re-exported here so `from .render_modes import Orbit3DRenderer` reads like every other mode.
+from .modes.orbit3d import Orbit3DRenderer  # noqa: E402,F401

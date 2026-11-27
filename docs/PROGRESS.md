@@ -1,5 +1,31 @@
 # Progress log
 
+- **2026-11-26** · 🪐 v0.28.0 - Orbit 3D, a real perspective mode that renders as fast as the 2D ones (branch `arena/98416b43-money-maker-911`):
+  - **🪐 Orbit 3D (`mm911/modes/orbit3d.py`, mode key `orbit3d`)**: a tunnel of hoops receding to a
+    vanishing point, drawn in true perspective - and with **no GPU, no OpenGL and no numpy per frame**.
+    The ball weaves along the rim and pops the hoops one at a time; the last one is FINAL FORM 3D!.
+  - **How the "3D" stays cheap**: hoop depths are *harmonic* (`z ∝ 1/j`), which makes the projected
+    radii evenly spaced instead of collapsing into a clump at the horizon; every point goes through
+    one axis-aligned projection (`K/depth`, one multiply and one divide); the whole scene is one
+    short painter's list sorted far-to-near, so there is no depth buffer; hoops are drawn with
+    `pygame.draw.ellipse` using colours **pre-mixed against the background** (no per-frame SRCALPHA
+    surfaces - that is what makes most "3D in pygame" modes crawl); and the camera rides with the
+    ball so the hoop about to be cleared is always the same size on screen. Measured: **~250-380 fps**
+    at 1080x1920 on a plain CPU; a frame costs about 3 ms.
+  - **Bug found while building it**: the first version handed the tunnel to `BreakerSim.step()`, which
+    treats `self.bricks` as a collidable wall and blew up on the ring objects (`broken_vt`) - the
+    tunnel is scenery now (`self.bricks = []`, `alive_bricks() -> []`) and the ball's body is re-pinned
+    after the base step. A test pins both.
+  - **Wiring**: `mm911/config.py` (`MODES`, `MODE_HOOKS`, `orbit_*` settings + clamps), `mm911/modes/
+    registry.py`, `render_modes.py` re-export, the app's mode picker with its own settings panel
+    (hoops, camera, ball, orbit speed, hoop weight, depth fog, trail, counter, ending text) and
+    `presets/orbit_3d.json` (dark neon tunnel).
+  - Tests: `tests/test_mode_orbit3d.py` **17** (registration, every seed wins, determinism, eight
+    odd settings still finish, clamps, the hoops always stay ahead of the camera with constant
+    framing, a per-frame time budget, and a "the sprite cache never grows" guard). Full suite:
+    **375 passed, 2 skipped**; jsdom harness **96/96**.
+  - Docs: `docs/ui-pass7-orbit3d.png`, README feature + mode rows.
+
 - **2026-11-26** · ⚡ v0.27.0 UI pass 6 - Quick start, one button for render + upload (branch `arena/ecc9e8f8-money-maker-911`):
   - **⚡ Quick start** (`Api.quick_start`, `#quick` sheet): the whole job in three questions - *what* (mode + look), *how many* (1 / 5 / 10 / 25, vary, only winners) and *upload when finished* - then one **Make it** button that renders and, if asked, uploads everything new as soon as the render ends (`_quick_upload_after_render`, which refuses politely and explains itself when YouTube is not connected). Reachable from the dock, `Ctrl+Q` and the ⌘K palette; it shows the mode's hook, the look swatches, and whether upload can actually do anything before you press it.
   - **Bug: the palette's jump-to-setting did nothing.** `mm.reveal()` was referenced by setting rows but the only definition lived *after* `const mm = {…}`, and worse, it rendered `document.querySelector(...)` inside an inline `onclick` (so the preflight "fix" button printed an element instead of a label). There is now one `mm.reveal` that opens the section, scrolls, flashes, focuses, says “Jumped to …”, and is observable (`window.__lastReveal`) for the tests.
