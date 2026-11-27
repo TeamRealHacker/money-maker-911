@@ -55,7 +55,8 @@
     <ul id="pflist" hidden></ul>
   </div>
   <div class="dock">
-    <button class="primary" onclick="mm.renderOne()">Render video</button>
+    <button class="primary big" onclick="mm.openQuick()" title="One button: pick a mode, how many, and whether to upload (Ctrl+Q)">⚡ Quick start</button>
+    <button class="ghost" onclick="mm.renderOne()">Render video</button>
     <div class="batch">
       <input id="count" type="number" min="1" max="500" value="10">
       <label class="chk"><input id="rand" type="checkbox" checked> Vary each video</label>
@@ -543,6 +544,45 @@
       <div class="row col"><span>Posting times <em class="hint">24h clock, comma separated</em></span><input type="text" id="pubtimes" value="10:00,17:30" onchange="mm.savePublish()"></div>
       <div class="hint">Scheduled uploads start private and go public at the time you set. A video is never uploaded twice, even if you re-run the batch.</div>
     </section>
+  </div>
+</div>
+
+<div class="studio" id="quick" hidden>
+  <div class="studiohead">
+    <div><b>⚡ Quick start</b><em>Three questions, then it does everything</em></div>
+    <button class="ghost" onclick="mm.closeQuick()">Close</button>
+  </div>
+  <div class="quickbody">
+    <section class="quickcard">
+      <h3>1 · What should it make?</h3>
+      <select id="quickmode" onchange="mm.quickMode()"></select>
+      <div class="hint" id="quickhook">—</div>
+      <div class="quickswatches" id="quickswatch"></div>
+      <div class="hint" id="quicksw">Pick a look — or leave it and the app rotates looks for variety.</div>
+    </section>
+    <section class="quickcard">
+      <h3>2 · How many?</h3>
+      <div class="quickcounts" id="quickcounts">
+        <button class="qc on" data-n="1">1<small>test</small></button>
+        <button class="qc" data-n="5">5<small>a few</small></button>
+        <button class="qc" data-n="10">10<small>a batch</small></button>
+        <button class="qc" data-n="25">25<small>a chunky batch</small></button>
+      </div>
+      <div class="row"><span>Vary them</span><input type="checkbox" id="quickvary" checked
+        title="Rotate palette, shape, hook, speed so no two videos look the same"></div>
+      <div class="row"><span>Only the winners</span><input type="checkbox" id="quickwins" checked
+        title="Skip runs where nothing reaches the ending"></div>
+    </section>
+    <section class="quickcard">
+      <h3>3 · Upload when finished?</h3>
+      <label class="quickup big"><input type="checkbox" id="quickupload"> <span>Yes — put them on YouTube for me</span></label>
+      <div class="hint" id="quickupstate">Checking YouTube…</div>
+      <div class="hint">Private by default and never uploaded twice — you can change that in the Publish studio.</div>
+    </section>
+    <div class="quickgo">
+      <button class="primary big" id="quickgo" onclick="mm.runQuick()">⚡ Make it</button>
+      <span class="hint" id="quicknote"></span>
+    </div>
   </div>
 </div>
 

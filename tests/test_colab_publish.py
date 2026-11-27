@@ -330,3 +330,40 @@ def test_render_uploads_with_the_real_cli_syntax(stub_colab, tmp_path):
     assert ups[0].split()[1] == "-s" and ups[0].split()[3].endswith("job.zip")
     assert downs and downs[0].split()[1] == "-s" and "--path" not in downs[0]
     assert res["videos"] == []
+
+
+# ---------- publish upload-new (the one-click CLI path) ----------
+def test_upload_new_dry_run_lists_what_is_missing(tmp_path, capsys, monkeypatch):
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "a.mp4").write_bytes(b"x")
+    (out / "titles.csv").write_text("file,title\na.mp4,Alpha\n", encoding="utf-8")
+    from mm911 import cli
+    cli.main(["publish", "upload-new", "--folder", str(out), "--dry-run"])
+    text = capsys.readouterr().out
+    assert "video(s) to upload" in text
+
+
+def test_upload_new_never_uploads_more_than_the_quota(tmp_path, capsys, monkeypatch):
+    out = tmp_path / "out"
+    out.mkdir()
+    for i in range(9):
+        (out / f"v{i}.mp4").write_bytes(b"x")
+    rows = "".join(f"v{i}.mp4,Video {i}\n" for i in range(9))
+    (out / "titles.csv").write_text("file,title\n" + rows, encoding="utf-8")
+
+    class R:                        # pretend every upload succeeds
+        def __init__(self, video):
+            self.video, self.url = video, "https://youtu.be/x"
+
+    seen = {}
+
+    def fake_upload_queue(plan, client_secret="client_secret.json"):
+        seen["n"] = len(plan)
+        return [{**{k: v for k, v in p.items()}, "url": "u"} for p in plan]
+
+    from mm911 import cli, publish as pb
+    monkeypatch.setattr(pb, "upload_queue", fake_upload_queue)
+    monkeypatch.setattr(pb, "quota", lambda used: {"used": used, "limit": 6, "left": 6 - used})
+    cli.main(["publish", "upload-new", "--folder", str(out)])
+    assert seen["n"] == 6           # the quota wins over "upload everything"

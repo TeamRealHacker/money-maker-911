@@ -81,6 +81,7 @@ class Api:
         self._uploading = False
         self._plan_edits = {}
         self._colab_busy = False
+        self._quick_upload = False
         from ..library import History
         self._history = History()
         self._history_lock = threading.Lock()
@@ -646,6 +647,8 @@ class Api:
             return {"video": ident}
         if kind != "action":
             return {"error": f"unknown kind {kind}"}
+        if ident == "quick":
+            return {"js": "quick"}
         if ident == "render":
             return {"started": self.render_one()}
         if ident == "batch":
@@ -836,7 +839,8 @@ class Api:
             return {"done": False, **self._history.status()}
         self._cfg = MergeConfig.from_dict(snap)
         self._save()
-        return {"done": True, "label": "undo", **self._history.status()}
+        return {"done": True, "label": "undo", "config": self._cfg.to_dict(),
+                **self._history.status()}
 
     def redo(self) -> dict:
         with self._history_lock:
@@ -845,7 +849,8 @@ class Api:
             return {"done": False, **self._history.status()}
         self._cfg = MergeConfig.from_dict(snap)
         self._save()
-        return {"done": True, "label": "redo", **self._history.status()}
+        return {"done": True, "label": "redo", "config": self._cfg.to_dict(),
+                **self._history.status()}
 
     def library(self) -> dict:
         """Every rendered video in the output folder (with thumbnails and metadata)."""
@@ -1112,6 +1117,23 @@ class Api:
     def publish_open_url(self, url: str) -> None:
         self._open_url(url)
 
+    def _quick_upload_after_render(self) -> None:
+        """Quick start with "upload when done": push everything that is not on YouTube yet."""
+        if not getattr(self, "_quick_upload", False):
+            return
+        self._quick_upload = False
+        from .. import publish as pb
+        if not pb.has_google_deps() or not pb.token_file().exists():
+            self._emit({"pubdone": True, "results": [],
+                        "error": "Videos are ready, but YouTube is not connected "
+                                 "(open Publish studio once to sign in)."})
+            return
+        try:
+            self.publish_upload(self.publish_plan().get("plan"))
+        except Exception as e:                 # never leave the user without their videos
+            LOG.exception("quick upload failed")
+            self._emit({"pubdone": True, "results": [], "error": str(e)[:300]})
+
     def _auto_upload_after_batch(self) -> None:
         """Called when a batch finishes: queue the new videos if the user asked for that."""
         from .. import autoupload
@@ -1297,6 +1319,29 @@ class Api:
         except Exception:
             pass
 
+    def quick_start(self, count: int = 1, upload: bool = False, randomize: bool = True,
+                    only_wins: bool = True, mode: str = "") -> dict:
+        """The one-button path: render (one video or a batch) and, if asked, upload what is new.
+
+        Rendering is started on its own thread; the upload is queued when the render finishes, so a
+        non-technical user never has to visit a second page. The current settings are respected."""
+        if self._busy:
+            return {"ok": False, "error": "Something is already rendering."}
+        if mode:
+            try:
+                self.set_config({"mode": str(mode)})
+            except Exception:
+                LOG.exception("quick start could not switch mode")
+        n = max(1, min(500, int(count or 1)))
+        self._quick_upload = bool(upload)
+        ok = self.render_one() if n == 1 else self.render_batch(n, bool(randomize), bool(only_wins))
+        if not ok:
+            self._quick_upload = False
+            return {"ok": False, "error": "The renderer did not start."}
+        return {"ok": True, "count": n, "upload": bool(upload),
+                "note": f"Rendering {n} video{'s' if n != 1 else ''}"
+                        + (" — they will upload when finished" if upload else "")}
+
     def render_one(self) -> bool:
         if self._busy:
             return False
@@ -1312,6 +1357,7 @@ class Api:
                 self._emit({"done": True, "results": [meta]})
                 if cfg.open_folder_after:
                     self.open_output()
+                self._quick_upload_after_render()
             except Exception as e:  # pragma: no cover
                 LOG.exception("render failed")
                 self._emit({"error": str(e)})
@@ -1338,6 +1384,7 @@ class Api:
                 self._emit({"done": True, "results": res})
                 if self._cfg.open_folder_after:
                     self.open_output()
+                self._quick_upload_after_render()
                 self._auto_upload_after_batch()
             except Exception as e:  # pragma: no cover
                 LOG.exception("render failed")

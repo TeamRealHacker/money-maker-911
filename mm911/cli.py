@@ -254,6 +254,31 @@ def publish_cmd(a) -> None:
         print(json.dumps(pb.upload_video(a.video, a.title or Path(a.video).stem, a.description or "",
                                          [t.strip() for t in a.tags.split(",") if t.strip()] if a.tags else [],
                                          a.privacy, a.publish_at, a.client_secret), indent=2))
+    elif a.action == "upload-new":
+        # the one-click path from the app: everything not on YouTube yet, capped by quota
+        folder = a.folder or "output"
+        plan = pb.queue_plan(str(Path(folder) / "titles.csv"), folder=folder,
+                             spread_days=a.spread_days, times=a.times, privacy=a.privacy) \
+            if (Path(folder) / "titles.csv").exists() else \
+            autoupload.after_render(folder, {**autoupload.settings(), "enabled": True})["plan"]
+        todo = []
+        for item in plan:
+            item["uploaded"] = autoupload.already_uploaded(folder, item.get("video", ""))
+            if not item["uploaded"]:
+                todo.append(item)
+        left = pb.quota(autoupload.uploaded_today(folder))["left"]
+        if a.limit and a.limit > 0:
+            todo = todo[:a.limit]
+        todo = todo[:max(0, left)]
+        print(f"{len(todo)} video(s) to upload ({left} fit in today's quota)")
+        if a.dry_run or not todo:
+            print(json.dumps(todo, indent=2))
+            return
+        results = pb.upload_queue(todo, client_secret=a.client_secret)
+        for item in results:
+            if not item.get("error"):
+                autoupload.save_receipt(folder, item.get("video", ""), item)
+        print(json.dumps(results, indent=2))
     elif a.action == "queue":
         plan = pb.queue_plan(a.csv, folder=a.folder, spread_days=a.spread_days, times=a.times,
                              privacy=a.privacy)
@@ -320,8 +345,9 @@ def main(argv=None) -> None:
     k.add_argument("--count", type=int, default=0, help="batch: render N videos on Colab")
     k.add_argument("--keep", action="store_true", help="keep the Colab session running afterwards")
     _add_look_args(k)
-    u = sub.add_parser("publish", help="YouTube uploads: check / upload / queue")
-    u.add_argument("action", choices=["check", "upload", "queue", "signin", "signout", "whoami", "auto"])
+    u = sub.add_parser("publish", help="YouTube uploads: check / upload / queue / upload-new")
+    u.add_argument("action",
+                   choices=["check", "upload", "queue", "signin", "signout", "whoami", "auto", "upload-new"])
     u.add_argument("video", nargs="?", help="video file (upload)")
     u.add_argument("--csv", help="titles.csv from the batch factory (queue)")
     u.add_argument("--folder", default="", help="where the queue's videos live (default: next to the csv)")
@@ -336,6 +362,7 @@ def main(argv=None) -> None:
     u.add_argument("--dry-run", action="store_true", help="queue: print the plan, upload nothing")
     u.add_argument("--only-wins", action="store_true", help="auto: skip videos without a win in titles.csv")
     u.add_argument("--enable", choices=["on", "off"], help="auto: turn auto-upload after a batch on/off")
+    u.add_argument("--limit", type=int, default=0, help="upload-new: how many videos at most (0 = all that fit)")
     a = p.parse_args(argv)
     if a.cmd == "sounds":
         return sounds_cmd(a)

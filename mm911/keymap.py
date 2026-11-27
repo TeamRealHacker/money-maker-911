@@ -10,6 +10,7 @@ SHORTCUTS = [
     ("Ctrl+Shift+P", "Search settings only", "Search"),
     ("?", "Show this shortcut sheet", "Search"),
     ("/", "Jump to the settings search box", "Search"),
+    ("Ctrl+Q", "Quick start (render + upload in one button)", "Render"),
     ("Ctrl+R", "Render one video", "Render"),
     ("Ctrl+Shift+R", "Render a batch", "Render"),
     ("Ctrl+P", "Upload the queue to YouTube", "Publish"),

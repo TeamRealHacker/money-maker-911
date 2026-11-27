@@ -33,6 +33,8 @@ function bridge() {
       case "palette": return PALIDX;
       case "palette_search": return [];
       case "palette_run": return PALRUN[a[1]] || { error: "unknown" };
+      case "undo": return { done: true };
+      case "redo": return { done: true };
       case "colab_status": return COLAB;
       case "colab_quota": return { output: "compute units: 42.5" };
       case "colab_render": return { ok: false, setup: true, error: "Colab is not connected yet",
@@ -44,6 +46,9 @@ function bridge() {
         { title: "Install pipx and the Colab CLI inside Ubuntu", cmd: "wsl -d Ubuntu -- bash -lc \"pipx install google-colab-cli\"" }] };
       case "colab_install": return { ok: true, started: true };
       case "colab_login": return { ok: true, started: true, url: "" };
+      case "quick_start": return { ok: true, count: a[0], upload: !!a[1], note: "Rendering " + a[0] };
+      case "render_one": return true;
+      case "render_batch": return true;
       case "set_text": return true;
       case "open_url": return null;
       case "auto_upload_state": return { ...UPLOAD, enabled: uploadOn };
@@ -265,6 +270,47 @@ await w.mm.openLibrary();
 await w.mm.openColab();
 w.document.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
 ok("Esc closes every overlay", $("#palette").hidden && $("#library").hidden && $("#colabpage").hidden);
+
+// ---------------------------------------------------------------- ⚡ Quick start
+await w.mm.openQuick();
+await wait(80);
+ok("quick start opens", !$("#quick").hidden);
+ok("quick start lists modes", $$("#quickmode option").length > 10);
+ok("quick start shows the mode hook", ($("#quickhook").textContent || "").length > 3);
+ok("quick start offers a look picker", $$("#quickswatch b").length === Object.keys(FX.bootstrap.palettes).length);
+ok("quick start offers counts", $$("#quickcounts .qc").length === 4);
+ok("one is the default count", $("#quickcounts .qc.on").dataset.n === "1");
+ok("quick start explains the upload state", /sign|Ready|waiting/i.test($("#quickupstate").textContent));
+w.document.querySelectorAll("#quickcounts .qc")[2].click();
+ok("picking a count selects it", $("#quickcounts .qc.on").dataset.n === "10");
+w.mm.quickMode();
+ok("the mode is remembered for the run", typeof w.mm.quickPlan === "object");
+w.mm.progress({ done: true, results: [] });
+await w.mm.runQuick();
+await wait(120);
+ok("'Make it' starts a render", calls.some((c) => c[0] === "quick_start" && c[1] === 10));
+await wait(600);
+ok("the sheet closes itself once started", $("#quick").hidden);
+await w.mm.openQuick();
+w.document.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+ok("Esc closes quick start", $("#quick").hidden);
+
+// ---------------------------------------------------------------- palette reveal (was broken)
+await w.mm.openPalette("gravity");
+await w.mm.paletteSearch();
+const gravRow = $$("#pallist .palrow").findIndex((el) => /Gravity/.test(el.textContent));
+await w.mm.palRun(gravRow >= 0 ? gravRow : 0);
+await wait(60);
+const gravEl = w.document.querySelector('[data-k="gravity"]');
+ok("palette jumps to the control", !!gravEl && !!gravEl.closest("details").open);
+ok("the target row is highlighted", !!w.document.querySelector(".row.hit"));
+ok("the jump says where it went", /Jumped to/.test(w.document.body.textContent) ||
+   w.__lastReveal === "gravity");
+w.mm.togglePreflight();
+ok("a preflight 'fix' has a readable label", /fix|show/i.test($("#pflist").textContent) ||
+   $("#pflist").textContent === "");
+w.mm.togglePreflight();
+ok("reveal does not throw on a missing key", (w.mm.reveal("no_such_key"), true));
 
 // ---------------------------------------------------------------- layout rails
 ok("the sidebar has a scrolling mode list", !!$(".sidescroll") && !!$(".sidescroll #modes"));
