@@ -2,11 +2,11 @@ const MODES = [
   ["🍉 Merge Evolution", "merge"], ["🌀 Escape", "escape"], ["🧱 Breaker", "breaker"], ["🥛 Glass Rush", "glass"], ["👻 Ghost Escape", "ghost"], ["🎵 Rhythmic", "rhythmic"], ["➕ Accumulate", "accumulate"], ["✏️ Drawer", "drawer"], ["🏢 Glass Tower", "tower"], ["🚩 Flag Battle", "battle"],
   ["⚔️ Weapon Battle", "weapon"],
   ["🎳 Bowling Strike", "bowling"], ["🏗️ Tower Stack", "stacker"], ["🫧 Bubble Pop", "bubble"], ["🕳️ Hole Eater", "hole"], ["♾️ Infinite Zoom", "zoom"],
-  ["🏁 Race", "race"], ["🔄 Gravity Flip", "flip"], ["🐍 Snake Grow", "snake"], ["💥 Chain Reaction", "chain"], ["⏳ Countdown Survival", "countdown"], ["🎨 Color Sort", "colorsort"], ["🗳️ Voting", "voting"], ["🎯 Plinko", "plinko"], ["🌊 Wave 3D"], ["🎢 Marble Run 3D"], ["🧲 Magnet 3D"],
+  ["🏁 Race", "race"], ["🔄 Gravity Flip", "flip"], ["🐍 Snake Grow", "snake"], ["💥 Chain Reaction", "chain"], ["⏳ Countdown Survival", "countdown"], ["🎨 Color Sort", "colorsort"], ["🗳️ Voting", "voting"], ["🎯 Plinko", "plinko"], ["🌊 Wave 3D"], ["🎢 Marble Run 3D"], ["🧲 Magnet 3D"], ["🪐 Orbit 3D", "orbit3d"],
 ];
 const MODE_HOOKS = { merge: "Will it reach the Final Form?", escape: "Can it escape all 8 rings?",
   breaker: "Can it break every brick?", glass: "Will the glass hold?", ghost: "Can the ghost escape the dark?", rhythmic: "Can the ball play the whole song?", accumulate: "Can it reach 100 balls?", drawer: "Can it paint the whole picture?", tower: "How many floors will break?", battle: "Who wins the battle?", weapon: "Who survives?", plinko: "Can it reach the jackpot?", race: "Who wins the race?", flip: "Can gravity survive?", snake: "How long can it get?", chain: "Can one pop clear them all?", countdown: "Who survives the countdown?", colorsort: "Can it sort every colour?", voting: "Who gets your vote?",
-  bowling: "Can it bowl a STRIKE?", stacker: "How high can the tower go?", bubble: "Can it pop every bubble?", hole: "Can the hole eat them all?", zoom: "How deep do the stairs go?" };
+  bowling: "Can it bowl a STRIKE?", stacker: "How high can the tower go?", bubble: "Can it pop every bubble?", hole: "Can the hole eat them all?", zoom: "How deep do the stairs go?", orbit3d: "Can it clear every ring in 3D?" };
 const $ = (s) => document.querySelector(s);
 let state = {};
 let booted = false;
@@ -1384,6 +1384,19 @@ const MODE_SECTIONS_V023 = `
     <div class="row col"><span>Counter <em class="hint">{broken} {total}</em></span><input type="text" data-k="zoom_counter_text"></div>
     <div class="row col"><span>Ending text</span><input type="text" data-k="zoom_final_text"></div>
     <div class="hint">Dark-mode neon stairs in a star space; the camera zooms forever and every bounce sounds deeper.</div>
+  </details>
+  <details data-modes="orbit3d"><summary>🪐 Orbit 3D</summary>
+    <div class="row"><span>Hoops</span><input type="range" data-k="orbit_rings" min="2" max="40"></div>
+    <div class="row"><span>Camera distance</span><input type="range" data-k="orbit_camera_dist" min="260" max="2400" step="20"></div>
+    <div class="row"><span>Ball size</span><input type="range" data-k="orbit_ball_radius" min="8" max="90"></div>
+    <div class="row"><span>Shot height</span><input type="range" data-k="orbit_ball_y" min="0" max="400" step="5"></div>
+    <div class="row"><span>Orbit speed (deg/s)</span><input type="range" data-k="orbit_speed_deg" min="8" max="400"></div>
+    <div class="row"><span>Hoop thickness</span><input type="range" data-k="orbit_ring_thickness" min="1" max="14"></div>
+    <div class="row"><span>Depth fog</span><input type="range" data-k="orbit_fog" min="0" max="0.9" step="0.05"></div>
+    <div class="row"><span>Trail</span><input type="range" data-k="orbit_trail" min="0" max="40"></div>
+    <div class="row col"><span>Counter <em class="hint">{cleared} {total}</em></span><input type="text" data-k="orbit_counter_text"></div>
+    <div class="row col"><span>Ending text</span><input type="text" data-k="orbit_final_text"></div>
+    <div class="hint">A real perspective tunnel with no GPU: hoops nest to a vanishing point and the ball weaves through them in order. Renders as fast as any 2D mode.</div>
   </details>
 `;
 

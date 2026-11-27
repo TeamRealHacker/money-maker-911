@@ -2,6 +2,10 @@
   "name": "mm911-uicheck",
   "private": true,
   "type": "module",
-  "scripts": { "check": "node check.mjs" },
-  "devDependencies": { "jsdom": "^31.0.1" }
+  "scripts": {
+    "check": "node check.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^31.0.1"
+  }
 }

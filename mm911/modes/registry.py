@@ -28,11 +28,15 @@ MODES = {
     "bubble": "🫧 Bubble Pop",
     "hole": "🕳️ Hole Eater",
     "zoom": "♾️ Infinite Zoom",
+    "orbit3d": "🪐 Orbit 3D",
 }
 
 
 def sim_for(cfg):
     m = getattr(cfg, "mode", "merge")
+    if m == "orbit3d":
+        from .orbit3d import Orbit3DSim
+        return Orbit3DSim(cfg)
     if m == "escape":
         from .escape import EscapeSim
         return EscapeSim(cfg)
@@ -108,6 +112,9 @@ def sim_for(cfg):
 
 def renderer_for(cfg, scale: float = 1.0):
     m = getattr(cfg, "mode", "merge")
+    if m == "orbit3d":
+        from ..render_modes import Orbit3DRenderer
+        return Orbit3DRenderer(cfg, scale)
     if m == "escape":
         from ..render_modes import EscapeRenderer
         return EscapeRenderer(cfg, scale)

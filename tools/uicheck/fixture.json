@@ -2,7 +2,7 @@
  "bootstrap": {
   "app": "Money Maker 911",
   "credit": "made by TeamRealHackers",
-  "version": "0.27.0",
+  "version": "0.28.0",
   "config": {
    "mode": "merge",
    "width": 1080,
@@ -292,6 +292,16 @@
    "bubble_ball_speed": 700.0,
    "bubble_counter_text": "{broken} / {total}",
    "bubble_final_text": "ALL POPPED!",
+   "orbit_rings": 8,
+   "orbit_camera_dist": 760.0,
+   "orbit_ball_radius": 74.0,
+   "orbit_ball_y": 70.0,
+   "orbit_speed_deg": 105.0,
+   "orbit_ring_thickness": 8,
+   "orbit_fog": 0.45,
+   "orbit_trail": 14,
+   "orbit_counter_text": "{cleared} / {total} rings",
+   "orbit_final_text": "FINAL FORM 3D!",
    "hole_balls": 40,
    "hole_radius": 46.0,
    "hole_growth": 0.045,
@@ -731,7 +741,7 @@
     320
    ]
   },
-  "output_dir": "/tmp/tmpfoyb1kqz/Videos/MoneyMaker911"
+  "output_dir": "/tmp/tmp_eh_3q29/Videos/MoneyMaker911"
  },
  "palette": {
   "actions": [
@@ -1102,7 +1112,7 @@
   "ready": false,
   "needs_login": false,
   "note": "google-colab-cli not found. One click installs it (WSL2 + Ubuntu + the CLI on Windows); or install it yourself and press Re-check.",
-  "version": "0.27.0",
+  "version": "0.28.0",
   "gpus": [
    {
     "id": "T4",
@@ -1221,7 +1231,7 @@
   "warnings": 0,
   "ready": true,
   "free_gb": 18.7,
-  "output_dir": "/tmp/tmpfoyb1kqz/Videos/MoneyMaker911",
+  "output_dir": "/tmp/tmp_eh_3q29/Videos/MoneyMaker911",
   "summary": "Ready to render"
  },
  "history": {
@@ -1247,7 +1257,7 @@
   },
   "pip": "pip install google-api-python-client google-auth-oauthlib",
   "console_url": "https://console.cloud.google.com/apis/credentials",
-  "folder": "/tmp/tmpfoyb1kqz/Videos/MoneyMaker911"
+  "folder": "/tmp/tmp_eh_3q29/Videos/MoneyMaker911"
  },
  "plan": {
   "plan": [],
